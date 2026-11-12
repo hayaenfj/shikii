@@ -289,7 +289,7 @@ func project096(t *testing.T) (common, old string) {
 	hookEnv(t, fakeAgentModel(t, func(string) float64 { return .6 }), repo)
 	old = feedbackScope(repo)
 	root := filepath.Join(old, ".shikii")
-	o, err := (notebook.Book{Root: root, Scope: old}).Capture(notebook.Observation{Kind: "test", Title: "checked", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)})
+	o, err := (notebook.Book{Root: root, Scope: old}).CaptureObserved(notebook.Observation{Kind: "test", Title: "checked", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -618,11 +618,11 @@ func TestPendingSourcesAreListedByTheirHead(t *testing.T) {
 	}
 	book := notebook.Book{Root: root, Scope: scope}
 	long := "x" + strings.Repeat("\u3042\u3044\u3046\u3048\u304a", 2000) + "END-OF-LONG" // 30 KB, multi-byte and off the 3-byte grid
-	big, err := book.Capture(notebook.Observation{Kind: "agent", Title: "long", Content: long, Reference: "memory/long.md", Version: "v1", ObservedAt: time.Unix(1, 0)})
+	big, err := book.CaptureObserved(notebook.Observation{Kind: "agent", Title: "long", Content: long, Reference: "memory/long.md", Version: "v1", ObservedAt: time.Unix(1, 0)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	small, err := book.Capture(notebook.Observation{Kind: "test", Title: "short", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(2, 0)})
+	small, err := book.CaptureObserved(notebook.Observation{Kind: "test", Title: "short", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(2, 0)})
 	if err != nil {
 		t.Fatal(err)
 	}

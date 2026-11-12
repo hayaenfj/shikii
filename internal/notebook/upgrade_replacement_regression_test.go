@@ -122,7 +122,7 @@ func TestMemoryUpgradeRegressionSourcePaging(t *testing.T) {
 	for i := 0; i < 2000; i++ {
 		body += "\u65e5\u672c\u8a9e<&>\u3068\u5f15\u7528\\\"\u306e\u539f\u8cc7\u6599\u3002\n"
 	}
-	o, err := b.Capture(Observation{Kind: "test", Title: "\u5408\u6210\u539f\u8cc7\u6599", Content: body, Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
+	o, err := b.capture(Observation{Kind: "test", Title: "\u5408\u6210\u539f\u8cc7\u6599", Content: body, Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}

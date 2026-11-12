@@ -107,7 +107,7 @@ func TestAlwaysRulesAreOnlyLiveAlwaysRules(t *testing.T) {
 	mk("英語の決まり", "rule", "ALWAYS")
 	mk("いつものやり方", "howto", "いつも")
 	// a page with broken sources (the source was removed) is not returned (re-audit GI)
-	obs, err := book.Capture(notebook.Observation{Kind: "human", Title: "消える原資料", Content: "いつもの決まりの元", Reference: "r", Version: "v1", ObservedAt: time.Now().UTC()})
+	obs, err := book.CaptureObserved(notebook.Observation{Kind: "human", Title: "消える原資料", Content: "いつもの決まりの元", Reference: "r", Version: "v1", ObservedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestLessonWithManySourcesIsStillDelivered(t *testing.T) {
 	book := notebook.Book{Root: st.Dir, Scope: scope}
 	sources := append([]string{}, draft.Sources...)
 	for i := range 17 {
-		o, err := book.Capture(notebook.Observation{Kind: "test", Title: fmt.Sprint("check ", i), Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(int64(i+1), 0)})
+		o, err := book.CaptureObserved(notebook.Observation{Kind: "test", Title: fmt.Sprint("check ", i), Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(int64(i+1), 0)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -185,7 +185,7 @@ func TestCorrectionSourceKeptAmongDeliveredSources(t *testing.T) {
 	sources := []string{conv}
 	// source ids depend on the temporary folder, so capture until 17 of them sort before the conversation's id
 	for i, before := 0, 0; before < 17 && i < 400; i++ {
-		o, err := book.Capture(notebook.Observation{Kind: "test", Title: fmt.Sprint("check ", i), Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(int64(i+1), 0)})
+		o, err := book.CaptureObserved(notebook.Observation{Kind: "test", Title: fmt.Sprint("check ", i), Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(int64(i+1), 0)})
 		if err != nil {
 			t.Fatal(err)
 		}

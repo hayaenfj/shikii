@@ -181,7 +181,7 @@ func TestReasoningFailedWikiCannotBeClearedByPreparingAgain(t *testing.T) {
 
 func TestReasoningEndingArticleIsRecheckedAtStop(t *testing.T) {
 	repo, root, b, v := reasoningFixture(t)
-	captured, err := b.Capture(notebook.Observation{Kind: "test", Title: "CSV procedure evidence", Content: "The synthetic export retained ownership.", Reference: "synthetic fixture", Version: "test", ObservedAt: time.Now()})
+	captured, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "CSV procedure evidence", Content: "The synthetic export retained ownership.", Reference: "synthetic fixture", Version: "test", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}

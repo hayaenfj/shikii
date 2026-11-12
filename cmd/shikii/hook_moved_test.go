@@ -26,11 +26,11 @@ func TestHookTellsWikiLeftUnderOldPath(t *testing.T) {
 	t.Chdir(repo)
 	// a store written before 0.9.7 under the old path's name, next to the current one (half copied by hand): a single old store is adopted
 	// by itself, so only a leftover beside the current store is told
-	if _, err := (notebook.Book{Root: agent, Scope: feedbackScope(repo)}).Capture(notebook.Observation{Kind: "test", Title: "now", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(2, 0)}); err != nil {
+	if _, err := (notebook.Book{Root: agent, Scope: feedbackScope(repo)}).CaptureObserved(notebook.Observation{Kind: "test", Title: "now", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(2, 0)}); err != nil {
 		t.Fatal(err)
 	}
 	elsewhere := t.TempDir()
-	if _, err := (notebook.Book{Root: elsewhere, Scope: "/work/old-name"}).Capture(notebook.Observation{Kind: "test", Title: "確かめた", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)}); err != nil {
+	if _, err := (notebook.Book{Root: elsewhere, Scope: "/work/old-name"}).CaptureObserved(notebook.Observation{Kind: "test", Title: "確かめた", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)}); err != nil {
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256([]byte("/work/old-name"))

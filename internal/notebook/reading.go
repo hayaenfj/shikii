@@ -77,7 +77,7 @@ func (b Book) checkedReading(s ReadingSample) ([]string, error) {
 		return nil, err
 	}
 	data, _ := json.Marshal(s.ReadingDetails)
-	if o.Kind != "agent" || o.Title != "Measured reading execution" || o.Content != string(data) {
+	if kind, ok := WorkSourceOf(o); !ok || kind != WorkReading || o.Content != string(data) {
 		return nil, errors.New("reading execution does not match its immutable snapshot")
 	}
 	return b.ReadingEvidence(s.ReadingDetails)

@@ -141,11 +141,6 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 
 	local := map[string]string{}
 	for i, o := range req.Observations {
-		if err := reportTitleRefusal(o.Title); err != nil {
-			// a title shikii gives its own reports: an observation under it would be taken for one, and never cited
-			add(workItem{Ref: "new" + strconv.Itoa(i+1), Kind: "observation", Error: err.Error()})
-			continue
-		}
 		ref, id, err := captureWorkObservation(book, w, o, save, commit)
 		item := workItem{Ref: ref, Kind: "observation", ID: id}
 		if err != nil {

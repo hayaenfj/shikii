@@ -8,7 +8,7 @@ import (
 
 func roundTripSource(t *testing.T, b Book, n int) string {
 	t.Helper()
-	o, err := b.Capture(Observation{Kind: "agent", Title: fmt.Sprintf("source %d", n), Content: fmt.Sprintf("checked result %d", n), Reference: "test", Version: "v1", ObservedAt: time.Date(2026, 1, 1, 0, 0, n, 0, time.UTC)})
+	o, err := b.capture(Observation{Kind: "agent", Title: fmt.Sprintf("source %d", n), Content: fmt.Sprintf("checked result %d", n), Reference: "test", Version: "v1", ObservedAt: time.Date(2026, 1, 1, 0, 0, n, 0, time.UTC)})
 	if err != nil {
 		t.Fatal(err)
 	}

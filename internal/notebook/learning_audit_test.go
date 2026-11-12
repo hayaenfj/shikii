@@ -9,7 +9,7 @@ import (
 func growthIndependentFixture(t *testing.T) (Book, string) {
 	t.Helper()
 	b := Book{Root: t.TempDir(), Scope: "/synthetic/growth-independent"}
-	s, err := b.Capture(Observation{Kind: "test", Title: "Synthetic check", Content: "Synthetic checks only", Reference: "synthetic-only", Version: "v1", ObservedAt: time.Unix(1, 0)})
+	s, err := b.capture(Observation{Kind: "test", Title: "Synthetic check", Content: "Synthetic checks only", Reference: "synthetic-only", Version: "v1", ObservedAt: time.Unix(1, 0)})
 	if err != nil {
 		t.Fatal(err)
 	}

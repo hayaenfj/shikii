@@ -15,7 +15,7 @@ import (
 func TestArticleHTTPChangesAreScopedAndRevisionChecked(t *testing.T) {
 	root := t.TempDir()
 	b := notebook.Book{Root: filepath.Join(root, ".shikii"), Scope: root}
-	src, err := b.Capture(notebook.Observation{Kind: "test", Title: "Fixture", Content: "Article source", Reference: "test", Version: "v1", ObservedAt: time.Unix(1, 0)})
+	src, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Fixture", Content: "Article source", Reference: "test", Version: "v1", ObservedAt: time.Unix(1, 0)})
 	if err != nil {
 		t.Fatal(err)
 	}

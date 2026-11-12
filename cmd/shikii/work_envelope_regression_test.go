@@ -31,7 +31,7 @@ func TestWorkFinalEnvelopeMCPSourcePages(t *testing.T) {
 			t.Run(fmt.Sprintf("budget%d-title%d", budget, titleSize), func(t *testing.T) {
 				b, _ := loopBook(t)
 				body := strings.Repeat("\u5408\u6210\u306e\u6761\u4ef6<&>\u3092\u78ba\u8a8d\u3057\u305f\u3002\n", 700)
-				o, e := b.Capture(notebook.Observation{Kind: "test", Title: strings.Repeat("<", titleSize), Content: body, Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+				o, e := b.CaptureObserved(notebook.Observation{Kind: "test", Title: strings.Repeat("<", titleSize), Content: body, Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 				if e != nil {
 					t.Fatal("setup", e)
 				}

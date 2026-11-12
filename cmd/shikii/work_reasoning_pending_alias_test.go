@@ -15,7 +15,7 @@ type frozenP struct {
 
 func TestReasoningPendingAliasesAreNotReusedAfterResolution(t *testing.T) {
 	f := fpFixture(t)
-	source, err := f.book.Capture(notebook.Observation{Kind: "test", Title: "CSV baseline evidence", Content: "A synthetic policy.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
+	source, err := f.book.CaptureObserved(notebook.Observation{Kind: "test", Title: "CSV baseline evidence", Content: "A synthetic policy.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func fpComplete(t *testing.T, v map[string]any) bool {
 func TestReasoningPendingAliasesStayWithTheirPreparation(t *testing.T) {
 	for attempt := 0; attempt < 16; attempt++ {
 		f := fpFixture(t)
-		src, e := f.book.Capture(notebook.Observation{Kind: "test", Title: "CSV\u306e\u571f\u53f0", Content: "\u5408\u6210\u306e\u6761\u4ef6", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+		src, e := f.book.CaptureObserved(notebook.Observation{Kind: "test", Title: "CSV\u306e\u571f\u53f0", Content: "\u5408\u6210\u306e\u6761\u4ef6", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 		if e != nil {
 			t.Fatal(e)
 		}

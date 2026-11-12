@@ -34,10 +34,18 @@ type workObservation struct {
 	Content   string `json:"content"`
 	Reference string `json:"reference,omitempty"`
 	Version   string `json:"version,omitempty"`
-	// report is set by the work itself (never read from a request) on a source it writes about itself: a result, an ending
-	// review, the binding of a result's evidence. See workCapture.Report.
-	report bool
+	// source is set by shikii (never read from a request) on a source it writes about a work: its kind fixes the title and whether
+	// evidence may cite it. Only workArchive sets it; an observation without it is the agent's (or the person's), and the
+	// notebook refuses it under a title of a work source.
+	source notebook.WorkSource
 }
+
+// workArchive is a source shikii writes about a work (a report, an archive of its state, a record of what the agent did): its
+// title is its kind's.
+func workArchive(k notebook.WorkSource, content, reference string) workObservation {
+	return workObservation{Kind: "agent", Title: k.Title(), Content: content, Reference: reference, source: k}
+}
+
 type workNote struct {
 	notebook.Draft
 	Ref    string              `json:"ref,omitempty"`
@@ -137,10 +145,10 @@ type workCapture struct {
 	ID       string           `json:"id,omitempty"`
 	At       time.Time        `json:"at"`
 	Version  string           `json:"version"`
-	// Report: the work wrote this source about itself. The capture carries it so that the source is noted in workState.Reports
-	// in the very save that gives it a name, also when a capture that failed once is finished later by another call (audit of
-	// 0.31.0: the note used to be added by each caller after the capture, and a later finish saved the report as an observation).
-	Report bool `json:"report,omitempty"`
+	// Source: the kind of a source shikii writes about the work (0 for an observation). The capture carries it so that a capture
+	// that failed once is finished later as the same kind, and a report is noted in workState.Reports in the very save that gives
+	// it a name (audit of 0.31.0: a later finish saved a report as an observation).
+	Source notebook.WorkSource `json:"source,omitempty"`
 }
 type workItem struct {
 	Ref      string   `json:"ref"`

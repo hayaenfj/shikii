@@ -40,7 +40,7 @@ func TestExperienceTransportAndSchemas(t *testing.T) {
 	repo := gitRepo(t)
 	root := hookEnv(t, nil, repo)
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-	s, err := b.Capture(notebook.Observation{Kind: "test", Title: "Procedure check", Content: "Synthetic invoice checks passed.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+	s, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Procedure check", Content: "Synthetic invoice checks passed.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestExperienceConsultUsesProjectModelWithoutTruth(t *testing.T) {
 	repo := gitRepo(t)
 	root := hookEnv(t, model, repo)
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-	s, err := b.Capture(notebook.Observation{Kind: "test", Title: "Policy source", Content: "No extra forms.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+	s, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Policy source", Content: "No extra forms.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestExperienceCurrentPremisesAndDeletedKnowledge(t *testing.T) {
 
 func TestExperienceReuseMarksUnverifiedReports(t *testing.T) {
 	b, _ := loopBook(t)
-	s, err := b.Capture(notebook.Observation{Kind: "agent", Title: "Earlier report", Content: "Try routing after ownership checks.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+	s, err := b.CaptureObserved(notebook.Observation{Kind: "agent", Title: "Earlier report", Content: "Try routing after ownership checks.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +347,7 @@ func TestExperienceReuseKeepsEvidenceAndCurrentConditions(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(b.Root, "handoff", "invoice", "checks.md"), []byte("Checked invoice totals. Avoid routing before verifying ownership."), 0600); err != nil {
 		t.Fatal(err)
 	}
-	s, err := b.Capture(notebook.Observation{Kind: "test", Title: "Invoice verification", Content: "Invoice checks passed in the sandbox.", Reference: ".shikii/handoff/invoice/checks.md", Version: "1", ObservedAt: time.Now()})
+	s, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Invoice verification", Content: "Invoice checks passed in the sandbox.", Reference: ".shikii/handoff/invoice/checks.md", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +366,7 @@ func TestExperienceReuseKeepsEvidenceAndCurrentConditions(t *testing.T) {
 	// validation behind older reports when only three excerpts are returned.
 	older := []string{}
 	for _, version := range []string{"old-1", "old-2", "old-3", "old-4"} {
-		o, err := b.Capture(notebook.Observation{Kind: "test", Title: "Older invoice check", Content: "Earlier routing checks passed.", Reference: "synthetic", Version: version, ObservedAt: time.Unix(1, 0)})
+		o, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Older invoice check", Content: "Earlier routing checks passed.", Reference: "synthetic", Version: version, ObservedAt: time.Unix(1, 0)})
 		if err != nil {
 			t.Fatal(err)
 		}

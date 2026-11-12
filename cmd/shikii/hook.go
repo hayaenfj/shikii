@@ -206,7 +206,6 @@ type hookSession struct {
 	ReflectAsked     []string           `json:"reflect_asked,omitempty"`      // conversations asked to be reflected on before the request (the ritual check looks at it at Stop. 0.8.0)
 	ReflectAskedTurn string             `json:"reflect_asked_turn,omitempty"` // the turn ReflectAsked was asked in (do not stop on leftovers from another turn. audit R5)
 	RitualRecovery   *ritualRecovery    `json:"ritual_recovery,omitempty"`    // saved remaining work for the current recovery
-	EndedTurn        string             `json:"ended_turn,omitempty"`         // the turn whose Stop let it end (not stopped by a check): its work hands nothing to the next request
 	RitualStopped    string             `json:"ritual_stopped,omitempty"`     // the stopped turn, including continuations after a background notification
 	GroupingAsked    string             `json:"grouping_asked,omitempty"`     // the turn whose Stop asked only for continues_previous and left the judgment to the next Stop (0.9.3)
 	PageNoticed      bool               `json:"page_noticed,omitempty"`       // told the page location in this session (0.8.0)

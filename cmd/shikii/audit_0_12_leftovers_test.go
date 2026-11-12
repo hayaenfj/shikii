@@ -36,7 +36,7 @@ func TestTheReflectionNoticeUsesTheOldestObservation(t *testing.T) {
 	book := notebook.Book{Root: st.Dir, Scope: scope}
 	// the first captured observation is recent; the second, captured later, was observed two days ago
 	for i, age := range []time.Duration{time.Hour, 48 * time.Hour} {
-		if _, err := book.Capture(notebook.Observation{Kind: "test", Title: fmt.Sprintf("Check %d", i), Content: fmt.Sprintf("go test passed %d", i), Reference: "cmd/shikii", Version: "0.12.0", ObservedAt: time.Now().Add(-age)}); err != nil {
+		if _, err := book.CaptureObserved(notebook.Observation{Kind: "test", Title: fmt.Sprintf("Check %d", i), Content: fmt.Sprintf("go test passed %d", i), Reference: "cmd/shikii", Version: "0.12.0", ObservedAt: time.Now().Add(-age)}); err != nil {
 			t.Fatal(err)
 		}
 	}

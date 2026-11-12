@@ -98,7 +98,7 @@ func TestWikiSourceContinuationUsesBytesInsteadOfCounts(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/project"}
 	ids := []string{}
 	for i := range 18 {
-		o, err := b.Capture(Observation{Kind: "test", Title: fmt.Sprint("Evidence ", i), Content: strings.Repeat("x", 9000), Reference: "fixture", Version: "v1", ObservedAt: time.Unix(1, 0)})
+		o, err := b.capture(Observation{Kind: "test", Title: fmt.Sprint("Evidence ", i), Content: strings.Repeat("x", 9000), Reference: "fixture", Version: "v1", ObservedAt: time.Unix(1, 0)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -146,7 +146,7 @@ func TestWikiCitationsLinksAndCaptureQueueHaveNoCountCeiling(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/project"}
 	ids := []string{}
 	for i := range 140 {
-		o, err := b.Capture(Observation{Kind: "test", Title: fmt.Sprint("Evidence ", i), Content: "Checked", Reference: "fixture", Version: "v1", ObservedAt: time.Unix(1, 0)})
+		o, err := b.capture(Observation{Kind: "test", Title: fmt.Sprint("Evidence ", i), Content: "Checked", Reference: "fixture", Version: "v1", ObservedAt: time.Unix(1, 0)})
 		if err != nil {
 			t.Fatalf("does not refuse ingestion with %d unorganized records: %v", i+1, err)
 		}
@@ -490,7 +490,7 @@ func TestForgedOriginalCursorIsRefused(t *testing.T) {
 func TestLongSourceIsReadInParts(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/project"}
 	body := strings.Repeat("\u9577\u3044\u30e1\u30e2\u30ea\u306e\u672c\u6587\u3002A long memory file. ", 9000) + "END" // multi-byte, about 430 KB
-	o, err := b.Capture(Observation{Kind: "agent", Title: "long memory", Content: body, Reference: "memory/long.md", Version: "v", ObservedAt: time.Unix(1, 0)})
+	o, err := b.capture(Observation{Kind: "agent", Title: "long memory", Content: body, Reference: "memory/long.md", Version: "v", ObservedAt: time.Unix(1, 0)})
 	if err != nil {
 		t.Fatal(err)
 	}

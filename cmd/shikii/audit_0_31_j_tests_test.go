@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/hayaenfj/shikii/internal/notebook"
 	"strings"
 	"testing"
 )
@@ -25,22 +26,6 @@ func TestAuditJBodyReadersMissHandlersItDoesNotLookAt(t *testing.T) {
 	}
 }
 
-// agentSourceTitles (audit_0_31_g_titles_test.go) finds a source literal by its type name. A literal whose type is left out, as
-// an element of a slice literal, has no type name and is passed over. The package writes one that way now:
-// work_assignment_record.go builds []workObservation{{Kind: "agent", Title: assignmentClip(...)}}, a title that is not in
-// workSourceTitles, and TestEveryTitleShikiiWritesIsClassified passes.
-func TestAuditJTitleReaderMissesElidedLiterals(t *testing.T) {
-	found := sourceWrites(t, map[string]string{"new.go": "package main\nvar _ = []workObservation{{Kind: \"agent\", Title: \"A new archive of the work\"}}\nvar _ = []notebook.Observation{{Kind: \"agent\", Title: \"Another archive\"}}\n"})
-	if len(found) != 2 {
-		t.Errorf("the titles of agent sources written as elements of a slice literal are not found: %v", found)
-	}
-	real := sourceWrites(t, map[string]string{"work_assignment_record.go": string(mustRead(t, "work_assignment_record.go"))})
-	t.Logf("sources found in work_assignment_record.go: %v", real)
-	if len(real) == 0 {
-		t.Errorf("work_assignment_record.go writes a source with kind agent and the title assignmentClip(role stage: state), which the reader does not see")
-	}
-}
-
 // The check this round took out of TestAuditEAReportAmongThePendingObservationsIsNotListedAsUsable (audit_0_31_e_more_test.go):
 // a report among the pending observations is not in the list of what evidence can cite. The list is printed when a receipt
 // without hook ids cites current; a report of the earlier request waits there as evidenceN. With the w.Reports filter of the list
@@ -62,7 +47,7 @@ func TestAuditJTheUsableListLeavesThePendingReportOut(t *testing.T) {
 	for _, raw := range auditGSlice(standalone["observations"]) {
 		o, _ := raw.(map[string]any)
 		text := auditJSON(o["source"])
-		if strings.Contains(text, workResultTitle) || strings.Contains(text, workReviewTitle) {
+		if strings.Contains(text, notebook.WorkResult.Title()) || strings.Contains(text, notebook.WorkReview.Title()) {
 			ref, _ := o["ref"].(string)
 			reports = append(reports, ref)
 		}

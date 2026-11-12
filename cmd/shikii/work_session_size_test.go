@@ -69,13 +69,13 @@ func TestRound2PlanSessionEncodedBoundary(t *testing.T) {
 func TestRound2PublicPlanSessionBoundary(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-	evidence, err := b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic baseline", Content: "Only local synthetic context.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+	evidence, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic baseline", Content: "Only local synthetic context.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	loopPage(t, b, evidence.ID, map[string]any{"title": "CSV baseline", "lesson": "Keep existing CSV filters.", "applies_to": "CSV filters"})
 	// A separate source remains pending so prepare supplies evidence1.
-	_, err = b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic pending evidence", Content: "Only local pending context.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+	_, err = b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic pending evidence", Content: "Only local pending context.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}

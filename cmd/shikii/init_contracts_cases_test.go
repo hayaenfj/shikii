@@ -4,6 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"go/ast"
+	gconstant "go/constant"
+	"go/token"
+	"go/types"
 	"math"
 	"os"
 	"os/exec"
@@ -362,9 +366,18 @@ func TestOnlyLockCalibrationTouchesTheCalibrationLock(t *testing.T) {
 			t.Errorf("%s touches calibMu: take the lock with defer s.lockCalibration(w)(), which extends the waiting reply's write deadline", fn)
 		}
 	}
-	bad := map[string]string{"bad.go": "package main\nfunc (s *server) handleNew() { s.calibMu.Lock(); defer s.calibMu.Unlock() }\n"}
+	bad := map[string]string{"bad.go": "package main\nimport \"sync\"\ntype server struct{ calibMu sync.Mutex }\nfunc (s *server) handleNew() { s.calibMu.Lock(); defer s.calibMu.Unlock() }\n"}
 	if got := calibMuUsers(t, bad); len(got) != 2 || got[0] != "handleNew" {
 		t.Fatalf("negative example: a lock taken outside lockCalibration is found: %v", got)
+	}
+	// read by its type: a lock reached through a method value or an embedded server is found too
+	for name, src := range map[string]string{
+		"a method value":  "package main\nimport \"sync\"\ntype server struct{ calibMu sync.Mutex }\nfunc (s *server) handleNew() { lock := s.calibMu.Lock; lock() }\n",
+		"an embedded one": "package main\nimport \"sync\"\ntype server struct{ calibMu sync.Mutex }\ntype wrapped struct{ *server }\nfunc handleNew(w wrapped) { w.calibMu.Lock() }\n",
+	} {
+		if got := calibMuUsers(t, map[string]string{"bad.go": src}); len(got) == 0 || got[0] != "handleNew" {
+			t.Errorf("negative example (%s): a lock taken outside lockCalibration is not found: %v", name, got)
+		}
 	}
 }
 
@@ -551,27 +564,123 @@ func TestInitInAMovedFolderReconnectsIt(t *testing.T) {
 
 // Only hookSpecPath builds the path of a question file (decisions/<id>.yaml) (allow list). Building it elsewhere misses the adopted version.
 func TestOnlyHookSpecPathBuildsSpecFilePaths(t *testing.T) {
-	pattern := regexp.MustCompile(`"decisions",\s*[^)]*\+\s*"\.yaml"|"decisions",\s*"[a-z-]+\.yaml"`)
-	if !pattern.MatchString(`filepath.Join(agent, "decisions", id+".yaml")`) || !pattern.MatchString(`filepath.Join(root, "decisions", "needs-plan.yaml")`) {
-		t.Fatal("the check's pattern does not catch building with a fixed name")
+	if problems := specPathBuilders(t, packageSources(t)); len(problems) > 0 {
+		for _, p := range problems {
+			t.Errorf("%s builds a question file path itself (use hookSpecPath)", p)
+		}
 	}
-	files, _ := filepath.Glob("*.go")
-	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") {
+	// negative: every spelling of the same path outside hookSpecPath is found, by its type and its constant values
+	for name, src := range map[string]string{
+		"spelled out":           "package main\nimport \"path/filepath\"\nfunc load(agent, id string) string { return filepath.Join(agent, \"decisions\", id+\".yaml\") }\n",
+		"a fixed name":          "package main\nimport \"path/filepath\"\nfunc load(root string) string { return filepath.Join(root, \"decisions\", \"needs-plan.yaml\") }\n",
+		"constants":             "package main\nimport \"path/filepath\"\nconst dir, ext = \"decisions\", \".yaml\"\nfunc load(root, id string) string { return filepath.Join(root, dir, id+ext) }\n",
+		"another name for Join": "package main\nimport fp \"path/filepath\"\nfunc load(root, id string) string { join := fp.Join; return join(root, \"decisions\", id+\".yaml\") }\n",
+		"one string":            "package main\nfunc load(root, id string) string { return root + \"/decisions/\" + id + \".yaml\" }\n",
+	} {
+		if problems := specPathBuilders(t, map[string]string{"load.go": src}); len(problems) == 0 {
+			t.Errorf("negative example (%s): a question file path built outside hookSpecPath is not found", name)
+		}
+	}
+	// control: the folder alone is no question file path
+	if problems := specPathBuilders(t, map[string]string{"seed.go": "package main\nimport \"path/filepath\"\nfunc seed(root string) string { return filepath.Join(root, \"decisions\") }\n"}); len(problems) > 0 {
+		t.Errorf("control: the folder alone is taken for a question file path: %v", problems)
+	}
+}
+
+// specPathBuilders reads the sources by their types and returns where an expression joins the folder of the questions
+// ("decisions", a constant however it is spelled) with a name that ends in ".yaml", outside hookSpecPath: a call of path/filepath's or
+// path's Join (also through another name), or a string built with + . Building it elsewhere misses the adopted version of a question.
+func specPathBuilders(t *testing.T, sources map[string]string) []string {
+	t.Helper()
+	var problems []string
+	for _, tf := range typedSources(t, sources, len(sources) > 5) {
+		if tf.prelude {
 			continue
 		}
-		data, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, m := range pattern.FindAllStringIndex(string(data), -1) {
-			if f == "hook_variants.go" && strings.Contains(string(data[max(0, m[0]-400):m[0]]), "func hookSpecPath(") {
-				continue
+		info := tf.info
+		constant := func(e ast.Expr) (string, bool) {
+			if tv, ok := info.Types[e]; ok && tv.Value != nil && tv.Value.Kind() == gconstant.String {
+				return gconstant.StringVal(tv.Value), true
 			}
-			line := strings.Count(string(data[:m[0]]), "\n") + 1
-			t.Errorf("%s:%d builds a question file path itself (use hookSpecPath)", f, line)
+			return "", false
 		}
+		// endsYAML: the expression's last constant part ends in .yaml (id+".yaml", a constant, a name like "x-v*.yaml")
+		var endsYAML func(e ast.Expr) bool
+		endsYAML = func(e ast.Expr) bool {
+			if c, ok := constant(e); ok {
+				return strings.HasSuffix(c, ".yaml")
+			}
+			if b, ok := ast.Unparen(e).(*ast.BinaryExpr); ok && b.Op == token.ADD {
+				return endsYAML(b.Y)
+			}
+			return false
+		}
+		typedDecls(tf.file, func(name string, root ast.Node) {
+			if name == "hookSpecPath" && tf.name == "hook_variants.go" {
+				return
+			}
+			values := typedFuncValues(info, root)
+			ast.Inspect(root, func(n ast.Node) bool {
+				switch v := n.(type) {
+				case *ast.CallExpr:
+					fn, _ := typeutilCallee(info, values, v).(*types.Func)
+					if fn == nil || fn.Name() != "Join" || fn.Pkg() == nil || (fn.Pkg().Path() != "path/filepath" && fn.Pkg().Path() != "path") {
+						return true
+					}
+					for i, arg := range v.Args {
+						if c, ok := constant(arg); ok && c == "decisions" {
+							for _, later := range v.Args[i+1:] {
+								if endsYAML(later) {
+									problems = append(problems, tf.name+":"+name)
+									return true
+								}
+							}
+						}
+					}
+				case *ast.BinaryExpr:
+					if c, ok := constant(v); ok {
+						_ = c // a constant as a whole is not a path built here
+						return true
+					}
+					if v.Op == token.ADD && endsYAML(v) && strings.Contains(typedConstantText(info, v), "decisions/") {
+						problems = append(problems, tf.name+":"+name)
+						return false
+					}
+				}
+				return true
+			})
+		})
 	}
+	return problems
+}
+
+// typeutilCallee is the function a call calls: through another name (join := filepath.Join), or a method value, too.
+func typeutilCallee(info *types.Info, values map[types.Object]types.Object, call *ast.CallExpr) types.Object {
+	switch fun := ast.Unparen(call.Fun).(type) {
+	case *ast.Ident:
+		obj := info.Uses[fun]
+		if fn, ok := values[obj]; ok {
+			return fn
+		}
+		return obj
+	case *ast.SelectorExpr:
+		if sel := info.Selections[fun]; sel != nil {
+			return sel.Obj()
+		}
+		return info.Uses[fun.Sel]
+	}
+	return nil
+}
+
+// typedConstantText joins the constant parts of a sum of strings ("/decisions/" + id + ".yaml" reads "/decisions/.yaml").
+func typedConstantText(info *types.Info, e ast.Expr) string {
+	if tv, ok := info.Types[e]; ok && tv.Value != nil && tv.Value.Kind() == gconstant.String {
+		return gconstant.StringVal(tv.Value)
+	}
+	if b, ok := ast.Unparen(e).(*ast.BinaryExpr); ok && b.Op == token.ADD {
+		return typedConstantText(info, b.X) + typedConstantText(info, b.Y)
+	}
+	return ""
 }
 
 // Tests never start real background processes (up, serve) and never open a browser (0.9.1). Even a test that runs the hook without the harness (hookEnv)

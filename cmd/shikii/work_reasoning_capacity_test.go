@@ -123,7 +123,7 @@ func interimReadableBoundary(t *testing.T, root string, book notebook.Book) {
 		remaining -= length
 		originals[i].Content = strings.Repeat("x", length)
 		o := originals[i]
-		captured, e := book.Capture(notebook.Observation{Kind: o.Kind, Title: o.Title, Content: o.Content, Reference: o.Reference, Version: o.Version, ObservedAt: at})
+		captured, e := book.CaptureObserved(notebook.Observation{Kind: o.Kind, Title: o.Title, Content: o.Content, Reference: o.Reference, Version: o.Version, ObservedAt: at})
 		if e != nil {
 			t.Fatal("cache source fixture failed")
 		}

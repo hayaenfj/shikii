@@ -345,7 +345,7 @@ func TestRecallDoesNotHoldCitedSourcesInMemory(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/project"}
 	const pages, size = 20, 3 << 20
 	for i := 0; i < pages; i++ {
-		o, err := b.Capture(Observation{Kind: "agent", Title: fmt.Sprintf("memory %d", i), Content: strings.Repeat(fmt.Sprintf("line %d of a long memory file. ", i), size/32), Reference: "memory.md", Version: "v", ObservedAt: time.Unix(int64(i+1), 0)})
+		o, err := b.capture(Observation{Kind: "agent", Title: fmt.Sprintf("memory %d", i), Content: strings.Repeat(fmt.Sprintf("line %d of a long memory file. ", i), size/32), Reference: "memory.md", Version: "v", ObservedAt: time.Unix(int64(i+1), 0)})
 		if err != nil {
 			t.Fatal(err)
 		}

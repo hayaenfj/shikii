@@ -13,7 +13,7 @@ func readViewFixture(t *testing.T) (Book, Page, string) {
 	t.Helper()
 	dir := t.TempDir()
 	b := Book{Root: filepath.Join(dir, ".shikii"), Scope: dir}
-	o, err := b.Capture(Observation{Kind: "test", Title: "Read view source", Content: "Source fixture", Reference: "synthetic", Version: "1", ObservedAt: time.Unix(1, 0)})
+	o, err := b.capture(Observation{Kind: "test", Title: "Read view source", Content: "Source fixture", Reference: "synthetic", Version: "1", ObservedAt: time.Unix(1, 0)})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -134,7 +134,7 @@ func TestAuditANoHandoverAfterABlockedStop(t *testing.T) {
 // audit A: what the new receipt can do with a page it took over: edit it (carried says so), review it, quote it.
 func TestAuditACarriedPageOperations(t *testing.T) {
 	f := newAuditFlow(t)
-	source, err := f.b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic check", Content: "The CSV export keeps its filters.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
+	source, err := f.b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic check", Content: "The CSV export keeps its filters.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}

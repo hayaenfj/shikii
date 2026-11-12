@@ -4,9 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"go/ast"
-	"go/parser"
-	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,25 +70,14 @@ func packageSources(t *testing.T) map[string]string {
 // calibMuUsers returns the functions that touch calibMu.
 func calibMuUsers(t *testing.T, srcs map[string]string) []string {
 	t.Helper()
-	fset := token.NewFileSet()
+	// the field calibMu of the server, however it is reached (read by its type)
+	uses := typedUses(t, srcs, len(srcs) > 5, func(obj types.Object) bool {
+		v, ok := obj.(*types.Var)
+		return ok && v.IsField() && v.Name() == "calibMu" && v.Pkg() != nil && v.Pkg().Name() == "main"
+	})
 	var out []string
-	for file, src := range srcs {
-		f, err := parser.ParseFile(fset, file, src, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, d := range f.Decls {
-			fn, ok := d.(*ast.FuncDecl)
-			if !ok || fn.Body == nil {
-				continue
-			}
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				if sel, ok := n.(*ast.SelectorExpr); ok && sel.Sel.Name == "calibMu" {
-					out = append(out, fn.Name.Name)
-				}
-				return true
-			})
-		}
+	for _, use := range uses {
+		out = append(out, strings.SplitN(use, ":", 2)[1])
 	}
 	return out
 }

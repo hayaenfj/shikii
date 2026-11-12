@@ -31,7 +31,7 @@ func TestAuditCStopWithoutAModelEndsTheTurn(t *testing.T) {
 		t.Fatalf("precondition: the Stop passes: %s", reason)
 	}
 	s := loadSession(f.root, "planning")
-	t.Logf("turn=%s ended_turn=%q judged=%v completed=%v", s.TurnID, s.EndedTurn, s.Judged, s.Completed != nil)
+	t.Logf("turn=%s ended_turn=%q judged=%v completed=%v", s.TurnID, s.endedTurnForTest(), s.Judged, s.Completed != nil)
 	second := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
 	if second["carried"] != nil {
 		t.Errorf("INVARIANT 9: the Stop of the first request let the turn end (the model was not reachable, the hook said nothing), yet the next preparation took its references over: %s", auditJSON(second["carried"]))
@@ -46,7 +46,7 @@ func TestAuditCStopWithAModelEndsTheTurn(t *testing.T) {
 		t.Fatalf("precondition: the Stop passes: %s", reason)
 	}
 	s := loadSession(f.root, "planning")
-	t.Logf("turn=%s ended_turn=%q", s.TurnID, s.EndedTurn)
+	t.Logf("turn=%s ended_turn=%q", s.TurnID, s.endedTurnForTest())
 	second := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
 	if second["carried"] != nil {
 		t.Errorf("control: a passed Stop hands nothing over: %s", auditJSON(second["carried"]))
@@ -108,7 +108,7 @@ func TestAuditCMessageDuringWorkAfterANotification(t *testing.T) {
 	// the background work ends: Claude Code sends its notice as a user message, and the agent works on
 	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": f.repo, "prompt": "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>"})
 	s := loadSession(f.root, "planning")
-	t.Logf("after the notice: same turn=%v ended_turn==turn: %v judged=%v", s.TurnID == turn, s.EndedTurn == s.TurnID, s.Judged)
+	t.Logf("after the notice: same turn=%v ended_turn==turn: %v judged=%v", s.TurnID == turn, s.endedTurnForTest() == s.TurnID, s.Judged)
 	if s.TurnID != turn {
 		t.Fatalf("precondition: a notice keeps the turn")
 	}
@@ -131,7 +131,7 @@ func TestAuditCStopFromAnotherFolder(t *testing.T) {
 	elsewhere := t.TempDir()
 	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": elsewhere, "last_assistant_message": "Done."})
 	s := loadSession(f.root, "planning")
-	t.Logf("stop from another folder: out=%q ended_turn=%q turn=%s", out, s.EndedTurn, s.TurnID)
+	t.Logf("stop from another folder: out=%q ended_turn=%q turn=%s", out, s.endedTurnForTest(), s.TurnID)
 	second := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
 	if second["carried"] != nil {
 		t.Errorf("the turn ended (its Stop ran in a folder outside the project), and the next preparation took its references over: %.120s", auditJSON(second["carried"]))
@@ -146,8 +146,8 @@ func TestAuditCStopFromAnotherFolderLeavesOtherSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	runUnreviewedHook(t, "stop", map[string]any{"session_id": "another-session", "cwd": t.TempDir(), "last_assistant_message": "Done."})
-	if s := loadSession(f.root, "planning"); s.TurnID == "" || s.EndedTurn != "" {
-		t.Fatalf("the Stop of another session, outside the project, ended this session's turn: turn=%q ended=%q", s.TurnID, s.EndedTurn)
+	if s := loadSession(f.root, "planning"); s.TurnID == "" || s.endedTurnForTest() != "" {
+		t.Fatalf("the Stop of another session, outside the project, ended this session's turn: turn=%q ended=%q", s.TurnID, s.endedTurnForTest())
 	}
 	if second := f.prepare(f.ask("Also check the totals of the CSV export."), "CSV export totals"); second["carried"] == nil {
 		t.Errorf("the message came during the work, and the next preparation took nothing over")

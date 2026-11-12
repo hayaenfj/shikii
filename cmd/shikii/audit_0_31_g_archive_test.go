@@ -13,7 +13,7 @@ import (
 // preparation") and lists it among the observations. The agent settles the note, then records a result that cites the archive.
 func TestAuditGTheArchiveOfTheSameWorkAsEvidence(t *testing.T) {
 	f := newAuditFlow(t)
-	check, err := f.b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic check", Content: "The CSV export keeps its filters.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
+	check, err := f.b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic check", Content: "The CSV export keeps its filters.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func auditGSlice(v any) []any { s, _ := v.([]any); return s }
 // it among the observations, and a result that observed nothing cites it.
 func TestAuditGTheArchiveOfTheEarlierRequestAsEvidence(t *testing.T) {
 	f := newAuditFlow(t)
-	check, err := f.b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic check", Content: "The CSV export keeps its filters.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
+	check, err := f.b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic check", Content: "The CSV export keeps its filters.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -108,7 +108,7 @@ func TestLearningTransportSchemasAndOrganizationMerge(t *testing.T) {
 	repo := gitRepo(t)
 	root := hookEnv(t, nil, repo)
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-	observed, err := b.Capture(notebook.Observation{Kind: "test", Title: "Transport evidence", Content: "Both source conditions were checked with synthetic input.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+	observed, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Transport evidence", Content: "Both source conditions were checked with synthetic input.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}

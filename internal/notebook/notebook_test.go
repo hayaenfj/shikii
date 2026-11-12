@@ -831,7 +831,7 @@ func TestAuditTranslationUnclassifiedHowKeepsTheCommand(t *testing.T) {
 func TestAuditHandEditedLinkToAnyHashIsUnchanged(t *testing.T) {
 	root := t.TempDir()
 	b := Book{Root: root, Scope: "/work/p"}
-	o, err := b.Capture(Observation{Kind: "test", Title: "checked", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)})
+	o, err := b.capture(Observation{Kind: "test", Title: "checked", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -867,7 +867,7 @@ func TestAuditHandEditedLinkToAnyHashIsUnchanged(t *testing.T) {
 func TestCorrectionRefusalSaysWhatIsNeeded(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/project"}
 	conversation := seed(t, b, 1)
-	captured, err := b.Capture(Observation{Kind: "human", Title: "the person's rule", Content: "Always write invoices in yen.", Reference: "chat", Version: "v1", ObservedAt: time.Unix(1, 0)})
+	captured, err := b.capture(Observation{Kind: "human", Title: "the person's rule", Content: "Always write invoices in yen.", Reference: "chat", Version: "v1", ObservedAt: time.Unix(1, 0)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -976,7 +976,7 @@ func TestStoreWrittenByV091NeedsNoFixingAfterAMove(t *testing.T) {
 func TestLessonFromLongSourceStaysLive(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/project"}
 	long := Observation{Kind: "agent", Title: "long memory", Content: strings.Repeat("A long memory file, kept verbatim. ", 6000), Reference: "memory/long.md", Version: "v", ObservedAt: time.Unix(1, 0)}
-	o, err := b.Capture(long)
+	o, err := b.capture(long)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -987,7 +987,7 @@ func TestLessonFromLongSourceStaysLive(t *testing.T) {
 	if err != nil || len(v.Lessons) != 1 || len(v.Issues) != 0 {
 		t.Fatalf("a page citing a long source is listed without issues: %v lessons=%d issues=%+v", err, len(v.Lessons), v.Issues)
 	}
-	if again, err := b.Capture(long); err != nil || again.ID != o.ID {
+	if again, err := b.capture(long); err != nil || again.ID != o.ID {
 		t.Fatalf("capturing a sorted long source again is not refused: %v", err)
 	}
 }

@@ -13,7 +13,7 @@ func TestMultipleSourcesIncludeContinuationInBudget(t *testing.T) {
 			ids := []string{}
 			expected := map[string]string{}
 			for _, n := range []int{61000, 61001} {
-				o, err := b.Capture(Observation{Kind: "test", Title: "boundary", Content: strings.Repeat("x", n), Reference: "synthetic", Version: "audit", ObservedAt: time.Unix(1, 0).UTC()})
+				o, err := b.capture(Observation{Kind: "test", Title: "boundary", Content: strings.Repeat("x", n), Reference: "synthetic", Version: "audit", ObservedAt: time.Unix(1, 0).UTC()})
 				if err != nil {
 					t.Fatal(err)
 				}

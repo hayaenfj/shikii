@@ -1,350 +1,151 @@
 package main
 
 import (
-	"fmt"
 	"go/ast"
-	"go/parser"
-	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
-// sourceWrite is one place in the code that builds a source (a notebook.Observation, an Observation inside the notebook package,
-// or a workObservation) whose kind is agent or not known, or that saves one (a call of captureWorkObservation or of a Capture
-// method). where is "file:function" ("file:" outside a function).
-type sourceWrite struct {
-	where, title string
-	call         bool
+// workSources is every kind of source shikii writes about a work.
+func workSources() []notebook.WorkSource {
+	var all []notebook.WorkSource
+	for k := notebook.WorkResult; k.Title() != ""; k++ {
+		all = append(all, k)
+	}
+	return all
 }
 
-// sourceWrites reads Go sources and returns every place that builds or saves a source. A source is found however it is spelled: a
-// composite literal with its type, an element of a list or a map of the type (the type left out), a declaration of a variable of
-// the type, new of the type. Its title is the string or the string constant of the same files, and "<expr>" for anything else (a
-// title set field by field, positional fields, an expression), so it cannot slip past. A kind that is left out, a variable or an
-// expression counts as agent (prepareWorkObservation makes an empty kind agent). Audit I of 0.31.0 wrote each of these forms, and
-// the earlier reader, which knew the spelled-out literal with the kind "agent" alone, missed them all.
-func sourceWrites(t *testing.T, files map[string]string) []sourceWrite {
+// The places of cmd/shikii that may build a workObservation with its fields, or set its title: the constructor of shikii's own
+// sources, the copy a capture keeps, and the entrances of what an agent or a person observed. A source shikii writes is built by
+// workArchive from a notebook.WorkSource, and the notebook saves anything else as an observation, refused under a title of a work
+// source (notebook.CaptureObserved): a new archive written here as a plain observation would be saved as one, and evidence could
+// cite it. The types decide the rest: outside the notebook a source is saved only through CaptureObserved or CaptureWork.
+var workObservationBuilders = map[string]string{
+	"work.go:workArchive":                                "the constructor of a source shikii writes, from its kind",
+	"work_record_observation.go:checkWorkSource":         "the defaults of an observation (kind, reference, version) and a work source's title",
+	"work_record_observation.go:captureWorkObservation":  "the copy a capture keeps until it is saved",
+	"work_reasoning_current.go:resolveCurrentWorkSource": "the person's current request, quoted (kind human)",
+	"work_assignment_record.go:recordAssignment":         "the host's observation of an assignment event, recorded through recordWork as an observation",
+}
+
+// The functions of cmd/shikii that may save an observation (call CaptureObserved): the entrance of wiki capture and the capture of
+// a work, which saves a workObservation as its kind says.
+var observationSavers = map[string]string{
+	"notebook.go:runNotebook":                           "wiki capture (the command line, MCP shikii_wiki, HTTP)",
+	"work_record_observation.go:captureWorkObservation": "an observation of a work record, or a work source by its kind",
+}
+
+// workObservationProblems reads Go sources of package main by their types and says where a workObservation is built with its fields
+// or retitled, or CaptureObserved is called, outside the places above.
+func workObservationProblems(t *testing.T, files map[string]string) []string {
 	t.Helper()
-	fset := token.NewFileSet()
-	consts := map[string]string{}
-	parsed := map[string]*ast.File{}
-	for name, src := range files {
-		f, err := parser.ParseFile(fset, name, src, 0)
-		if err != nil {
-			t.Fatal(err)
+	var problems []string
+	places := map[string]bool{}
+	for _, tf := range typedSources(t, files, len(files) > 5) {
+		if tf.prelude {
+			continue
 		}
-		parsed[name] = f
-		ast.Inspect(f, func(n ast.Node) bool {
-			if spec, ok := n.(*ast.ValueSpec); ok {
-				for i, name := range spec.Names {
-					if i < len(spec.Values) {
-						if lit, ok := spec.Values[i].(*ast.BasicLit); ok && lit.Kind == token.STRING {
-							consts[name.Name], _ = strconv.Unquote(lit.Value)
+		info := tf.info
+		isObservation := func(typ types.Type) bool {
+			n := typedNamed(typ)
+			return n != nil && n.Obj().Name() == "workObservation" && n.Obj().Pkg() != nil && n.Obj().Pkg().Name() == "main"
+		}
+		typedDecls(tf.file, func(name string, root ast.Node) {
+			where := tf.name + ":" + name
+			ast.Inspect(root, func(n ast.Node) bool {
+				switch v := n.(type) {
+				case *ast.CompositeLit:
+					if isObservation(info.Types[v].Type) && len(v.Elts) > 0 {
+						places[where] = true
+						if workObservationBuilders[where] == "" {
+							problems = append(problems, where+" builds a workObservation; a source shikii writes is built by workArchive")
 						}
 					}
-				}
-			}
-			return true
-		})
-	}
-	text := func(e ast.Expr) string {
-		switch v := e.(type) {
-		case nil:
-			return ""
-		case *ast.BasicLit:
-			s, _ := strconv.Unquote(v.Value)
-			return s
-		case *ast.Ident:
-			if s, ok := consts[v.Name]; ok {
-				return s
-			}
-		}
-		return "<expr>"
-	}
-	sourceType := func(e ast.Expr) bool {
-		switch typ := e.(type) {
-		case *ast.Ident:
-			return typ.Name == "Observation" || typ.Name == "workObservation"
-		case *ast.SelectorExpr:
-			return typ.Sel.Name == "Observation"
-		case *ast.StarExpr:
-			switch inner := typ.X.(type) {
-			case *ast.Ident:
-				return inner.Name == "Observation" || inner.Name == "workObservation"
-			case *ast.SelectorExpr:
-				return inner.Sel.Name == "Observation"
-			}
-		}
-		return false
-	}
-	var writes []sourceWrite
-	for name, f := range parsed {
-		where := name + ":"
-		vars := map[string]bool{} // the variables and parameters of the type in the function read now
-		literal := func(lit *ast.CompositeLit) {
-			kind, title := "", ""
-			for _, el := range lit.Elts {
-				kv, ok := el.(*ast.KeyValueExpr)
-				if !ok {
-					kind, title = "<expr>", "<expr>" // positional fields
-					break
-				}
-				switch key, _ := kv.Key.(*ast.Ident); {
-				case key == nil:
-				case key.Name == "Kind":
-					kind = text(kv.Value)
-				case key.Name == "Title":
-					title = text(kv.Value)
-				}
-			}
-			if kind == "" || kind == "agent" || kind == "<expr>" {
-				writes = append(writes, sourceWrite{where: where, title: title})
-			}
-		}
-		var visit func(n ast.Node, elem bool) bool
-		visit = func(n ast.Node, elem bool) bool {
-			switch v := n.(type) {
-			case *ast.FuncDecl:
-				where = name + ":" + v.Name.Name
-				vars = map[string]bool{}
-				for _, field := range v.Type.Params.List {
-					if sourceType(field.Type) {
-						for _, n := range field.Names {
-							vars[n.Name] = true
-						}
-					}
-				}
-				if v.Body != nil {
-					ast.Inspect(v.Body, func(m ast.Node) bool { return visit(m, false) })
-				}
-				where, vars = name+":", map[string]bool{}
-				return false
-			case *ast.CompositeLit:
-				typed := v.Type != nil && sourceType(v.Type)
-				if (typed || (v.Type == nil && elem)) && len(v.Elts) > 0 { // T{} is the zero value: no source, nothing to save
-					literal(v)
-				}
-				// the elements of a list or a map of the type leave the type out
-				inner := false
-				switch c := v.Type.(type) {
-				case *ast.ArrayType:
-					inner = sourceType(c.Elt)
-				case *ast.MapType:
-					inner = sourceType(c.Value)
-				}
-				for _, el := range v.Elts {
-					if kv, ok := el.(*ast.KeyValueExpr); ok {
-						el = kv.Value
-					}
-					if c, ok := el.(*ast.CompositeLit); ok && c.Type == nil {
-						visit(c, inner)
-						continue
-					}
-					ast.Inspect(el, func(m ast.Node) bool { return visit(m, false) })
-				}
-				return false
-			case *ast.ValueSpec:
-				if v.Type != nil && sourceType(v.Type) {
-					for _, n := range v.Names {
-						vars[n.Name] = true
-					}
-				}
-			case *ast.AssignStmt:
-				for i, lhs := range v.Lhs {
-					if call, ok := v.Rhs[min(i, len(v.Rhs)-1)].(*ast.CallExpr); ok {
-						if fun, ok := call.Fun.(*ast.Ident); ok && fun.Name == "new" && len(call.Args) == 1 && sourceType(call.Args[0]) {
-							if id, ok := lhs.(*ast.Ident); ok {
-								vars[id.Name] = true
+				case *ast.AssignStmt:
+					for _, lhs := range v.Lhs {
+						if sel, ok := lhs.(*ast.SelectorExpr); ok {
+							if selection := info.Selections[sel]; selection != nil && isObservation(selection.Recv()) {
+								places[where] = true
+								if workObservationBuilders[where] == "" {
+									problems = append(problems, where+" sets the "+sel.Sel.Name+" of a workObservation")
+								}
 							}
 						}
 					}
-					// a source set field by field: its title is the one given here, or not known
-					sel, ok := lhs.(*ast.SelectorExpr)
-					if !ok || sel.Sel.Name != "Title" {
-						continue
+				case *ast.CallExpr:
+					fun, ok := v.Fun.(*ast.SelectorExpr)
+					if !ok {
+						return true
 					}
-					if id, ok := sel.X.(*ast.Ident); ok && vars[id.Name] {
-						title := "<expr>"
-						if len(v.Rhs) == len(v.Lhs) {
-							title = text(v.Rhs[i])
+					if selection := info.Selections[fun]; selection != nil && selection.Obj().Name() == "CaptureObserved" {
+						places[where] = true
+						if observationSavers[where] == "" {
+							problems = append(problems, where+" saves an observation (CaptureObserved)")
 						}
-						writes = append(writes, sourceWrite{where: where, title: title})
 					}
 				}
-			case *ast.CallExpr:
-				switch fun := v.Fun.(type) {
-				case *ast.Ident:
-					if fun.Name == "captureWorkObservation" {
-						writes = append(writes, sourceWrite{where: where, call: true})
-					}
-				case *ast.SelectorExpr:
-					if fun.Sel.Name == "Capture" {
-						writes = append(writes, sourceWrite{where: where, call: true})
-					}
-				}
-			}
-			return true
-		}
-		ast.Inspect(f, func(n ast.Node) bool { return visit(n, false) })
+				return true
+			})
+		})
 	}
-	sort.Slice(writes, func(i, j int) bool {
-		if writes[i].where != writes[j].where {
-			return writes[i].where < writes[j].where
-		}
-		return writes[i].title < writes[j].title
-	})
-	return writes
-}
-
-// The places that build a source whose title is not one of shikii's: the agent's observation (or the host's, for an assignment),
-// whose title reportTitleRefusal looks at before it is saved, and the conversions that copy a source built elsewhere. Only a title
-// they take from what they are given passes here: a fixed title written in one of them is shikii's and needs the table.
-var agentSourceBuilders = map[string]string{
-	"work_assignment_record.go:recordAssignment":        "the host's observation of an assignment event; it is recorded through recordWork, which refuses a title of shikii's",
-	"work_record_observation.go:prepareWorkObservation": "a copy of the workObservation it is given (an empty kind becomes agent)",
-	"work_record_observation.go:captureWorkObservation": "a copy of the workObservation it is given",
-}
-
-// The functions that may save a source (call captureWorkObservation or a Capture method). A new function that saves one fails the
-// test until it is listed here with what it saves: a source shikii writes takes a title of workSourceTitles, an observation of the
-// agent passes reportTitleRefusal.
-var sourceSavers = map[string]string{
-	"notebook.go:runNotebook":                                                 "the agent's wiki capture (reportTitleRefusal)",
-	"work_record.go:recordWork":                                               "the agent's observations of a work record (reportTitleRefusal)",
-	"work_record_observation.go:captureWorkObservation":                       "the one way a work saves a source: what its callers give it",
-	"work_completion.go:captureWorkCompletion":                                "the result (workResultTitle)",
-	"work_completion.go:finishWorkCompletion":                                 "the observations a work record prepared and did not save yet, again",
-	"work_reasoning.go:archiveReasoningPending":                               "the archive of the pending wiki work",
-	"work_reasoning.go:recordWorkReasoning":                                   "the ending review (workReviewTitle)",
-	"work_reasoning_current.go:resolveCurrentWorkSource":                      "the person's current request (kind human)",
-	"work_obligations.go:reserveRequiredNote":                                 "the archive of a required wiki note",
-	"work_obligations.go:archiveWorkCapacity":                                 "the archive at the session capacity boundary",
-	"work_outcomes.go:recordWorkOutcome":                                      "a procedure outcome",
-	"work_trials.go:captureWorkTrialSource":                                   "a trial, a comparison, a recovered result (the callers' titles)",
-	"work_reading.go:recordWorkReading":                                       "a measured reading",
-	"../../internal/notebook/ingest_page.go:buildIngestPage":                  "the change of a page (kind human)",
-	"../../internal/notebook/procedure_evidence.go:captureProcedureExecution": "the record of a procedure (Procedure execution)",
-}
-
-// sourceWriteProblems is what sourceWrites finds outside the decisions: a source built with a title workSourceTitles does not
-// classify, or saved by a function that is not listed.
-func sourceWriteProblems(writes []sourceWrite) []string {
-	var problems []string
-	for _, w := range writes {
-		switch {
-		case w.call:
-			if _, ok := sourceSavers[w.where]; !ok {
-				problems = append(problems, w.where+" saves a source, and sourceSavers does not say what it saves")
+	if len(files) > 5 {
+		for where := range workObservationBuilders {
+			if !places[where] {
+				problems = append(problems, "workObservationBuilders names "+where+", which builds no workObservation now")
 			}
-		case agentSourceBuilders[w.where] != "" && w.title == "<expr>": // a title these places take from what they are given; a fixed one is shikii's
-		default:
-			if _, known := workSourceTitles[w.title]; !known {
-				problems = append(problems, fmt.Sprintf("%s builds a source titled %q with kind agent, and workSourceTitles does not say whether evidence may cite it", w.where, w.title))
+		}
+		for where := range observationSavers {
+			if !places[where] {
+				problems = append(problems, "observationSavers names "+where+", which saves no observation now")
 			}
 		}
 	}
+	sort.Strings(problems)
 	return problems
 }
 
-// Every source shikii writes about a work with kind agent has its title in workSourceTitles, which says whether evidence may cite
-// it (audit G of 0.31.0: the archives of the work's state were not in the list of reports, and a result citing one was complete).
-// The code of cmd/shikii and internal/notebook is read: a new archive, however it is spelled, and a new function that saves a
-// source fail here until a decision is written (audit I of 0.31.0: the reader knew one spelling).
-func TestEveryTitleShikiiWritesIsClassified(t *testing.T) {
+// A source shikii writes about a work takes a title of notebook.WorkSource, and nothing else saves one under such a title: the types
+// decide it (a source leaves the notebook only through CaptureObserved or CaptureWork), and this test keeps the few places of
+// cmd/shikii that build an observation to a list. The readers by spelling that came before missed a new spelling in every round of
+// the audits of 0.31.0; a typed reader sees every spelling as the same expression.
+func TestOnlyWorkArchiveBuildsASourceShikiiWrites(t *testing.T) {
 	files := map[string]string{}
-	for _, pattern := range []string{"*.go", "../../internal/notebook/*.go"} {
-		paths, _ := filepath.Glob(pattern)
-		for _, path := range paths {
-			if strings.HasSuffix(path, "_test.go") {
-				continue
-			}
-			data, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			files[path] = string(data)
+	paths, _ := filepath.Glob("*.go")
+	for _, path := range paths {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
 		}
-	}
-	writes := sourceWrites(t, files)
-	titles, calls, places := 0, 0, map[string]bool{}
-	for _, w := range writes {
-		places[w.where] = true
-		if w.call {
-			calls++
-		} else if _, known := workSourceTitles[w.title]; known {
-			titles++
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
 		}
+		files[path] = string(data)
 	}
-	if titles < 10 || calls < 10 {
-		t.Fatalf("the reader found %d titles of the table and %d saving calls; it no longer sees the sources shikii writes: %v", titles, calls, writes)
-	}
-	for _, problem := range sourceWriteProblems(writes) {
+	for _, problem := range workObservationProblems(t, files) {
 		t.Error(problem)
 	}
-	// every decision names a place that is still there
-	for where := range agentSourceBuilders {
-		if !places[where] {
-			t.Errorf("agentSourceBuilders names %s, which builds no source now", where)
-		}
-	}
-	for where := range sourceSavers {
-		if !places[where] {
-			t.Errorf("sourceSavers names %s, which saves no source now", where)
-		}
-	}
-	// the table itself: which of shikii's titles evidence may cite is a decision of its own. Changing one fails here, and the
-	// tests beside it (a report cited as evidence is refused) say why (audit I of 0.31.0: a report made citable failed no test).
-	decided := map[string]bool{
-		"Work result and remaining conditions":                        false,
-		"Evidence-linked work judgment and ending review":             false,
-		"Recovered work result evidence":                              false,
-		"Procedure execution":                                         false,
-		"Required wiki note and original prepared bindings":           false,
-		"Required work and bindings at the session capacity boundary": false,
-		"Pending wiki work before replacing preparation":              false,
-		"Work trial plan":                                             true,
-		"Work trial execution":                                        true,
-		"Work trial comparison":                                       true,
-		"Measured reading execution":                                  true,
-		"Procedure execution with cited evidence":                     true,
-	}
-	if fmt.Sprint(decided) != fmt.Sprint(workSourceTitles) {
-		t.Errorf("workSourceTitles changed:\n got  %v\n want %v", workSourceTitles, decided)
-	}
-}
-
-// Negative: each way the code can build or save a source outside the decisions is found (audit I of 0.31.0 wrote the first five,
-// and the reader then found none), and the spelled-out form of a known title is not taken for one.
-func TestTheSourceReaderFindsEveryForm(t *testing.T) {
-	forms := map[string]string{
-		"spelled out":               "package main\nconst newArchive = \"A new archive of the work\"\nfunc a() { _ = workObservation{Kind: \"agent\", Title: newArchive} }\n",
-		"the element type left out": "package main\nfunc a() { _ = []workObservation{{Kind: \"agent\", Title: \"An archive in a list\"}} }\n",
-		"in a map":                  "package main\nfunc a() { _ = map[string]notebook.Observation{\"k\": {Kind: \"agent\", Title: \"An archive in a map\"}} }\n",
-		"kind left out":             "package main\nfunc a() { _ = workObservation{Title: \"An archive without a kind\", report: true} }\n",
-		"kind in a variable":        "package main\nfunc a(kind string) { _ = notebook.Observation{Kind: kind, Title: \"An archive of a given kind\"} }\n",
-		"field by field":            "package main\nfunc a() { var o notebook.Observation; o.Kind = \"agent\"; o.Title = \"An archive set field by field\"; _ = o }\n",
-		"positional fields":         "package main\nfunc a() { _ = workObservation{\"agent\", \"An archive in positional fields\", \"c\", \"r\", \"v\", true} }\n",
-		"new":                       "package main\nfunc a() { o := new(workObservation); o.Title = \"An archive from new\"; _ = o }\n",
-		"title from a parameter":    "package main\nfunc a(title string) { _ = workObservation{Kind: \"agent\", Title: title} }\n",
-		"a new saver":               "package main\nfunc a(book notebook.Book, o notebook.Observation) { book.Capture(o) }\n",
-		"a new saver of a work":     "package main\nfunc a(o workObservation) { captureWorkObservation(nil, nil, o, nil, nil) }\n",
-	}
-	for name, src := range forms {
-		if problems := sourceWriteProblems(sourceWrites(t, map[string]string{"new.go": src})); len(problems) != 1 {
-			t.Errorf("%s: %d problems, want 1: %v", name, len(problems), problems)
-		}
-	}
-	for _, src := range []string{
-		"package main\nfunc a() { _ = workObservation{Kind: \"agent\", Title: \"Work trial plan\"} }\n",
-		"package main\nfunc a() { _ = notebook.Observation{Kind: \"human\", Title: \"Not the work's\"} }\n",
+	// negative: each spelling of a new archive outside the list is found
+	for name, src := range map[string]string{
+		"spelled out":               "package main\nfunc newArchive() { _ = workObservation{Kind: \"agent\", Title: \"A new archive\"} }\n",
+		"the element type left out": "package main\nfunc newArchive() { _ = []workObservation{{Kind: \"agent\", Title: \"An archive in a list\"}} }\n",
+		"an alias":                  "package main\ntype archive = workObservation\nfunc newArchive() { _ = archive{Title: \"An aliased archive\"} }\n",
+		"field by field":            "package main\nfunc newArchive() { var o workObservation; o.Title = \"An archive set field by field\"; _ = o }\n",
+		"through a pointer":         "package main\nfunc newArchive(o workObservation) { p := &o; p.Title = \"An archive through a pointer\"; _ = p }\n",
+		"saved as an observation":   "package main\nfunc newArchive(book notebook.Book) { _, _ = book.CaptureObserved(notebook.Observation{}) }\n",
 	} {
-		if problems := sourceWriteProblems(sourceWrites(t, map[string]string{"new.go": src})); len(problems) != 0 {
-			t.Errorf("a known title, or a source of another kind, is taken for a problem: %v", problems)
+		if problems := workObservationProblems(t, map[string]string{"new.go": src}); len(problems) == 0 {
+			t.Errorf("negative: %s: a new archive outside the list is not found", name)
 		}
+	}
+	// control: a source built by workArchive is no problem
+	if problems := workObservationProblems(t, map[string]string{"new.go": "package main\nfunc newArchive() { _ = workArchive(notebook.WorkPending, \"c\", \"r\") }\nfunc workArchive(k notebook.WorkSource, content, reference string) workObservation { return workObservation{} }\n"}); len(problems) != 0 {
+		t.Errorf("control: %v", problems)
 	}
 }
 
@@ -353,14 +154,24 @@ func TestTheSourceReaderFindsEveryForm(t *testing.T) {
 func TestAnObservationCannotTakeTheTitleOfAReport(t *testing.T) {
 	f := newAuditFlow(t)
 	first := f.prepare(f.ask(planningTestRequest), "CSV export filters")
-	for title, citable := range workSourceTitles {
+	// every title of a work source, a record of what the agent did too: under it, an observation would pass for shikii's record
+	// (a trial, a reading is read back by its title)
+	for _, k := range workSources() {
+		title := k.Title()
 		saved, err := f.record(first, map[string]any{"observations": []any{map[string]any{"kind": "agent", "title": title, "content": "The totals match (" + title + ")."}}})
 		raw := auditJSON(saved["errors"])
 		if err != nil {
 			t.Fatal(err)
 		}
-		if refused := strings.Contains(raw, "is the one shikii gives its own reports"); refused == citable {
-			t.Errorf("an observation titled %q: refused=%v, want refused=%v: %s", title, refused, !citable, raw)
+		if !strings.Contains(raw, "is the one shikii gives its own reports") {
+			t.Errorf("an observation titled %q is not refused: %s", title, raw)
+		}
+	}
+	// an observation of another kind keeps the title, and one of the agent's own title is saved
+	for _, o := range []map[string]any{{"kind": "test", "title": notebook.WorkProcedure.Title(), "content": "make test passed."}, {"kind": "agent", "title": "make test", "content": "make test passed."}} {
+		saved, err := f.record(first, map[string]any{"observations": []any{o}})
+		if err != nil || strings.Contains(auditJSON(saved["errors"]), "is the one shikii gives") {
+			t.Errorf("an observation %v is refused: %v %s", o, err, auditJSON(saved["errors"]))
 		}
 	}
 }
@@ -380,7 +191,7 @@ func TestAnOlderRecordHandsNoReportOver(t *testing.T) {
 	if err := updateSession(f.root, "planning", func(s *hookSession) {
 		s.Planning.Work.Reports = nil
 		for key, capture := range s.Planning.Work.Captures {
-			capture.Report = false
+			capture.Source = 0 // a capture memo written before it kept the kind
 			s.Planning.Work.Captures[key] = capture
 		}
 	}); err != nil {
@@ -444,8 +255,8 @@ func TestAStopOfASubagentLeavesTheRequestAsItIs(t *testing.T) {
 	before := loadSession(f.root, "planning")
 	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": f.repo, "agent_id": "child-1", "last_assistant_message": "Subagent done."})
 	after := loadSession(f.root, "planning")
-	if out != "" || after.Judged != before.Judged || after.Previous != before.Previous || after.EndedTurn != before.EndedTurn {
-		t.Errorf("a Stop of a subagent changed the request: out=%q judged %v -> %v, previous %q -> %q, ended %q -> %q", out, before.Judged, after.Judged, before.Previous, after.Previous, before.EndedTurn, after.EndedTurn)
+	if out != "" || after.Judged != before.Judged || after.Previous != before.Previous || after.endedTurnForTest() != before.endedTurnForTest() {
+		t.Errorf("a Stop of a subagent changed the request: out=%q judged %v -> %v, previous %q -> %q, ended %q -> %q", out, before.Judged, after.Judged, before.Previous, after.Previous, before.endedTurnForTest(), after.endedTurnForTest())
 	}
 }
 

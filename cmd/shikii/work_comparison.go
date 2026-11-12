@@ -62,14 +62,14 @@ func comparisonSource(book notebook.Book, w *workState, ref string, resolve func
 	return ids[0], nil
 }
 
-func readWorkTrialSource(book notebook.Book, id, title, kind string) (workTrialReport, error) {
+func readWorkTrialSource(book notebook.Book, id string, source notebook.WorkSource, kind string) (workTrialReport, error) {
 	var report workTrialReport
 	s := prepareWorkSource(book, id)
 	if !s.Complete {
 		return report, errors.New("the trial source is unavailable or incomplete")
 	}
 	observations, _ := s.Material["observations"].([]notebook.Observation)
-	if len(observations) != 1 || observations[0].ID != id || observations[0].Kind != "agent" || observations[0].Title != title {
+	if len(observations) != 1 || observations[0].ID != id || !isWorkSource(observations[0], source) {
 		return report, errors.New("the source is not a saved trial report")
 	}
 	if err := json.Unmarshal([]byte(observations[0].Content), &report); err != nil {
@@ -104,14 +104,14 @@ func historicalTrialEvidence(book notebook.Book, evidence []string) bool {
 }
 
 func readWorkTrialExecution(book notebook.Book, id string) (workTrialReport, error) {
-	r, err := readWorkTrialSource(book, id, "Work trial execution", "trial-result/v1")
+	r, err := readWorkTrialSource(book, id, notebook.WorkTrialExecution, "trial-result/v1")
 	if err != nil {
 		return r, err
 	}
 	if r.Result == nil || validateTrialResult(*r.Result) != nil || !historicalTrialEvidence(book, r.Plan.Evidence) || !historicalTrialEvidence(book, r.Result.Evidence) {
 		return r, errors.New("the execution result lost its observed evidence")
 	}
-	p, err := readWorkTrialSource(book, r.PlanSource, "Work trial plan", "trial-plan/v1")
+	p, err := readWorkTrialSource(book, r.PlanSource, notebook.WorkTrialPlan, "trial-plan/v1")
 	if err != nil {
 		return r, err
 	}
@@ -197,7 +197,7 @@ func recordWorkComparison(book notebook.Book, w *workState, request workComparis
 		}
 		w.Expected[key] = store.KnowledgeReference{}
 		data, _ := json.Marshal(view)
-		if err := captureWorkTrialSource(book, w, workObservation{Kind: "agent", Title: "Work trial comparison", Content: string(data), Reference: view.Ref}, &view.Source, key, item, save, commit); err != nil {
+		if err := captureWorkTrialSource(book, w, workArchive(notebook.WorkTrialComparison, string(data), view.Ref), &view.Source, key, item, save, commit); err != nil {
 			return item, view, err
 		}
 	}

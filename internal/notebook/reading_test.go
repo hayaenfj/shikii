@@ -9,7 +9,7 @@ import (
 
 func TestReadingHistoryRetainsCounterexamplesAtCapacity(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/reading-learning"}
-	o, err := b.Capture(Observation{Kind: "test", Title: "Reading fixture", Content: "The fixed source condition was checked.", Reference: "reading fixture", Version: "fixture", ObservedAt: time.Now()})
+	o, err := b.capture(Observation{Kind: "test", Title: "Reading fixture", Content: "The fixed source condition was checked.", Reference: "reading fixture", Version: "fixture", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestReadingHistoryRetainsCounterexamplesAtCapacity(t *testing.T) {
 	for i := 0; i < 130; i++ {
 		d := ReadingDetails{Topic: "reading fixture", Case: fmt.Sprintf("%016x", i), Work: fmt.Sprintf("%016x", i+1000), Check: "Keep the requested condition.", Depth: "brief", Bytes: 1000, Reads: 1, Sufficient: i != 0, Articles: []ArticleReference{{ID: page.Page.ID, Revision: page.Page.Revision}}, Evidence: evidence}
 		data, _ := json.Marshal(d)
-		source, err := b.Capture(Observation{Kind: "agent", Title: "Measured reading execution", Content: string(data), Reference: "reading fixture", Version: "fixture", ObservedAt: time.Now()})
+		source, err := b.capture(Observation{Kind: "agent", Title: "Measured reading execution", Content: string(data), Reference: "reading fixture", Version: "fixture", ObservedAt: time.Now()})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -59,7 +59,7 @@ func TestReadingQualityResultIdentityIgnoresTransportAndProvenance(t *testing.T)
 	b := Book{Root: t.TempDir(), Scope: "/work/reading-identity"}
 	identity := func(content, kind string, sufficient bool) (string, error) {
 		t.Helper()
-		o, err := b.Capture(Observation{Kind: kind, Title: "Quality result", Content: content, Reference: "synthetic", Version: "fixture", ObservedAt: time.Now().UTC()})
+		o, err := b.capture(Observation{Kind: kind, Title: "Quality result", Content: content, Reference: "synthetic", Version: "fixture", ObservedAt: time.Now().UTC()})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -69,7 +69,7 @@ func TestReadingQualityResultIdentityIgnoresTransportAndProvenance(t *testing.T)
 		}
 		d := ReadingDetails{Topic: "identity", Case: "0000000000000001", Work: "0000000000000002", Check: "Keep the condition.", Depth: "brief", Bytes: 100, Reads: 1, Sufficient: sufficient, Articles: []ArticleReference{{ID: "0000000000000003", Revision: "0000000000000004"}}, Evidence: evidence}
 		data, _ := json.Marshal(d)
-		o, err = b.Capture(Observation{Kind: "agent", Title: "Measured reading execution", Content: string(data), Reference: "synthetic execution", Version: "fixture", ObservedAt: time.Now().UTC()})
+		o, err = b.capture(Observation{Kind: "agent", Title: "Measured reading execution", Content: string(data), Reference: "synthetic execution", Version: "fixture", ObservedAt: time.Now().UTC()})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -176,7 +176,7 @@ func recordWorkReading(book notebook.Book, w *workState, input workReadingFeedba
 	}
 	if state.Source == "" {
 		data, _ := json.Marshal(state.Details)
-		observation := workObservation{Kind: "agent", Title: "Measured reading execution", Content: string(data), Reference: state.Ref}
+		observation := workArchive(notebook.WorkReading, string(data), state.Ref)
 		_, key, err := prepareWorkObservation(w, observation)
 		if err != nil {
 			return item, err

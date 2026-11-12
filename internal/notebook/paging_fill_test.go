@@ -27,7 +27,7 @@ func TestSourcePartsFillMeasuredBudget(t *testing.T) {
 				content := strings.Repeat("abc\"\n<>&\u2028\u20ac\U0001f331", 1800) + " END_OWNER_UNRESOLVED"
 				id, want := "0000000000000091", content
 				if kind == "observation" {
-					o, err := b.Capture(Observation{Kind: "test", Title: "Page capacity", Content: content, Reference: "synthetic", Version: "v1", ObservedAt: time.Unix(1, 0)})
+					o, err := b.capture(Observation{Kind: "test", Title: "Page capacity", Content: content, Reference: "synthetic", Version: "v1", ObservedAt: time.Unix(1, 0)})
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -110,7 +110,7 @@ func BenchmarkSourcePartsReadAll(b *testing.B) {
 	for _, host := range []string{"JSON", "MCP"} {
 		b.Run(host, func(b *testing.B) {
 			book := Book{Root: b.TempDir(), Scope: "/project"}
-			o, err := book.Capture(Observation{Kind: "test", Title: "Page capacity", Content: strings.Repeat("abc\"\n<>&\u2028\u20ac\U0001f331", 6000), Reference: "synthetic", Version: "v1", ObservedAt: time.Unix(1, 0)})
+			o, err := book.capture(Observation{Kind: "test", Title: "Page capacity", Content: strings.Repeat("abc\"\n<>&\u2028\u20ac\U0001f331", 6000), Reference: "synthetic", Version: "v1", ObservedAt: time.Unix(1, 0)})
 			if err != nil {
 				b.Fatal(err)
 			}

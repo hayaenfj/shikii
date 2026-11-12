@@ -29,7 +29,7 @@ func newOutcomeFixture(t *testing.T) *outcomeFixture {
 func (f *outcomeFixture) capture(kind, title, content string) Observation {
 	f.t.Helper()
 	f.second++
-	o, err := f.b.Capture(Observation{Kind: kind, Title: title, Content: content, Reference: "synthetic", Version: "fixture", ObservedAt: time.Unix(f.second, 0)})
+	o, err := f.b.capture(Observation{Kind: kind, Title: title, Content: content, Reference: "synthetic", Version: "fixture", ObservedAt: time.Unix(f.second, 0)})
 	if err != nil {
 		f.t.Fatal(err)
 	}

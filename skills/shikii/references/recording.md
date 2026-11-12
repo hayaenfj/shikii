@@ -26,7 +26,9 @@ prepared refs) and remaining (4000) are optional. Unknown/unobserved checks stay
 absent or explicitly unknown. Write an execution report once: `new1` and later
 `observedN` (or the id a reply gave for a source this receipt saved) reference
 captured evidence, and an article this receipt edited stays citable by its ref; `result` references the immutable agent
-report and can supply sources for notes/outcomes. A reusable wiki lesson may
+report and can supply sources for notes, and for outcomes when the result cites evidence of its own. A result is a report, not
+an observation: evidence never cites it, nor another report of a work or a page every source of which is one. An observation
+cannot take a title shikii gives its own records (the result, the ending review, a trial, a measured reading). A reusable wiki lesson may
 summarize its implication without repeating the complete result. No new knowledge
 means no wiki draft. Important corrections, failures and new procedures still
 need source-backed notes; short messages do not make them optional.

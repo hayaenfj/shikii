@@ -3,8 +3,7 @@ package main
 import (
 	"encoding/json"
 	"go/ast"
-	"go/parser"
-	"go/token"
+	"go/types"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -64,120 +63,45 @@ var ownBodyReaders = map[string]string{
 }
 
 // bodyReaders lists the functions of the given Go sources that hand a Body to json.NewDecoder themselves.
-// bodyReaders returns the functions that touch the body of a request (a parameter of type *http.Request) in any way but the two
+// bodyReaders returns the functions that touch the body of a request (the Body of a net/http Request, read by its type, however the
+// request is reached) in any way but the two
 // the one reader allows: passing it to decodeObject, decodeReflect or decodeReview, and bounding it in place with
 // r.Body = http.MaxBytesReader(w, r.Body, n). An allowlist of forms: a handler that reads its body with io.ReadAll, through a
 // LimitReader or from a variable is found as much as one with json.NewDecoder (audit H of 0.31.0: only that form was found).
 func bodyReaders(t *testing.T, sources map[string]string) []string {
 	t.Helper()
 	readers := map[string]bool{"decodeObject": true, "decodeReflect": true, "decodeReview": true}
-	isRequest := func(e ast.Expr) bool {
-		star, ok := e.(*ast.StarExpr)
-		if !ok {
-			return false
-		}
-		sel, ok := star.X.(*ast.SelectorExpr)
-		pkg, isIdent := func() (*ast.Ident, bool) {
-			if !ok {
-				return nil, false
-			}
-			id, ok := sel.X.(*ast.Ident)
-			return id, ok
-		}()
-		return ok && isIdent && pkg.Name == "http" && sel.Sel.Name == "Request"
-	}
 	found := map[string]bool{}
-	fset := token.NewFileSet()
-	files := map[string]*ast.File{}
-	fields := map[string]bool{} // the fields of type *http.Request: c.r.Body is the body of a request too
-	for name, source := range sources {
-		file, err := parser.ParseFile(fset, name, source, 0)
-		if err != nil {
-			t.Fatal(err)
+	for _, tf := range typedSources(t, sources, len(sources) > 5) {
+		if tf.prelude {
+			continue
 		}
-		files[name] = file
-		ast.Inspect(file, func(n ast.Node) bool {
-			if st, ok := n.(*ast.StructType); ok {
-				for _, field := range st.Fields.List {
-					if isRequest(field.Type) {
-						for _, n := range field.Names {
-							fields[n.Name] = true
-						}
-					}
-				}
-			}
-			return true
-		})
-	}
-	for _, file := range files {
-		for _, decl := range file.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Body == nil {
-				continue
-			}
-			// the requests of the function: its parameters, the parameters of the function literals inside it (a handler
-			// written as http.HandlerFunc(func(w, r) {...})), and the variables a request is put in
-			requests := map[string]bool{}
-			params := func(list *ast.FieldList) {
-				for _, field := range list.List {
-					if isRequest(field.Type) {
-						for _, n := range field.Names {
-							requests[n.Name] = true
-						}
-					}
-				}
-			}
-			params(fn.Type.Params)
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				if lit, ok := n.(*ast.FuncLit); ok {
-					params(lit.Type.Params)
-				}
-				return true
-			})
-			for grown := true; grown; {
-				grown = false
-				ast.Inspect(fn.Body, func(n ast.Node) bool {
-					assign, ok := n.(*ast.AssignStmt)
-					if !ok || len(assign.Lhs) != len(assign.Rhs) {
-						return true
-					}
-					for i, rhs := range assign.Rhs {
-						id, ok := rhs.(*ast.Ident)
-						to, isIdent := assign.Lhs[i].(*ast.Ident)
-						if ok && isIdent && requests[id.Name] && !requests[to.Name] {
-							requests[to.Name], grown = true, true
-						}
-					}
-					return true
-				})
-			}
-			// every node with its parent, to see how a use of the body is used
-			parents := map[ast.Node]ast.Node{}
-			stack := []ast.Node{}
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				if n == nil {
-					stack = stack[:len(stack)-1]
-					return true
-				}
-				if len(stack) > 0 {
-					parents[n] = stack[len(stack)-1]
-				}
-				stack = append(stack, n)
-				return true
-			})
-			isBody := func(e ast.Expr) bool {
-				sel, ok := e.(*ast.SelectorExpr)
-				if !ok || sel.Sel.Name != "Body" {
-					return false
-				}
-				switch x := sel.X.(type) {
-				case *ast.Ident:
-					return requests[x.Name]
-				case *ast.SelectorExpr:
-					return fields[x.Sel.Name]
-				}
+		info := tf.info
+		// isBody: the Body field of a net/http Request, however the request is reached (a parameter, a variable, a field, an
+		// embedded request, *r), read by its type
+		isBody := func(e ast.Expr) bool {
+			sel, ok := e.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "Body" {
 				return false
 			}
+			selection := info.Selections[sel]
+			if selection == nil || selection.Kind() != types.FieldVal {
+				return false
+			}
+			typ := selection.Recv()
+			path := selection.Index()
+			for _, i := range path[:len(path)-1] {
+				st, ok := typedNamed(typ).Underlying().(*types.Struct)
+				if !ok {
+					return false
+				}
+				typ = st.Field(i).Type()
+			}
+			n := typedNamed(typ)
+			return n != nil && n.Obj().Name() == "Request" && n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == "net/http"
+		}
+		typedDecls(tf.file, func(name string, root ast.Node) {
+			parents := typedParents(root)
 			for node, parent := range parents {
 				sel, ok := node.(*ast.SelectorExpr)
 				if !ok || !isBody(sel) {
@@ -204,10 +128,10 @@ func bodyReaders(t *testing.T, sources map[string]string) []string {
 					}
 				}
 				if !allowed {
-					found[fn.Name.Name] = true
+					found[name] = true
 				}
 			}
-		}
+		})
 	}
 	var names []string
 	for name := range found {

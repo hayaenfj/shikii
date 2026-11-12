@@ -13,7 +13,7 @@ func TestAudit019ObservationContinuationContract(t *testing.T) {
 	dir := t.TempDir()
 	b := notebook.Book{Root: filepath.Join(dir, ".shikii"), Scope: dir}
 	content := strings.Repeat("<", 48<<10) + "AUDIT_END"
-	observation, err := b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic large escaped source", Content: content, Reference: "synthetic", Version: "1", ObservedAt: time.Unix(1, 0)})
+	observation, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic large escaped source", Content: content, Reference: "synthetic", Version: "1", ObservedAt: time.Unix(1, 0)})
 	if err != nil {
 		t.Fatal(err)
 	}

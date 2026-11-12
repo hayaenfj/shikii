@@ -86,7 +86,7 @@ func TestAuditEOlderRecordEndingReviewAfterThePreparationAgain(t *testing.T) {
 	if err := updateSession(f.root, "planning", func(s *hookSession) {
 		s.Planning.Work.Reports = nil
 		for key, capture := range s.Planning.Work.Captures {
-			capture.Report = false
+			capture.Source = 0 // a capture memo written before it kept the kind
 			s.Planning.Work.Captures[key] = capture
 		}
 	}); err != nil {

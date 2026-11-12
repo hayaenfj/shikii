@@ -13,7 +13,7 @@ func TestWorkAttentionBoundsExcerptsAndRecoversFullRevision(t *testing.T) {
 	start := reasoningInput("start", "current")
 	start["depth"] = "brief"
 	saveReasoning(t, b, p["receipt"], start, nil)
-	o, err := b.Capture(notebook.Observation{Kind: "test", Title: "CSV depth evidence", Content: "A synthetic owner condition was checked.", Reference: "depth-fixture", Version: "1", ObservedAt: time.Now()})
+	o, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "CSV depth evidence", Content: "A synthetic owner condition was checked.", Reference: "depth-fixture", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}

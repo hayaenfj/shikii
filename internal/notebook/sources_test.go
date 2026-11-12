@@ -14,11 +14,11 @@ import (
 func TestCapturedSourcesStayScopedImmutableAndBounded(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/one"}
 	o := Observation{Kind: "test", Title: "Smoke check", Content: "PASS", Reference: "go test ./...", Version: "fixture-v1", ObservedAt: time.Unix(1, 0)}
-	r, err := b.Capture(o)
+	r, err := b.capture(o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, err := b.Capture(o)
+	again, err := b.capture(o)
 	if err != nil || again.ID != r.ID {
 		t.Fatal("resending the same observation does not add another", err)
 	}
@@ -30,7 +30,7 @@ func TestCapturedSourcesStayScopedImmutableAndBounded(t *testing.T) {
 		{Kind: o.Kind, Title: o.Title, Content: strings.Repeat("x", store.MaxLineBytes), Reference: o.Reference, Version: o.Version, ObservedAt: o.ObservedAt},
 		{Kind: o.Kind, Title: o.Title, Content: strings.Repeat("\x01", store.MaxLineBytes/6+1), Reference: o.Reference, Version: o.Version, ObservedAt: o.ObservedAt}, // escaped as \u0001: the JSON goes over the line limit
 	} {
-		if _, err := b.Capture(bad); err == nil {
+		if _, err := b.capture(bad); err == nil {
 			t.Fatal("does not save unknown kinds or a record over the store's line limit")
 		}
 	}
@@ -177,7 +177,7 @@ func TestOldSourceIDsCheckWithTheRememberedPath(t *testing.T) {
 func TestStoreUnderAnotherNameIsNamedUntilCopied(t *testing.T) {
 	root := t.TempDir()
 	b := Book{Root: root, Scope: "/work/p"}
-	if _, err := b.Capture(Observation{Kind: "test", Title: "here", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)}); err != nil {
+	if _, err := b.capture(Observation{Kind: "test", Title: "here", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)}); err != nil {
 		t.Fatal(err)
 	}
 	other := filepath.Join(root, "records", "wiki-sources", digest([]byte("/work/elsewhere")))
@@ -206,11 +206,11 @@ func TestWikiNeedsNoFixingAfterTheFolderMoves(t *testing.T) {
 	root := t.TempDir()
 	old := Book{Root: root, Scope: "/work/old"}
 	obs := Observation{Kind: "test", Title: "checked", Content: "PASS", Reference: "go test", Version: "v1", ObservedAt: time.Unix(1, 0)}
-	o, err := old.Capture(obs)
+	o, err := old.capture(obs)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stray, err := old.Capture(Observation{Kind: "test", Title: "not cited yet", Content: "x", Reference: "r", Version: "v1", ObservedAt: time.Unix(2, 0)})
+	stray, err := old.capture(Observation{Kind: "test", Title: "not cited yet", Content: "x", Reference: "r", Version: "v1", ObservedAt: time.Unix(2, 0)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestWikiNeedsNoFixingAfterTheFolderMoves(t *testing.T) {
 	if _, err := moved.Ingest(Draft{Title: "other", Lesson: "l", AppliesTo: "a", Kind: "rule", Scene: "when writing", Sources: []string{stray.ID}}); err != nil {
 		t.Fatalf("a source captured before the move can be cited: %v", err)
 	}
-	if again, err := moved.Capture(obs); err != nil || again.ID != o.ID {
+	if again, err := moved.capture(obs); err != nil || again.ID != o.ID {
 		t.Fatalf("the same evidence has the same id wherever the folder is: %s %s %v", again.ID, o.ID, err)
 	}
 }

@@ -56,7 +56,7 @@ func TestCollectiveOperationsThroughCLIAndMCP(t *testing.T) {
 	root := hookEnv(t, nil, repo)
 	t.Chdir(repo)
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-	source, e := b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic Quartz check", Content: "A checked synthetic result.", Reference: "test", Version: "1", ObservedAt: time.Unix(1, 0)})
+	source, e := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic Quartz check", Content: "A checked synthetic result.", Reference: "test", Version: "1", ObservedAt: time.Unix(1, 0)})
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -67,7 +67,7 @@ func (b Book) procedureExecutionCurrent(ref Source) bool {
 		return false
 	}
 	o, e := b.checkedOutcomeSource(ref)
-	if e != nil || o.Title != "Procedure execution" {
+	if kind, ok := WorkSourceOf(o); e != nil || !ok || kind != WorkProcedure {
 		return false
 	}
 	var s ProcedureSample
@@ -87,7 +87,7 @@ func (b Book) captureProcedureExecution(s ProcedureSample) (Source, error) {
 	if e != nil {
 		return Source{}, e
 	}
-	execution, e := b.Capture(Observation{Kind: "agent", Title: "Procedure execution", Content: string(data), Reference: "procedure:" + s.Snapshot.ID, Version: o.Version, ObservedAt: o.ObservedAt})
+	execution, e := b.CaptureWork(WorkProcedure, string(data), "procedure:"+s.Snapshot.ID, o.Version, o.ObservedAt)
 	if e != nil {
 		return Source{}, e
 	}

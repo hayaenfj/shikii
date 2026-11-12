@@ -2,7 +2,6 @@ package notebook
 
 import (
 	"errors"
-	"slices"
 )
 
 // RetainExecutionSources settles already checked machine diagnostics, keeping
@@ -18,7 +17,7 @@ func (b Book) RetainExecutionSources(diagnostics, evidence []Source) error {
 		if e != nil {
 			return e
 		}
-		if o.Kind != "agent" || !slices.Contains([]string{"Procedure execution", "Work result and remaining conditions", "Measured reading execution"}, o.Title) {
+		if kind, ok := WorkSourceOf(o); !ok || (kind != WorkProcedure && kind != WorkResult && kind != WorkReading) {
 			return errors.New("only checked machine execution diagnostics are settled automatically")
 		}
 		ids = append(ids, o.ID)

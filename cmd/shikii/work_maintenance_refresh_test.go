@@ -13,7 +13,7 @@ func TestWorkMaintenanceRefreshRequiresCurrentFullRead(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			repo, root, _ := planningFixture(t)
 			b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-			source, e := b.Capture(notebook.Observation{Kind: "test", Title: "Refresh source", Content: "Keep the owner unresolved.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+			source, e := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Refresh source", Content: "Keep the owner unresolved.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 			if e != nil {
 				t.Fatal(e)
 			}

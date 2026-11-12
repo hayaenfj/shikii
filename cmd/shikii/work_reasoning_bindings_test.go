@@ -9,7 +9,7 @@ import (
 
 func interimAddArticle(t *testing.T, b notebook.Book, title, body string) notebook.Page {
 	t.Helper()
-	source, e := b.Capture(notebook.Observation{Kind: "test", Title: title + " evidence", Content: "A bounded synthetic condition.", Reference: "synthetic", Version: "interim", ObservedAt: time.Now()})
+	source, e := b.CaptureObserved(notebook.Observation{Kind: "test", Title: title + " evidence", Content: "A bounded synthetic condition.", Reference: "synthetic", Version: "interim", ObservedAt: time.Now()})
 	if e != nil {
 		t.Fatal("source fixture failed")
 	}

@@ -126,12 +126,12 @@ func TestWorkPlacementModelCannotPublishAfterTurnChange(t *testing.T) {
 	root = hookEnv(t, model, repo)
 	usePlanningSpec(t, root)
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-	o, err := b.Capture(notebook.Observation{Kind: "test", Title: "Existing rule source", Content: "Synthetic existing rule.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+	o, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Existing rule source", Content: "Synthetic existing rule.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	loopPage(t, b, o.ID, map[string]any{"title": "Existing CSV procedure", "lesson": "Keep tenant filters.", "applies_to": "CSV export"})
-	if _, err = b.Capture(notebook.Observation{Kind: "test", Title: "New checked result", Content: "Date filters were checked.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()}); err != nil {
+	if _, err = b.CaptureObserved(notebook.Observation{Kind: "test", Title: "New checked result", Content: "Date filters were checked.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})

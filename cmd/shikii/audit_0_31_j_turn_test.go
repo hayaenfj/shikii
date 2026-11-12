@@ -18,7 +18,7 @@ func TestAuditJNoticeAfterAStopFromTheOldProject(t *testing.T) {
 		t.Fatalf("precondition: the Stop of request 1 passes: %s", reason)
 	}
 	a := loadSession(f.root, "planning")
-	if a.EndedTurn != a.TurnID {
+	if a.endedTurnForTest() != a.TurnID {
 		t.Fatalf("precondition: request 1 in A ended")
 	}
 	first := a.TurnID
@@ -26,8 +26,8 @@ func TestAuditJNoticeAfterAStopFromTheOldProject(t *testing.T) {
 	otherRoot, _ := initTestProject(t, other)
 	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": other, "prompt": "Now update the README of this other project and run its long check in the background."})
 	b := loadSession(otherRoot, "planning")
-	if b.TurnID == "" || b.EndedTurn == b.TurnID {
-		t.Fatalf("precondition: request 2 is open in B: turn %q ended %q", b.TurnID, b.EndedTurn)
+	if b.TurnID == "" || b.endedTurnForTest() == b.TurnID {
+		t.Fatalf("precondition: request 2 is open in B: turn %q ended %q", b.TurnID, b.endedTurnForTest())
 	}
 	second := b.TurnID
 	// request 2's Stop comes from A (the agent's last command ran there)
@@ -36,15 +36,15 @@ func TestAuditJNoticeAfterAStopFromTheOldProject(t *testing.T) {
 		t.Fatal("precondition: the Stop of request 2 passes")
 	}
 	a, b = loadSession(f.root, "planning"), loadSession(otherRoot, "planning")
-	t.Logf("after request 2's Stop from A: A turn=%s ended=%v at=%s; B turn=%s ended=%v at=%s", a.TurnID, a.EndedTurn == a.TurnID, a.At.Format("15:04:05.000000"), b.TurnID, b.EndedTurn == b.TurnID, b.At.Format("15:04:05.000000"))
+	t.Logf("after request 2's Stop from A: A turn=%s ended=%v at=%s; B turn=%s ended=%v at=%s", a.TurnID, a.endedTurnForTest() == a.TurnID, a.At.Format("15:04:05.000000"), b.TurnID, b.endedTurnForTest() == b.TurnID, b.At.Format("15:04:05.000000"))
 	// the completion notice of request 2's background work, from A
 	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": f.repo, "prompt": "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>"})
 	a, b = loadSession(f.root, "planning"), loadSession(otherRoot, "planning")
-	t.Logf("after the notice from A: A turn=%s (request 1 is %s) ended=%v; B turn=%s (request 2 is %s) ended=%v", a.TurnID, first, a.EndedTurn == a.TurnID, b.TurnID, second, b.EndedTurn == b.TurnID)
-	if a.TurnID == first && a.EndedTurn != a.TurnID {
+	t.Logf("after the notice from A: A turn=%s (request 1 is %s) ended=%v; B turn=%s (request 2 is %s) ended=%v", a.TurnID, first, a.endedTurnForTest() == a.TurnID, b.TurnID, second, b.endedTurnForTest() == b.TurnID)
+	if a.TurnID == first && a.endedTurnForTest() != a.TurnID {
 		t.Errorf("INVARIANT 9: the notice reopened request 1 in A, which ended before request 2 began")
 	}
-	if b.TurnID == second && b.EndedTurn == b.TurnID {
+	if b.TurnID == second && b.endedTurnForTest() == b.TurnID {
 		t.Errorf("INVARIANT 9: the notice did not reopen request 2 in B, the request the session worked on last")
 	}
 	next := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
@@ -70,8 +70,8 @@ func TestAuditJNoticeFromBAfterAStopFromTheOldProject(t *testing.T) {
 	}
 	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": other, "prompt": "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>"})
 	a := loadSession(f.root, "planning")
-	t.Logf("after the notice from B: A turn=%s (request 1 is %s) ended=%v", a.TurnID, first, a.EndedTurn == a.TurnID)
-	if a.TurnID == first && a.EndedTurn != a.TurnID {
+	t.Logf("after the notice from B: A turn=%s (request 1 is %s) ended=%v", a.TurnID, first, a.endedTurnForTest() == a.TurnID)
+	if a.TurnID == first && a.endedTurnForTest() != a.TurnID {
 		t.Errorf("INVARIANT 9: a notice from B reopened request 1 in A, which ended before request 2 began (A's record was written last, by request 2's Stop)")
 	}
 	_ = otherRoot

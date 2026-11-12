@@ -16,7 +16,7 @@ func loopBook(t *testing.T) (notebook.Book, string) {
 	t.Helper()
 	repo := t.TempDir()
 	b := notebook.Book{Root: filepath.Join(repo, ".shikii"), Scope: repo}
-	s, err := b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic evidence", Content: "Choose a compact workflow; extra forms cost time.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+	s, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic evidence", Content: "Choose a compact workflow; extra forms cost time.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}

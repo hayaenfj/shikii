@@ -52,7 +52,7 @@ func TestWorkDeliveryRegressionC01Control(t *testing.T) {
 func auditContractSource(t *testing.T, titleBytes, budget int) (int, error, string) {
 	t.Helper()
 	b, _ := loopBook(t)
-	o, err := b.Capture(notebook.Observation{Kind: "test", Title: strings.Repeat("<", titleBytes), Content: strings.Repeat("\u78ba\u8a8d\u3057\u305f\u6761\u4ef6\u3002", 700), Reference: strings.Repeat("r", 1000), Version: strings.Repeat("v", 200), ObservedAt: time.Now()})
+	o, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: strings.Repeat("<", titleBytes), Content: strings.Repeat("\u78ba\u8a8d\u3057\u305f\u6761\u4ef6\u3002", 700), Reference: strings.Repeat("r", 1000), Version: strings.Repeat("v", 200), ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestWorkDeliveryRegressionC04Control(t *testing.T) {
 func TestWorkDeliverySourcePagesMakeCompleteProgress(t *testing.T) {
 	b, _ := loopBook(t)
 	body := strings.Repeat("\u78ba\u8a8d\u3057\u305f\u6761\u4ef6\u3002", 700)
-	o, e := b.Capture(notebook.Observation{Kind: "test", Title: strings.Repeat("<", 150), Content: body, Reference: strings.Repeat("r", 1000), Version: strings.Repeat("v", 200), ObservedAt: time.Now()})
+	o, e := b.CaptureObserved(notebook.Observation{Kind: "test", Title: strings.Repeat("<", 150), Content: body, Reference: strings.Repeat("r", 1000), Version: strings.Repeat("v", 200), ObservedAt: time.Now()})
 	if e != nil {
 		t.Fatal(e)
 	}

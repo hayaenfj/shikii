@@ -37,7 +37,7 @@ func TestAuditD_A1_StandaloneShortenedReplyOffersCurrent(t *testing.T) {
 	root := hookEnv(t, nil, repo)
 	t.Chdir(repo)
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-	source, err := b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic check", Content: "The CSV export keeps its filters.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
+	source, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic check", Content: "The CSV export keeps its filters.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestAuditD_A2_StandaloneRefusalsNameCurrent(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	t.Chdir(repo)
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-	source, err := b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic check", Content: "The CSV export keeps its filters.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
+	source, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic check", Content: "The CSV export keeps its filters.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}

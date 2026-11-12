@@ -32,7 +32,7 @@ func validateWorkQualityAgreement(book notebook.Book, w *workState, req workRequ
 		}
 		observations := material["observations"].([]notebook.Observation)
 		var report workCompletion
-		if len(observations) != 1 || observations[0].Kind != "agent" || observations[0].Title != workResultTitle || json.Unmarshal([]byte(observations[0].Content), &report) != nil || workHash(report) != original.Signature {
+		if len(observations) != 1 || !isWorkSource(observations[0], notebook.WorkResult) || json.Unmarshal([]byte(observations[0].Content), &report) != nil || workHash(report) != original.Signature {
 			return errors.New("the saved result quality changed or is unavailable")
 		}
 		resultQuality = report.Sufficient

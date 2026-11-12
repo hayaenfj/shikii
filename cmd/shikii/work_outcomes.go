@@ -87,7 +87,7 @@ func recordWorkOutcome(book notebook.Book, w *workState, o workOutcome, resolve 
 	// work's own result made a result with nothing observed sufficient (audit of 0.31.0)
 	w.citingEvidence = true
 	defer func() { w.citingEvidence = false }()
-	if err := selfEvidence(book, w, "", o.Sources); err != nil {
+	if err := selfEvidence(book, w, forOutcome, "", o.Sources); err != nil {
 		return item, err
 	}
 	ids, err := resolve(o.Sources)
@@ -110,7 +110,7 @@ func recordWorkOutcome(book notebook.Book, w *workState, o workOutcome, resolve 
 		return item, err
 	}
 	content, _ := json.Marshal(details)
-	observation := workObservation{Kind: "agent", Title: "Procedure execution with cited evidence", Content: string(content)}
+	observation := workArchive(notebook.WorkOutcome, string(content), "")
 	if _, _, err = prepareWorkObservation(w, observation); err != nil {
 		return item, err
 	}

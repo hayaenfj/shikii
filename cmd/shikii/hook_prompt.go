@@ -23,15 +23,16 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	if isNotification(req) {
 		// a completion notice of background work is not a request: the 2 questions are not asked and the request, listing and pending are not replaced (the outcome truth is decided at the person's next request).
 		// if work continues after the notice, judge the original request once more at the end of that turn (reset Judged)
-		// only the request the session worked on last goes on: a notice that comes while the shell stands in the project of an
-		// older request is turnElsewhere's to hand on
-		if snapshot.Request == "" || !noticeGoesOnHere(in.SessionID, agent) {
+		// the agent works on: the session's turn is reopened wherever the shell stands (sessionTurnEvent). Only the session's last
+		// request goes on, so this project's request is judged again only when it is that one: a notice that came while the shell
+		// stood in the project of an older request reopened it (audits of 0.31.0)
+		latest, known, _ := readSessionLatest(in.SessionID)
+		if snapshot.Request == "" || !known || latest.Root != agent || latest.Turn != snapshot.TurnID {
 			return hookOut{}, nil, nil
 		}
 		return hookOut{}, []func(*hookSession){func(s *hookSession) {
 			if s.Request == snapshot.Request {
 				s.Judged = false
-				s.EndedTurn = ""                       // the agent works on in the same turn: a message that comes now interrupts it (work_handover.go)
 				closeGuardTurn(agent, in.SessionID, s) // work that goes on after the notice is the request's again, as before a slash command came in between
 			}
 		}}, nil
@@ -52,6 +53,8 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		lines = uncommittedLines(agent, in.CWD, listingHeader(request), listing)
 	}
 	turnID := store.NewTraceID()
+	previous, _, _ := readSessionLatest(in.SessionID) // the request this one replaces: whether its work is handed over (work_handover.go)
+	noteSessionRequest(in.SessionID, agent, turnID)
 	planning := newPlanningFrame(snapshot, in, scope, turnID)
 	if sp, err := spec.Load(hookSpecPath(agent, "needs-plan")); err != nil || !needsPlanningContext(sp) {
 		planning.ReasoningOnly = true
@@ -63,8 +66,8 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 			if ferr := observeFeedback(agent, s, snapshot, scope, req); ferr != nil {
 				hookLog("feedback: " + ferr.Error())
 			}
-			handover := interruptedHandover(s, scope) // read before the request below replaces this one
-			settleGrouping(agent, s)                  // the previous turn's grouping, if its organizing and Stop never came
+			handover := interruptedHandover(s, scope, agent, previous) // read before the request below replaces this one
+			settleGrouping(agent, s)                                   // the previous turn's grouping, if its organizing and Stop never came
 			previous := linkedCompletion(s, snapshot, scope)
 			if planning != nil && !planning.ReasoningOnly && snapshot.Request != "" {
 				// the agent is asked to organize this turn: settling the previous outcome waits for its continues_previous (or this turn's Stop)

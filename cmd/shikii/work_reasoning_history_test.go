@@ -25,7 +25,7 @@ func reasoningHistoryPrepare(t *testing.T, root string, book notebook.Book) map[
 
 func reasoningHistoryArticle(t *testing.T, book notebook.Book, receipt any) string {
 	t.Helper()
-	source, err := book.Capture(notebook.Observation{Kind: "test", Title: "\u4e0d\u5909\u306e\u5408\u6210\u51fa\u5178", Content: "\u540c\u3058\u8a18\u4e8b\u7248\u3092\u4f7f\u3046\u3002", Reference: "\u5408\u6210\u691c\u67fb", Version: "test", ObservedAt: time.Now().UTC()})
+	source, err := book.CaptureObserved(notebook.Observation{Kind: "test", Title: "\u4e0d\u5909\u306e\u5408\u6210\u51fa\u5178", Content: "\u540c\u3058\u8a18\u4e8b\u7248\u3092\u4f7f\u3046\u3002", Reference: "\u5408\u6210\u691c\u67fb", Version: "test", ObservedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}

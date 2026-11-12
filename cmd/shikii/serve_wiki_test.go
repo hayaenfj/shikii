@@ -213,7 +213,7 @@ func TestNotebookContinuationAcrossCLIHTTPAndMCP(t *testing.T) {
 	book := notebook.Book{Root: root, Scope: scope}
 	ids := []string{}
 	for i := range 12 {
-		o, err := book.Capture(notebook.Observation{Kind: "test", Title: fmt.Sprint("Fixture ", i), Content: strings.Repeat("x", 9000), Reference: "fixture", Version: "v1", ObservedAt: time.Unix(1, 0)})
+		o, err := book.CaptureObserved(notebook.Observation{Kind: "test", Title: fmt.Sprint("Fixture ", i), Content: strings.Repeat("x", 9000), Reference: "fixture", Version: "v1", ObservedAt: time.Unix(1, 0)})
 		if err != nil {
 			t.Fatal(err)
 		}

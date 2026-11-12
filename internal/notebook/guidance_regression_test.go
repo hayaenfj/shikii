@@ -12,7 +12,7 @@ import (
 func TestGuidanceCounterexampleUsesIndividualEvidence(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	b := Book{Root: t.TempDir(), Scope: "/synthetic/audit"}
-	src, err := b.Capture(Observation{Kind: "test", Title: "Synthetic evidence", Content: "Synthetic failures were observed.", Reference: "synthetic-only", Version: "v1", ObservedAt: time.Unix(1, 0)})
+	src, err := b.capture(Observation{Kind: "test", Title: "Synthetic evidence", Content: "Synthetic failures were observed.", Reference: "synthetic-only", Version: "v1", ObservedAt: time.Unix(1, 0)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestGuidanceCounterexampleUsesIndividualEvidence(t *testing.T) {
 	for i, fail := range []string{"Temporary network unavailable.", "Temporary socket unavailable.", "Quartz exports raw parser loses quoted fields.", "Temporary service unavailable.", "Temporary connection unavailable."} {
 		d := OutcomeDetails{PageID: p.ID, Revision: p.Revision, Conditions: "Same synthetic environment", Action: "Run the workflow", Failure: fail, Correction: "Use the checked correction", Result: "Synthetic report", Evidence: evidence}
 		data, _ := json.Marshal(d)
-		o, err := b.Capture(Observation{Kind: "agent", Title: fmt.Sprintf("Synthetic execution %d", i), Content: string(data), Reference: "synthetic-only", Version: "v1", ObservedAt: time.Unix(int64(10+i), 0)})
+		o, err := b.capture(Observation{Kind: "agent", Title: fmt.Sprintf("Synthetic execution %d", i), Content: string(data), Reference: "synthetic-only", Version: "v1", ObservedAt: time.Unix(int64(10+i), 0)})
 		if err != nil {
 			t.Fatal(err)
 		}

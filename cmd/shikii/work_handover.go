@@ -1,11 +1,16 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/hayaenfj/shikii/internal/store"
 )
@@ -57,10 +62,12 @@ func handoverOf(w *workState) *workHandover {
 	return h
 }
 
-// interruptedHandover is what the request a new message replaces hands over: nothing when the agent finished it (a Stop let the
-// turn end; a Stop a check stopped does not, the agent works on) or it belongs to another project. A request that was itself interrupted before it prepared passes on what it was handed.
-func interruptedHandover(s *hookSession, scope string) *workHandover {
-	if s.Scope != scope || s.Planning == nil || s.TurnID == "" || s.EndedTurn == s.TurnID {
+// interruptedHandover is what the request a new message replaces hands over: something only when it is the request the session got
+// last (latest, read before the new request was noted), it is in this project, and the agent had not finished it (a Stop let the
+// turn end; a Stop a check stopped does not, the agent works on). A request that was itself interrupted before it prepared passes on
+// what it was handed.
+func interruptedHandover(s *hookSession, scope, root string, latest sessionLatest) *workHandover {
+	if s.Scope != scope || s.Planning == nil || s.TurnID == "" || latest.Root != root || latest.Turn != s.TurnID || latest.Ended {
 		return nil
 	}
 	if s.Planning.Work != nil {
@@ -69,102 +76,126 @@ func interruptedHandover(s *hookSession, scope string) *workHandover {
 	return s.Planning.Handover
 }
 
-// turnElsewhere records what an event says about the agent's turn in the other projects that hold a record of this session. The
-// hook runs where the agent's shell stands: outside every project, or in another project than the one whose request the agent
-// works on (it changed folder). A Stop that stopped nothing ends the turn there too: without the record, the next request in that
-// project would take over the references of a request that was finished. A completion notice means the agent works on: the end is
-// taken back, as hookUserPrompt does in the project itself. here is the project the event itself is handled in ("" outside every
-// project). Only a record that exists and has a turn is touched; a Stop with the id of a subagent says nothing of the request.
-func turnElsewhere(event string, in *hookInput, here string, blocked bool) {
-	var ends bool
-	switch {
-	case in.AgentID != "" || in.SessionID == "":
-		return
-	case event == "stop" && !blocked:
-		ends = true
-	case event == "user-prompt-submit" && isNotification(in.Prompt):
-		ends = false
-	default:
-		return
-	}
-	records, readable := sessionTurns(in.SessionID)
-	if !ends {
-		// the background work belongs to the request the session worked on last: only that one goes on. A notice that came in B
-		// reopened a request of A that had ended before B's started (audit of 0.31.0). With a record of the session that cannot be
-		// read, which request came last is not known: none is reopened.
-		latest := latestTurn(records, here)
-		if !readable || latest < 0 {
-			return
-		}
-		records = records[latest : latest+1]
-	}
-	for _, r := range records {
-		if r.root == here || ends == (r.s.EndedTurn == r.s.TurnID) {
-			continue
-		}
-		if err := updateSession(r.root, in.SessionID, func(s *hookSession) {
-			switch {
-			case s.TurnID == "":
-			case ends:
-				s.EndedTurn = s.TurnID
-			case s.EndedTurn == s.TurnID:
-				s.EndedTurn = ""
-			}
-		}); err != nil {
-			hookLog(fmt.Sprintf("session %s: the turn's state was not recorded in %s (%v)", in.SessionID, r.path, err))
-		}
-	}
+// sessionLatest is the one state of the session's turn: the request it got last, wherever it came (the .shikii of its project, ""
+// outside every project), and whether the agent's turn on it ended. The hook writes it at the person's request, at the Stop that
+// lets the turn end, and at a completion notice (the agent works on): wherever the agent's shell stands, the same state changes.
+//
+// Before it, each project's record kept whether its request had ended, and the hook wrote it to the other projects of the session
+// and chose among them by their times: every audit of 0.31.0 found another place where the agent's shell stood (another project,
+// outside every project, a folder that was gone, a registry entry that could not be read) and an older request was reopened. A
+// session from before it has no state: nothing is handed over and nothing reopened.
+type sessionLatest struct {
+	Root  string `json:"root"`
+	Turn  string `json:"turn"`
+	Ended bool   `json:"ended,omitempty"`
 }
 
-// sessionTurn is the record of one project that holds a turn of the session.
-type sessionTurn struct {
-	root, path string
-	s          *hookSession
+func sessionLatestPath(common, sessionID string) string {
+	return filepath.Join(common, "latest", filepath.Base(sessionPath("", sessionID)))
 }
 
-// sessionTurns reads the records of the session that hold a turn, in every registered project (the hook registers the project it
-// runs in before it handles the event). A record that is not there reads as one without a turn. readable is false when a record that
-// is there cannot be read.
-func sessionTurns(sessionID string) (turns []sessionTurn, readable bool) {
+// readSessionLatest reads the state of the session's turn. known is false for a session from before it was written.
+func readSessionLatest(sessionID string) (latest sessionLatest, known bool, err error) {
 	common, err := agentHome()
 	if err != nil {
-		return nil, true
+		return latest, false, err
 	}
-	readable = true
-	for _, p := range registeredProjects(common) {
-		root := filepath.Join(p.Path, ".shikii")
-		s, err := readSession(root, sessionID)
-		if err != nil {
-			hookLog(fmt.Sprintf("session %s: unreadable in %s (%v)", sessionID, p.Path, err))
-			readable = false
-			continue
-		}
-		if s.TurnID != "" {
-			turns = append(turns, sessionTurn{root, p.Path, s})
-		}
+	b, err := os.ReadFile(sessionLatestPath(common, sessionID))
+	if errors.Is(err, os.ErrNotExist) {
+		return latest, false, nil
 	}
-	return turns, readable
+	if err == nil {
+		err = json.Unmarshal(b, &latest)
+	}
+	return latest, err == nil, err
 }
 
-// latestTurn is the index of the turn whose request came last (-1 for none): the time the person's message came (HeadAt). The time of
-// the record (At) moves with every write, so a Stop or a delivery in an older request's project made it the newer (audit of 0.31.0).
-// The same time goes to here.
-func latestTurn(turns []sessionTurn, here string) int {
-	latest := -1
-	for i, t := range turns {
-		if latest < 0 || t.s.HeadAt.After(turns[latest].s.HeadAt) || (t.s.HeadAt.Equal(turns[latest].s.HeadAt) && t.root == here) {
-			latest = i
+// updateSessionLatest changes the state of the session's turn under one lock (change returns false to leave it as it is), and
+// removes the states of sessions that ended long ago, so the folder does not grow with every session.
+func updateSessionLatest(sessionID string, change func(latest *sessionLatest, known bool) bool) {
+	common, err := agentHome()
+	if err != nil || sessionID == "" {
+		return
+	}
+	path := sessionLatestPath(common, sessionID)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		hookLog(fmt.Sprintf("session %s: the state of the turn was not written (%v)", sessionID, err))
+		return
+	}
+	lock, err := os.OpenFile(filepath.Join(filepath.Dir(path), ".lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		hookLog(fmt.Sprintf("session %s: the state of the turn was not written (%v)", sessionID, err))
+		return
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		hookLog(fmt.Sprintf("session %s: the state of the turn was not written (%v)", sessionID, err))
+		return
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	latest, known, err := readSessionLatest(sessionID)
+	if err != nil {
+		latest, known = sessionLatest{}, false // an unreadable state is replaced by the next request
+	}
+	if !change(&latest, known) {
+		return
+	}
+	b, _ := json.Marshal(latest)
+	if err := writeAtomic(path, b); err != nil {
+		hookLog(fmt.Sprintf("session %s: the state of the turn was not written (%v)", sessionID, err))
+		return
+	}
+	old, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.json"))
+	for _, p := range old {
+		if info, err := os.Lstat(p); err == nil && info.Mode().IsRegular() && time.Since(info.ModTime()) > hookSessionTTL {
+			_ = os.Remove(p)
 		}
 	}
-	return latest
 }
 
-// noticeGoesOnHere reports whether a completion notice that came in here belongs to here's own request: the one the session worked
-// on last. A notice that came in A after the request in B reopened A's request, ended before B's (audit of 0.31.0).
-func noticeGoesOnHere(sessionID, here string) bool {
-	turns, readable := sessionTurns(sessionID)
-	latest := latestTurn(turns, here)
-	return readable && latest >= 0 && turns[latest].root == here
+// noteSessionRequest notes the person's request: the session's turn is on it now (root "" outside every project).
+func noteSessionRequest(sessionID, root, turn string) {
+	updateSessionLatest(sessionID, func(latest *sessionLatest, _ bool) bool {
+		*latest = sessionLatest{Root: root, Turn: turn}
+		return true
+	})
+}
+
+// sessionTurnEvent changes the state of the session's turn by an event, wherever the agent's shell stands: a Stop that lets the
+// turn end ends the request it saw (turn, read when the Stop came; a request that came since is left as it is), and a completion
+// notice reopens the session's last request (the agent works on). A Stop a check stopped, and an event of a subagent, change
+// nothing.
+func sessionTurnEvent(event string, in *hookInput, turn string, blocked bool) {
+	if in.AgentID != "" || in.SessionID == "" {
+		return
+	}
+	switch {
+	case event == "stop" && !blocked:
+		updateSessionLatest(in.SessionID, func(latest *sessionLatest, known bool) bool {
+			if !known || latest.Turn != turn || latest.Ended {
+				return false
+			}
+			latest.Ended = true
+			return true
+		})
+	case event == "user-prompt-submit" && isNotification(in.Prompt):
+		updateSessionLatest(in.SessionID, func(latest *sessionLatest, known bool) bool {
+			if !known || !latest.Ended {
+				return false
+			}
+			latest.Ended = false
+			return true
+		})
+	}
+}
+
+// sessionTurnAt is the turn the state names now ("" for a session without one): what a Stop that comes now ends.
+func sessionTurnAt(sessionID string) string {
+	latest, known, err := readSessionLatest(sessionID)
+	if err != nil || !known {
+		return ""
+	}
+	return latest.Turn
 }
 
 // takeOver gives a new work the references of the interrupted one and returns what the reply of prepare says about it (carried);

@@ -19,7 +19,7 @@ func pendingReflection(t *testing.T) (root, scope, oldest string) {
 	for n := 2; n <= 5; n++ {
 		reviewSeed(t, st, scope, n)
 	}
-	if _, err := (notebook.Book{Root: st.Dir, Scope: scope}).Capture(notebook.Observation{Kind: "test", Title: "A check that waits for sorting", Content: "The synthetic check passed.", Reference: "test", Version: "v1", ObservedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}); err != nil {
+	if _, err := (notebook.Book{Root: st.Dir, Scope: scope}).CaptureObserved(notebook.Observation{Kind: "test", Title: "A check that waits for sorting", Content: "The synthetic check passed.", Reference: "test", Version: "v1", ObservedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}); err != nil {
 		t.Fatal(err)
 	}
 	full, err := reflectQueryWith(st.Dir, scope, 0)

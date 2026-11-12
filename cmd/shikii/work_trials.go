@@ -221,7 +221,7 @@ func recordWorkTrial(book notebook.Book, w *workState, request workTrialRequest,
 		}
 		bound := *request.Plan
 		// a trial is evidence a result can cite: a report cited here would reach the result by that way round
-		err := selfEvidence(book, w, "", bound.Evidence)
+		err := selfEvidence(book, w, forTrial, "", bound.Evidence)
 		if err != nil {
 			return item, err
 		}
@@ -264,7 +264,7 @@ func recordWorkTrial(book notebook.Book, w *workState, request workTrialRequest,
 		w.Expected[key] = store.KnowledgeReference{}
 		report := workTrialReport{Type: "trial-plan/v1", Store: store.StoreName(book.Root, book.Scope), Session: r.SessionID, Turn: r.TurnID, Ref: state.Ref, Plan: state.Plan}
 		data, _ := json.Marshal(report)
-		if err := captureWorkTrialSource(book, w, workObservation{Kind: "agent", Title: "Work trial plan", Content: string(data), Reference: state.Ref}, &state.Source, key, item, save, commit); err != nil {
+		if err := captureWorkTrialSource(book, w, workArchive(notebook.WorkTrialPlan, string(data), state.Ref), &state.Source, key, item, save, commit); err != nil {
 			return item, err
 		}
 	}
@@ -273,7 +273,7 @@ func recordWorkTrial(book notebook.Book, w *workState, request workTrialRequest,
 			return item, err
 		}
 		bound := *request.Result
-		err := selfEvidence(book, w, "", bound.Evidence)
+		err := selfEvidence(book, w, forTrial, "", bound.Evidence)
 		if err != nil {
 			return item, err
 		}
@@ -306,7 +306,7 @@ func recordWorkTrial(book notebook.Book, w *workState, request workTrialRequest,
 			w.Expected[key] = store.KnowledgeReference{}
 			report := workTrialReport{Type: "trial-result/v1", Store: store.StoreName(book.Root, book.Scope), Session: r.SessionID, Turn: r.TurnID, Ref: state.Ref, Plan: state.Plan, PlanSource: state.Source, Result: state.Result}
 			data, _ := json.Marshal(report)
-			if err := captureWorkTrialSource(book, w, workObservation{Kind: "agent", Title: "Work trial execution", Content: string(data), Reference: state.Ref}, &state.ResultSource, key, item, save, commit); err != nil {
+			if err := captureWorkTrialSource(book, w, workArchive(notebook.WorkTrialExecution, string(data), state.Ref), &state.ResultSource, key, item, save, commit); err != nil {
 				return item, err
 			}
 		}

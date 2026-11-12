@@ -60,7 +60,7 @@ func TestExperienceLongModelContextDoesNotHideConditions(t *testing.T) {
 	repo := gitRepo(t)
 	root := hookEnv(t, model, repo)
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-	src, err := b.Capture(notebook.Observation{Kind: "test", Title: "Invoice condition", Content: "Keep ownership checks", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+	src, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Invoice condition", Content: "Keep ownership checks", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -29,30 +29,51 @@ func validateWorkCompletion(c *workCompletion) error {
 	return nil
 }
 
-// selfEvidence refuses evidence that names the result itself, or another report this work wrote about itself (an earlier result,
-// an ending review). Such a report is saved as a source of its own (under the next observedN name, and as result), so a result with
-// nothing observed could cite it and be complete; two reports could cite each other (audit of 0.31.0).
+// evidenceUse is what cites the evidence: what may be cited is the same for all, and the refusal names what each takes.
+type evidenceUse uint8
+
+const (
+	forResult  evidenceUse = iota // a result, and a recovered result
+	forTrial                      // the plan and the result of a trial
+	forOutcome                    // the sources of a procedure outcome: saved observations only
+)
+
+// selfEvidence refuses evidence that is no observation: the result itself, a report or an archive a work wrote about itself (known
+// by what the saved source is, notebook.WorkSource, and by the note this receipt took of it, Reports), and a page every source of
+// which is such a report. It is the one check of what a result, a trial and an outcome cite. The audits of 0.31.0 found, round
+// after round, a way through which a report passed as evidence while each entrance had a check of its own: a saved source, an
+// archive, a trial, a procedure outcome, a page written from the work's own result.
 //
-// A report is known by what it is, not only by the note this receipt took of it: the source's own title (workReportSource). Three
-// rounds of the audit each found a name under which a report reached a receipt without the note (after a preparation again,
-// after a save that failed once, as a pending observation evidenceN of this or of an earlier request, in a record written before
-// the notes). The note (Reports) is still what keeps a report out of the references handed over and listed.
-func selfEvidence(book notebook.Book, w *workState, result string, refs []string) error {
+// An outcome may cite this work's result when the result cites evidence of its own (recording.md: result supplies sources for
+// notes/outcomes); a result with nothing cited is what it would launder.
+func selfEvidence(book notebook.Book, w *workState, use evidenceUse, result string, refs []string) error {
 	for _, ref := range refs {
-		id := w.Sources[ref]
-		if id == "" {
-			id = ref
-		}
 		what := ""
-		switch {
-		case result != "" && id == result:
-			what = "this result itself"
-		case w.Reports[id]:
-			what = "a report this work wrote about itself (" + workReportKind(book, id) + "), not something it observed"
-		case workReportSource(book, id):
-			what = "a report or a record shikii wrote about a work itself (" + workReportKind(book, id) + "), not something that was observed"
-		default:
+		if article, ok := w.Articles[ref]; ok {
+			if pageOfReports(book, w, article.ID, result) {
+				what = "lesson:" + article.ID + ", a page whose every source is a report or an archive shikii wrote about a work, not something that was observed"
+			}
+		} else {
+			id := w.Sources[ref]
+			if id == "" {
+				id = ref
+			}
+			switch {
+			case result != "" && id == result:
+				what = "this result itself"
+			case use == forOutcome && w.Result != nil && id == w.Result.Source && len(w.Result.Evidence) > 0:
+				// the result with the evidence it cites
+			case w.Reports[id]:
+				what = "a report this work wrote about itself (" + workReportKind(book, id) + "), not something it observed"
+			case workReportSource(book, id):
+				what = "a report or a record shikii wrote about a work itself (" + workReportKind(book, id) + "), not something that was observed"
+			}
+		}
+		if what == "" {
 			continue
+		}
+		if use == forOutcome {
+			return fmt.Errorf("outcome source %q is %s: an outcome cites the observations it rests on (an observation of this call as new1, or a saved observation)", ref, what)
 		}
 		cite := "an observation of this call as new1, a saved observation, a page you read"
 		if !w.Standalone {
@@ -63,96 +84,56 @@ func selfEvidence(book notebook.Book, w *workState, result string, refs []string
 	return nil
 }
 
-// The sources a work writes about itself, by the titles it gives them (kind agent): a result, its ending review, the source that
-// binds a result to its evidence, and the record of the procedure a result closed (written by notebook.RecordProcedure).
-const (
-	workResultTitle   = "Work result and remaining conditions"
-	workReviewTitle   = "Evidence-linked work judgment and ending review"
-	workRecoveryTitle = "Recovered work result evidence"
-	workProcedureName = "Procedure execution"
-)
-
-// workSourceTitles is every title shikii gives a source it writes itself with kind agent, and whether evidence may cite it. The
-// reports and the archives shikii keeps of the work's own state are no evidence; the records of what the agent did (a trial, a
-// measured reading, a procedure it executed) are cited like the observations they record. A list of the reports alone missed the
-// archives, and each new archive would have been missed again (audits of 0.31.0, four rounds): a test now reads every source
-// shikii writes in the code and fails on a title that is not here (TestEveryTitleShikiiWritesIsClassified).
-var workSourceTitles = map[string]bool{
-	workResultTitle:   false,
-	workReviewTitle:   false,
-	workRecoveryTitle: false,
-	workProcedureName: false,
-	"Required wiki note and original prepared bindings":           false,
-	"Required work and bindings at the session capacity boundary": false,
-	"Pending wiki work before replacing preparation":              false,
-	"Work trial plan":                         true,
-	"Work trial execution":                    true,
-	"Work trial comparison":                   true,
-	"Measured reading execution":              true,
-	"Procedure execution with cited evidence": true,
-}
-
-// workReport reports whether a source with this kind and title is one shikii wrote about the work itself (a report or an archive
-// of the work's state), which evidence never cites.
-func workReport(kind, title string) bool {
-	citable, known := workSourceTitles[workTitle(title)]
-	return kind == "agent" && known && !citable
-}
-
-// workTitle is the form a title takes in workSourceTitles: the spaces around it are not part of it. Every comparison with the
-// table goes through here (the refusal trimmed the title and the reading of a saved source did not: audit of 0.31.0).
-func workTitle(title string) string {
-	return strings.TrimSpace(title)
-}
-
-// reportTitleRefusal refuses an observation the agent saves under a title shikii gives its own reports and archives: it would be
-// taken for one and never cited. Every entrance that saves the agent's observation asks it first (work record, wiki capture through
-// the command line, MCP and HTTP: wiki capture took the title without a word, audit of 0.31.0). A record of what the agent did
-// (a trial, a reading, an outcome) keeps its title.
-func reportTitleRefusal(title string) error {
-	if citable, shikiis := workSourceTitles[workTitle(title)]; shikiis && !citable {
-		return fmt.Errorf("the title %q is the one shikii gives its own reports and records; give the observation a title of its own (what you checked)", title)
+// pageOfReports reports whether every source of the live page is a report or an archive a work wrote about itself (or the result
+// being recorded): a page written from them is no observation (audit K of 0.31.0: a result with nothing observed cited the page its
+// own note wrote from its earlier result, and was complete).
+func pageOfReports(book notebook.Book, w *workState, id, result string) bool {
+	live, err := book.LiveWhere(func(p notebook.Page) bool { return p.ID == id })
+	if err != nil || len(live) != 1 || len(live[0].Sources) == 0 {
+		return false
 	}
-	return nil
+	for _, s := range live[0].Sources {
+		if !(s.ID == result || w.Reports[s.ID] || (w.Result != nil && s.ID == w.Result.Source) || workReportSource(book, s.ID)) {
+			return false
+		}
+	}
+	return true
 }
 
-// workReportSource reads a saved source and reports whether it is one a work wrote about itself. A reference that is no saved
-// observation (current, a page, a conversation) is none.
+// workReportSource reads a saved source and reports whether it is one a work wrote about itself (a report or an archive of its
+// state, notebook.WorkSource), which evidence never cites. A reference that is no saved observation (current, a page, a
+// conversation) is none.
 func workReportSource(book notebook.Book, id string) bool {
-	kind, title := workSourceTitle(book, id)
-	return workReport(kind, title)
+	k, ok := workSourceOf(book, id)
+	return ok && !k.Citable()
 }
 
-// workSourceTitle is the kind and the title of a saved source, and nothing for a reference that is no saved observation.
-func workSourceTitle(book notebook.Book, id string) (kind, title string) {
+// workSourceOf is the work source a saved source is.
+func workSourceOf(book notebook.Book, id string) (notebook.WorkSource, bool) {
 	material, err := book.ReadSources([]string{id})
 	if err != nil {
-		return "", ""
+		return 0, false
 	}
 	originals, _ := material["observations"].([]notebook.Observation)
 	if len(originals) != 1 {
-		return "", ""
+		return 0, false
 	}
-	return originals[0].Kind, originals[0].Title
+	return notebook.WorkSourceOf(originals[0])
 }
 
-// workReportKind says which of a work's own sources a refusal names, by its title: an archive of the work's state was called
-// "an earlier result or an ending review" (audit J of 0.31.0).
+// isWorkSource reports whether a saved observation is the work source k.
+func isWorkSource(o notebook.Observation, k notebook.WorkSource) bool {
+	got, ok := notebook.WorkSourceOf(o)
+	return ok && got == k && o.Kind == "agent"
+}
+
+// workReportKind says which of a work's own sources a refusal names (an archive of the work's state was called "an earlier result
+// or an ending review": audit J of 0.31.0).
 func workReportKind(book notebook.Book, id string) string {
-	_, title := workSourceTitle(book, id)
-	switch workTitle(title) {
-	case workResultTitle:
-		return "an earlier result"
-	case workReviewTitle:
-		return "an ending review"
-	case workRecoveryTitle:
-		return "the source that binds a result to its evidence"
-	case workProcedureName:
-		return "the record of a procedure a result closed"
-	case "":
-		return "a result, an ending review or the record of a procedure"
+	if k, ok := workSourceOf(book, id); ok {
+		return k.Describe()
 	}
-	return fmt.Sprintf("%q, an archive of the work's state", workTitle(title))
+	return "a result, an ending review or the record of a procedure"
 }
 
 // currentRef is "current, " in a sentence that lists what evidence can cite, and nothing for a receipt without hook ids: it has no
@@ -205,11 +186,11 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 			return workItem{Kind: "result", Ref: "result"}, e
 		}
 		originals := material["observations"].([]notebook.Observation)
-		if len(originals) != 1 || originals[0].Title != workResultTitle || originals[0].Content != string(data) {
+		if len(originals) != 1 || !isWorkSource(originals[0], notebook.WorkResult) || originals[0].Content != string(data) {
 			return workItem{Kind: "result", Ref: "result"}, errors.New("the saved result changed or is unavailable")
 		}
 		if w.Result.Ready {
-			if e := selfEvidence(book, w, w.Result.Source, c.Evidence); e != nil {
+			if e := selfEvidence(book, w, forResult, w.Result.Source, c.Evidence); e != nil {
 				return workItem{Kind: "result", Ref: "result", ID: w.Result.Source}, e
 			}
 			bound, e := bindWorkEvidence(book, w, c.Evidence, resolve)
@@ -226,7 +207,7 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 		}
 	}
 	if id == "" {
-		_, id, err = captureWorkObservation(book, w, workObservation{Kind: "agent", Title: workResultTitle, Content: string(data), Reference: evidenceVersion, report: true}, save, commit)
+		_, id, err = captureWorkObservation(book, w, workArchive(notebook.WorkResult, string(data), evidenceVersion), save, commit)
 	}
 	item := workItem{Kind: "result", Ref: "result", ID: id}
 	if err != nil {
@@ -252,7 +233,7 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 	if err = save(); err != nil {
 		return item, err
 	}
-	if err = selfEvidence(book, w, id, c.Evidence); err != nil {
+	if err = selfEvidence(book, w, forResult, id, c.Evidence); err != nil {
 		return item, err
 	}
 	evidence, err := bindWorkEvidence(book, w, c.Evidence, resolve)

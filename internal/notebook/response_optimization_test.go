@@ -53,7 +53,7 @@ func TestResponseOrdinarySearchProjectionAllocation(t *testing.T) {
 
 func TestResponseSourceDecodeSharedOnlyWithinValidatedRead(t *testing.T) {
 	book := Book{Root: t.TempDir(), Scope: "/synthetic"}
-	o, e := book.Capture(Observation{Kind: "test", Title: "Synthetic decode", Content: strings.Repeat("Original owner condition.\n", 1800), Reference: "synthetic", Version: "1", ObservedAt: time.Unix(1, 0)})
+	o, e := book.capture(Observation{Kind: "test", Title: "Synthetic decode", Content: strings.Repeat("Original owner condition.\n", 1800), Reference: "synthetic", Version: "1", ObservedAt: time.Unix(1, 0)})
 	if e != nil {
 		t.Fatal(e)
 	}

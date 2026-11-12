@@ -199,7 +199,7 @@ func (b Book) buildIngestPage(d Draft, body, sourceDir string, pages []Page, ref
 				return nil, err
 			}
 			observation.ID = ""
-			if _, err := b.Capture(observation); err != nil {
+			if _, err := b.capture(observation); err != nil {
 				return nil, err
 			}
 		}

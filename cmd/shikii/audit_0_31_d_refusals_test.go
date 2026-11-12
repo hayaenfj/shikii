@@ -3,9 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"go/ast"
-	"go/parser"
-	"go/token"
+	"go/types"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -101,27 +99,14 @@ var jsonEntries = []jsonEntry{
 // readerCallers lists the functions of the given Go sources that call the reader of an agent's JSON.
 func readerCallers(t *testing.T, sources map[string]string) map[string]bool {
 	t.Helper()
+	// the reader of an agent's JSON (decodeStrictObject, and its wrapper decodeStrict), however it is reached (read by its type)
+	uses := typedUses(t, sources, len(sources) > 5, func(obj types.Object) bool {
+		fn, ok := obj.(*types.Func)
+		return ok && (fn.Name() == "decodeStrictObject" || fn.Name() == "decodeStrict") && fn.Pkg() != nil && fn.Pkg().Name() == "main"
+	})
 	callers := map[string]bool{}
-	fset := token.NewFileSet()
-	for name, source := range sources {
-		file, err := parser.ParseFile(fset, name, source, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, decl := range file.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Body == nil {
-				continue
-			}
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				if call, ok := n.(*ast.CallExpr); ok {
-					if id, ok := call.Fun.(*ast.Ident); ok && (id.Name == "decodeStrictObject" || id.Name == "decodeStrict") {
-						callers[fn.Name.Name] = true
-					}
-				}
-				return true
-			})
-		}
+	for _, use := range uses {
+		callers[strings.SplitN(use, ":", 2)[1]] = true
 	}
 	return callers
 }
@@ -197,6 +182,11 @@ func TestEveryEntryAnswersUnreadableJSONInTheReadersWords(t *testing.T) {
 	added := readerCallers(t, map[string]string{"new_entry.go": "package main\nfunc cmdNewEntry(data []byte) error {\n\tvar v struct{}\n\terr, _ := decodeStrictObject(data, &v)\n\treturn err\n}\n"})
 	if uncovered, _ := withoutARow(added, jsonEntries); len(uncovered) != 1 || uncovered[0] != "cmdNewEntry" {
 		t.Errorf("a new function that calls the reader is not reported: %v", uncovered)
+	}
+	// read by its type: the reader handed on as a value is found too
+	asValue := readerCallers(t, map[string]string{"new_entry.go": "package main\nfunc cmdNewEntry(data []byte) error {\n\tvar v struct{}\n\tread := decodeStrictObject\n\terr, _ := read(data, &v)\n\treturn err\n}\n"})
+	if uncovered, _ := withoutARow(asValue, jsonEntries); len(uncovered) != 1 || uncovered[0] != "cmdNewEntry" {
+		t.Errorf("a new function that hands the reader on as a value is not reported: %v", uncovered)
 	}
 }
 

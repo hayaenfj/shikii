@@ -348,7 +348,7 @@ func TestNotebookCLIReadsSourcesTogether(t *testing.T) {
 	book := notebook.Book{Root: root, Scope: feedbackScope(repo)}
 	ids := []string{}
 	for _, content := range []string{"返品の承認済み規定", "送料を除くという確認結果"} {
-		source, err := book.Capture(notebook.Observation{Kind: "test", Title: content, Content: content, Reference: "fixture", Version: "v1", ObservedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)})
+		source, err := book.CaptureObserved(notebook.Observation{Kind: "test", Title: content, Content: content, Reference: "fixture", Version: "v1", ObservedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -431,7 +431,7 @@ func TestLongSourceIsCapturedWhole(t *testing.T) {
 		t.Fatalf("the long source must be listed for sorting: %v", err)
 	}
 	huge := notebook.Observation{Kind: "agent", Title: "huge", Content: strings.Repeat("x", store.MaxLineBytes), Reference: "memory/huge.md", Version: "v", ObservedAt: time.Now()}
-	if _, err := book.Capture(huge); err == nil || !strings.Contains(err.Error(), "MiB") {
+	if _, err := book.CaptureObserved(huge); err == nil || !strings.Contains(err.Error(), "MiB") {
 		t.Fatalf("a record over the store's line limit is still refused, saying the limit: %v", err)
 	}
 }

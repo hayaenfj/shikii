@@ -27,7 +27,7 @@ func TestAuditAUpgradeBatchAtTightBounds(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			repo, root, _ := planningFixture(t)
 			b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-			s, err := b.Capture(notebook.Observation{Kind: "test", Title: "Original rule", Content: "Keep existing evidence and current preferences.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+			s, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Original rule", Content: "Keep existing evidence and current preferences.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 			if err != nil {
 				t.Fatal(err)
 			}

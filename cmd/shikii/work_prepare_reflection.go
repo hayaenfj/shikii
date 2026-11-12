@@ -46,7 +46,7 @@ func prepareWorkReflection(book notebook.Book, w *workState, reflection reflectV
 			continue
 		}
 		w.Sources[ref] = o.ID
-		if workReport(o.Kind, o.Title) { // a report of this or an earlier request that waits to be sorted: reviewed, never evidence
+		if k, ok := notebook.WorkSourceOf(notebook.Observation{Kind: o.Kind, Title: o.Title}); ok && !k.Citable() { // a report of this or an earlier request that waits to be sorted: reviewed, never evidence
 			markReport(w, o.ID)
 		}
 		evidence = append(evidence, map[string]any{"ref": ref, "source": material.Material})

@@ -10,7 +10,7 @@ import (
 func outcomeSelectionBook(t *testing.T) (Book, Page, func(string, string) string) {
 	t.Helper()
 	b := Book{Root: t.TempDir(), Scope: "/synthetic/selection"}
-	source, err := b.Capture(Observation{Kind: "test", Title: "Synthetic evidence", Content: "Checked the bounded workflow.", Reference: "synthetic", Version: "fixture", ObservedAt: time.Unix(1, 0)})
+	source, err := b.capture(Observation{Kind: "test", Title: "Synthetic evidence", Content: "Checked the bounded workflow.", Reference: "synthetic", Version: "fixture", ObservedAt: time.Unix(1, 0)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func outcomeSelectionBook(t *testing.T) (Book, Page, func(string, string) string
 			details.Correction = "Use the checked parser correction."
 		}
 		content, _ := json.Marshal(details)
-		snapshot, err := b.Capture(Observation{Kind: "agent", Title: "Synthetic execution", Content: string(content), Reference: "synthetic", Version: "fixture", ObservedAt: time.Unix(int64(n+2), 0)})
+		snapshot, err := b.capture(Observation{Kind: "agent", Title: "Synthetic execution", Content: string(content), Reference: "synthetic", Version: "fixture", ObservedAt: time.Unix(int64(n+2), 0)})
 		if err != nil {
 			t.Fatal(err)
 		}

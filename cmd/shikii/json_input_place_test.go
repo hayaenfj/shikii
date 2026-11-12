@@ -1,9 +1,9 @@
 package main
 
 import (
+	"go/types"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -109,14 +109,24 @@ func strictReaders(t *testing.T, dir string) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	call := regexp.MustCompile(`\bDisallowUnknownFields\b`)
-	var found []string
+	sources := map[string]string{}
 	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") {
-			continue
+		if !strings.HasSuffix(f, "_test.go") {
+			sources[filepath.Base(f)] = string(mustRead(t, f))
 		}
-		if call.Match(mustRead(t, f)) {
-			found = append(found, filepath.Base(f))
+	}
+	// the method DisallowUnknownFields of encoding/json's Decoder, however it is reached (read by its type)
+	uses := typedUses(t, sources, dir == ".", func(obj types.Object) bool {
+		fn, ok := obj.(*types.Func)
+		return ok && fn.Name() == "DisallowUnknownFields" && fn.Pkg() != nil && fn.Pkg().Path() == "encoding/json"
+	})
+	seen := map[string]bool{}
+	var found []string
+	for _, use := range uses {
+		file := strings.SplitN(use, ":", 2)[0]
+		if !seen[file] {
+			seen[file] = true
+			found = append(found, file)
 		}
 	}
 	sort.Strings(found)

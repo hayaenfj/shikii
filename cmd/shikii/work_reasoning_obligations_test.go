@@ -16,7 +16,7 @@ import (
 
 func TestReasoningRequiredCorrectionSurvivesUnrelatedPatchAndRecovers(t *testing.T) {
 	_, root, b, p := reasoningFixture(t)
-	source, err := b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic original policies", Content: "Two independent synthetic policies.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
+	source, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic original policies", Content: "Two independent synthetic policies.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}

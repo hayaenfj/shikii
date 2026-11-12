@@ -13,7 +13,7 @@ import (
 func TestPlanningReflectionRetryAfterWikiUpdate(t *testing.T) {
 	repo, root, calls := planningFixture(t)
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-	s, err := b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic audit source", Content: "Keep existing CSV filters; no additional choice needed.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+	s, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic audit source", Content: "Keep existing CSV filters; no additional choice needed.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}

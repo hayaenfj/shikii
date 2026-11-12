@@ -20,7 +20,7 @@ func TestAuditEStopInAnotherRegisteredProject(t *testing.T) {
 		t.Fatalf("precondition: the Stop in the other project passes: %s", reason)
 	}
 	s := loadSession(f.root, "planning")
-	t.Logf("stop in another registered project: out=%q ended_turn=%q turn=%s", out, s.EndedTurn, s.TurnID)
+	t.Logf("stop in another registered project: out=%q ended_turn=%q turn=%s", out, s.endedTurnForTest(), s.TurnID)
 	second := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
 	if second["carried"] != nil {
 		t.Errorf("INVARIANT 9: the turn ended (its Stop ran in another registered project and stopped nothing), and the next preparation took its references over: %.200s", auditJSON(second["carried"]))
@@ -32,7 +32,7 @@ func TestAuditEStopOutsideEveryProjectControl(t *testing.T) {
 	f := auditCFinishedFirstRequest(t)
 	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": t.TempDir(), "last_assistant_message": "Done."})
 	s := loadSession(f.root, "planning")
-	t.Logf("stop outside: out=%q ended_turn=%q turn=%s", out, s.EndedTurn, s.TurnID)
+	t.Logf("stop outside: out=%q ended_turn=%q turn=%s", out, s.endedTurnForTest(), s.TurnID)
 	if second := f.prepare(f.ask("Now rename the export button, a new task."), "export button"); second["carried"] != nil {
 		t.Errorf("control: a Stop outside every project ends the turn: %.200s", auditJSON(second["carried"]))
 	}
@@ -62,6 +62,7 @@ func TestAuditEStopOutsideWithBrokenState(t *testing.T) {
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
 		t.Fatal(err)
 	}
+	recordBefore, _ := os.ReadFile(sessionPath(f.root, "planning"))
 	oldWait := hookLockWait
 	hookLockWait = 0
 	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": t.TempDir(), "last_assistant_message": "Done."})
@@ -70,14 +71,22 @@ func TestAuditEStopOutsideWithBrokenState(t *testing.T) {
 	lock.Close()
 	s := loadSession(f.root, "planning")
 	logged, _ := os.ReadFile(filepath.Join(common, "hook.log"))
-	t.Logf("locked: out=%q ended=%q log tail=%.200s", out, s.EndedTurn, auditELastLine(string(logged)))
-	if s.EndedTurn != "" {
+	t.Logf("locked: out=%q ended=%q log tail=%.200s", out, s.endedTurnForTest(), auditELastLine(string(logged)))
+	// the Stop ends the session's turn in the one state of the turn, and writes no project's record (the record's lock is held)
+	if recordAfter, _ := os.ReadFile(sessionPath(f.root, "planning")); string(recordAfter) != string(recordBefore) {
 		t.Errorf("the lock was held, yet the record changed")
 	}
+	if s.endedTurnForTest() != s.TurnID {
+		t.Errorf("the Stop outside every project did not end the session's turn")
+	}
 	// 3) another session's Stop does not touch this session; a subagent-looking id neither
+	endedBefore := loadSession(f.root, "planning").endedTurnForTest()
+	stateBefore, _, _ := readSessionLatest("planning")
+	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning2", "cwd": t.TempDir(), "prompt": "<task-notification>\n<status>completed</status>\n</task-notification>"})
 	runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning2", "cwd": t.TempDir(), "last_assistant_message": "Done."})
-	if s := loadSession(f.root, "planning"); s.EndedTurn != "" {
-		t.Errorf("another session's Stop ended this session's turn")
+	stateAfter, _, _ := readSessionLatest("planning")
+	if s := loadSession(f.root, "planning"); s.endedTurnForTest() != endedBefore || stateAfter != stateBefore {
+		t.Errorf("another session's events changed this session's turn: %+v -> %+v", stateBefore, stateAfter)
 	}
 	if _, err := os.Stat(sessionPath(f.root, "planning2")); err == nil {
 		t.Errorf("a Stop outside every project left a session record in a project that had none for that session")
@@ -103,8 +112,8 @@ func TestAuditEStopOutsideWithBrokenState(t *testing.T) {
 	// 5) now it is written, once; a second Stop leaves the record's bytes alone
 	runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": t.TempDir(), "last_assistant_message": "Done."})
 	s = loadSession(f.root, "planning")
-	if s.EndedTurn == "" || s.EndedTurn != s.TurnID {
-		t.Errorf("control: the Stop outside ends the turn: ended=%q turn=%q", s.EndedTurn, s.TurnID)
+	if s.endedTurnForTest() == "" || s.endedTurnForTest() != s.TurnID {
+		t.Errorf("control: the Stop outside ends the turn: ended=%q turn=%q", s.endedTurnForTest(), s.TurnID)
 	}
 	before, _ = os.ReadFile(sessionPath(f.root, "planning"))
 	runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": t.TempDir(), "last_assistant_message": "Done."})
@@ -136,11 +145,12 @@ func TestAuditEStopWithAnAgentID(t *testing.T) {
 	}
 	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "agent_id": "sub-1", "agent_type": "Explore", "cwd": t.TempDir(), "last_assistant_message": "Subagent done."})
 	s := loadSession(f.root, "planning")
-	t.Logf("a Stop with agent_id outside the project: out=%q ended=%q turn=%s", out, s.EndedTurn, s.TurnID)
+	ended := s.endedTurnForTest() // read now: the next request below makes this one no longer the last
+	t.Logf("a Stop with agent_id outside the project: out=%q ended=%q turn=%s", out, ended, s.TurnID)
 	second := f.prepare(f.ask("Also check the totals of the CSV export."), "CSV export totals")
 	t.Logf("carried after it: %.120s", auditJSON(second["carried"]))
-	if s.EndedTurn != "" {
-		t.Errorf("a Stop that carries a subagent's id ended the parent's turn (the parent agent is still working): ended=%q", s.EndedTurn)
+	if ended != "" || second["carried"] == nil {
+		t.Errorf("a Stop that carries a subagent's id ended the parent's turn (the parent agent is still working): ended=%q carried=%v", ended, second["carried"] != nil)
 	}
 }
 
@@ -154,8 +164,8 @@ func TestAuditEStopWithAnAgentIDInTheProject(t *testing.T) {
 	}
 	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "agent_id": "sub-1", "agent_type": "Explore", "cwd": f.repo, "last_assistant_message": "Subagent done."})
 	s := loadSession(f.root, "planning")
-	t.Logf("a Stop with agent_id in the project: out=%q ended=%v judged=%v previous=%q", out, s.EndedTurn == s.TurnID, s.Judged, s.Previous)
-	if s.EndedTurn == s.TurnID {
+	t.Logf("a Stop with agent_id in the project: out=%q ended=%v judged=%v previous=%q", out, s.endedTurnForTest() == s.TurnID, s.Judged, s.Previous)
+	if s.endedTurnForTest() == s.TurnID {
 		t.Errorf("a Stop that carries a subagent's id ended the parent's turn and was judged as the parent's Stop (judged=%v, the kept reply is %q)", s.Judged, s.Previous)
 	}
 }
@@ -176,7 +186,7 @@ func TestAuditENoticeOutsideTheProjectAfterAStopOutside(t *testing.T) {
 	}
 	s := loadSession(f.root, "planning")
 	second := f.prepare(f.ask("Also check the totals of the CSV export."), "CSV export totals")
-	t.Logf("ended==turn before the message: %v; carried: %.80s", s.EndedTurn == s.TurnID, auditJSON(second["carried"]))
+	t.Logf("ended==turn before the message: %v; carried: %.80s", s.endedTurnForTest() == s.TurnID, auditJSON(second["carried"]))
 	if second["carried"] == nil {
 		t.Errorf("the agent worked on after a completion notice that came while its shell stood outside the project, the person sent a message, and the next preparation took nothing over")
 	}
@@ -197,7 +207,7 @@ func TestAuditEAnUnfinishedTurnLeftInAnotherProject(t *testing.T) {
 	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": other, "last_assistant_message": "Done."})
 	_, blocked := stopReason(t, out)
 	a, b := loadSession(f.root, "planning"), loadSession(otherRoot, "planning")
-	t.Logf("the Stop in B: blocked=%v; A: ended==turn %v; B: ended==turn %v", blocked, a.EndedTurn == a.TurnID, b.EndedTurn == b.TurnID)
+	t.Logf("the Stop in B: blocked=%v; A: ended==turn %v; B: ended==turn %v", blocked, a.endedTurnForTest() == a.TurnID, b.endedTurnForTest() == b.TurnID)
 	if blocked {
 		t.Skip("the Stop in the other project is blocked in this fixture")
 	}

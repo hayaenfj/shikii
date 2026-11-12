@@ -144,7 +144,8 @@ func (o Observation) problem() string {
 	return ""
 }
 
-func (b Book) Capture(o Observation) (Observation, error) {
+// capture writes a source record. Outside this package a source is saved through CaptureObserved or CaptureWork (work_sources.go).
+func (b Book) capture(o Observation) (Observation, error) {
 	if o.ID != "" {
 		return Observation{}, errors.New("wiki capture: do not give an id (it is made from the content)")
 	}

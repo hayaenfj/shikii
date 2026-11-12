@@ -27,6 +27,9 @@ func runHookEvent(event string) error {
 	if errors.Is(err, errProjectInactive) {
 		// in an uninitialized place, do not save, change Git or start the model. Only when this .shikii was copied from a project still in place, say so
 		if event == "user-prompt-submit" {
+			if prompt := strings.TrimSpace(in.Prompt); prompt != "" && in.AgentID == "" && !isNotification(prompt) && !isSlashCommand(prompt) {
+				noteSessionRequest(in.SessionID, "", "") // a request outside every project: no request of a project goes on (work_handover.go)
+			}
 			notice := copiedNotice(in.CWD)
 			if notice != "" && !noticeOnce(in.SessionID, projectScopeAt(in.CWD)) {
 				notice = "" // told once in this session
@@ -35,7 +38,7 @@ func runHookEvent(event string) error {
 				fmt.Fprintln(stdout, string(b))
 			}
 		}
-		turnElsewhere(event, &in, "", false) // nothing is checked outside a project, yet the agent's turn ends, or goes on, here too
+		sessionTurnEvent(event, &in, sessionTurnAt(in.SessionID), false) // nothing is checked outside a project, yet the agent's turn ends, or goes on, here too
 		return nil
 	}
 	if err != nil {
@@ -54,6 +57,10 @@ func runHookEvent(event string) error {
 	}
 	// model calls are outside the lock (they only read a copy of the record). Changes to the record are collected in muts and applied to the record re-read inside the lock
 	snapshot := loadSession(agent, in.SessionID)
+	stopTurn := "" // the request a Stop ends: the session's turn when the Stop came (a request that comes since is left open)
+	if event == "stop" {
+		stopTurn = sessionTurnAt(in.SessionID)
+	}
 	if event == "stop" {
 		if in.AgentID != "" {
 			// a Stop with the id of a subagent is not the end of the person's request: nothing is judged or recorded, as a request
@@ -64,7 +71,7 @@ func runHookEvent(event string) error {
 		snapshot, serr = readSession(agent, in.SessionID)
 		if serr != nil || (in.StopHookActive && snapshot.TurnID == "" && snapshot.GuardTurn == nil && shikiiStoppedSession(agent, in.SessionID)) {
 			// the turn ends here (continue:false), incomplete: the same session's requests in other projects end with it
-			turnElsewhere(event, &in, agent, false)
+			sessionTurnEvent(event, &in, stopTurn, false)
 			fmt.Fprintln(stdout, string((hookOut{Halt: ritualHalt(true)}).json(hookEventName(event))))
 			return serr
 		}
@@ -80,17 +87,9 @@ func runHookEvent(event string) error {
 	case "stop":
 		in.stopRecords = &stopRecords
 		out, muts, err = hookStop(agent, &in, snapshot)
-		// This Stop lets the turn end, with or without a last message (work_handover.go). So does one whose judgment failed (the
-		// model of the closing questions was not reachable): the hook records the error and exits 0, the agent's turn is over.
-		// A Stop that carries the id of a subagent is not the end of the person's request.
-		if !out.Block && in.AgentID == "" {
-			ended := snapshot.TurnID
-			muts = append(muts, func(s *hookSession) {
-				if s.TurnID == ended {
-					s.EndedTurn = ended
-				}
-			})
-		}
+		// A Stop that a check did not stop lets the turn end, with or without a last message, and so does one whose judgment failed
+		// (the model of the closing questions was not reachable): sessionTurnEvent below ends the session's turn. A Stop that
+		// carries the id of a subagent is not the end of the person's request.
 		muts = append(muts, func(s *hookSession) { summary = stopSummary(agent, s) }) // the waiting-answers summary is counted on the record after this turn's decisions are added
 	case "subagent-start":
 		out, muts, err = hookSubagentStart(agent, &in, snapshot) // the parent's record only drops the used task for the child
@@ -121,7 +120,7 @@ func runHookEvent(event string) error {
 			}
 		}
 	}
-	turnElsewhere(event, &in, agent, blocked) // the same session's requests in other projects end, or go on, with this event
+	sessionTurnEvent(event, &in, stopTurn, blocked) // the session's turn ends, or goes on, with this event
 	if event == "user-prompt-submit" || event == "stop" {
 		sweepDeferrals(agent, in.SessionID) // other sessions' outcomes left waiting by a session that was closed mid-turn (outside this session's lock)
 	}

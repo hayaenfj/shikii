@@ -22,7 +22,7 @@ func completionArticleFixture(t *testing.T) (string, string, notebook.Book, note
 	repo, root, _ := planningFixture(t)
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
 	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": completionSession, "cwd": repo, "prompt": planningTestRequest})
-	o, err := b.Capture(notebook.Observation{Kind: "test", Title: "\u5408\u6210\u8a18\u4e8b\u306e\u8cc7\u6599", Content: "\u5408\u6210CSV\u306e\u6761\u4ef6\u3092\u78ba\u8a8d\u3057\u305f\u3002", Reference: "completion-atomic", Version: "1", ObservedAt: time.Now()})
+	o, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "\u5408\u6210\u8a18\u4e8b\u306e\u8cc7\u6599", Content: "\u5408\u6210CSV\u306e\u6761\u4ef6\u3092\u78ba\u8a8d\u3057\u305f\u3002", Reference: "completion-atomic", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal("\u5408\u6210\u8cc7\u6599\u306e\u6e96\u5099\u306b\u5931\u6557", err)
 	}

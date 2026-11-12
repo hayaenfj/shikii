@@ -101,10 +101,7 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 		if req.Observation == nil {
 			return nil, errors.New("a source to save is required")
 		}
-		if err := reportTitleRefusal(req.Observation.Title); err != nil {
-			return nil, err
-		}
-		return b.Capture(*req.Observation)
+		return b.CaptureObserved(*req.Observation) // a title shikii gives its own sources is refused there
 	case "maintain":
 		if req.Maintenance == nil {
 			return nil, errors.New("a review record is required")

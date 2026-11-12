@@ -47,7 +47,7 @@ func auditFSecondShort(t *testing.T, repo string) string {
 
 func auditFLessons(t *testing.T, b notebook.Book, n int, bodyRepeat int) []notebook.Page {
 	t.Helper()
-	source, err := b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic check", Content: "The CSV export keeps its filters.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
+	source, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic check", Content: "The CSV export keeps its filters.", Reference: "synthetic", Version: "1", ObservedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}

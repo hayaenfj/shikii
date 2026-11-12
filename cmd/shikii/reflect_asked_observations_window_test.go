@@ -22,7 +22,7 @@ func TestStopCheckSeesEveryObservationTheNoticeNamed(t *testing.T) {
 	book := notebook.Book{Root: root, Scope: scope}
 	capture := func(i int) string {
 		t.Helper()
-		o, err := book.Capture(notebook.Observation{Kind: "test", Title: fmt.Sprintf("Check %d", i), Content: fmt.Sprintf("synthetic check %d passed", i), Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+		o, err := book.CaptureObserved(notebook.Observation{Kind: "test", Title: fmt.Sprintf("Check %d", i), Content: fmt.Sprintf("synthetic check %d passed", i), Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -11,7 +11,7 @@ import (
 
 func TestOutcomeSourcesRejectNonregularFiles(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/synthetic/audit"}
-	captured, err := b.Capture(Observation{Kind: "test", Title: "Synthetic check", Content: "Synthetic tenant check passed.", Reference: "isolated audit", Version: "candidate", ObservedAt: time.Now().UTC()})
+	captured, err := b.capture(Observation{Kind: "test", Title: "Synthetic check", Content: "Synthetic tenant check passed.", Reference: "isolated audit", Version: "candidate", ObservedAt: time.Now().UTC()})
 	if err != nil {
 		t.Fatal(err)
 	}

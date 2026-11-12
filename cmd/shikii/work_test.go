@@ -341,7 +341,7 @@ func TestWorkRejectsUnpreparedReferencesAndPreservesPartialResult(t *testing.T) 
 func TestWorkAmbiguousPlacementReturnsContentChoiceAndReplaysOriginalSave(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-	o, err := b.Capture(notebook.Observation{Kind: "test", Title: "Existing route", Content: "Checked existing invoice routing.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+	o, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Existing route", Content: "Checked existing invoice routing.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}

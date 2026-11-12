@@ -33,7 +33,7 @@ func TestWorkPreparationBudgetKeepsRecoveryAndConditions(t *testing.T) {
 	}
 	t.Run("bounded original recovery", func(t *testing.T) {
 		body := strings.Repeat("<routing condition>", 2048)
-		o, err := b.Capture(notebook.Observation{Kind: "test", Title: "Long original", Content: body, Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+		o, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Long original", Content: body, Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 		if err != nil {
 			t.Fatal(err)
 		}

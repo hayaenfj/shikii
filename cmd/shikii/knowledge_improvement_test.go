@@ -248,7 +248,7 @@ func TestKnowledgeOperationsThroughCLIAndMCP(t *testing.T) {
 	root := hookEnv(t, nil, repo)
 	t.Chdir(repo)
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-	source, err := b.Capture(notebook.Observation{Kind: "test", Title: "Synthetic source", Content: "A checked update.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+	source, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic source", Content: "A checked update.", Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}

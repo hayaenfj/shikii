@@ -17,7 +17,7 @@ func reflectionHistoryFixture(t *testing.T, count int) (notebook.Book, store.Sto
 	dir := t.TempDir()
 	book := notebook.Book{Root: filepath.Join(dir, ".shikii"), Scope: dir}
 	st := store.Store{Dir: book.Root}
-	if _, err := book.Capture(notebook.Observation{Kind: "test", Title: "Synthetic history", Content: "Synthetic only.", Reference: "synthetic", Version: "1", ObservedAt: time.Unix(1, 0)}); err != nil {
+	if _, err := book.CaptureObserved(notebook.Observation{Kind: "test", Title: "Synthetic history", Content: "Synthetic only.", Reference: "synthetic", Version: "1", ObservedAt: time.Unix(1, 0)}); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(book.Root, "records", "feedback", store.StoreName(book.Root, book.Scope)+".jsonl")
