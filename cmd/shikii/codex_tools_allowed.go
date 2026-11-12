@@ -120,7 +120,7 @@ func allowCodexTools(path string) error {
 		// or the person wrote the line themselves. Note it now. Without the note, the block the person later takes the line out of
 		// looks like an earlier version's, and the line would come back once (0.31.0 audit C, U-3).
 		if mark != "" && !fileExists(mark) && codexToolsAlreadyAllowed(b, codexServerArgs) {
-			return noteCodexToolsAllowed(mark)
+			_ = noteCodexToolsAllowed(mark) // nothing in the person's file changes here: a note that cannot be written stops nothing
 		}
 		return nil
 	}

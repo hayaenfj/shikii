@@ -55,14 +55,8 @@ func captureWorkObservation(book notebook.Book, w *workState, o workObservation,
 		if err := save(); err != nil {
 			return memo.Ref, "", err
 		}
-	} else if o.report && !memo.Report {
-		memo.Report = true
-		w.Captures[key] = memo
 	}
 	if memo.ID != "" {
-		if memo.Report {
-			markReport(w, memo.ID)
-		}
 		return memo.Ref, memo.ID, nil
 	}
 	value.ObservedAt, value.Version = memo.At, memo.Version

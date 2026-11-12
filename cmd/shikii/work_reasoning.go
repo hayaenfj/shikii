@@ -484,7 +484,7 @@ func recordWorkReasoning(book notebook.Book, w *workState, input workReasoning, 
 			snapshot.Result = &copy
 		}
 		content, _ := json.Marshal(snapshot)
-		_, source, err := captureWorkObservation(book, w, workObservation{Kind: "agent", Title: "Evidence-linked work judgment and ending review", Content: string(content), Reference: "work reasoning for turn " + r.TurnID, report: true}, save, commit)
+		_, source, err := captureWorkObservation(book, w, workObservation{Kind: "agent", Title: workReviewTitle, Content: string(content), Reference: "work reasoning for turn " + r.TurnID, report: true}, save, commit)
 		if err != nil {
 			return item, err
 		}

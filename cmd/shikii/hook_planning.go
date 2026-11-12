@@ -169,7 +169,7 @@ func cmdHookPlan(args []string) error {
 	if err != nil || len(data) > reflectInputMax {
 		return errors.New("the pre-start context must be JSON of 16KB or less")
 	}
-	if len(bytes.TrimSpace(data)) == 0 {
+	if noJSON(data) {
 		return emptyInputRefusal("hook plan", "hook plan "+args[0])
 	}
 	var req planningRequest

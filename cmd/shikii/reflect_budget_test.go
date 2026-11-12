@@ -141,8 +141,8 @@ func TestTheReflectionQueryFitsWhatAnAgentsToolShows(t *testing.T) {
 // their use to the agent (lesson bodies, maintenance details, earlier corrections, the lessons at the end of the list, the raw text
 // of the second conversation), nothing taken off comes back while a less useful part is still there, and what submit needs is in
 // every reply: both conversations, their targets, the keys of their deliveries and how_to_submit. The first conversation is cut
-// to a head only as the last step, when it alone is over the bound, and output says so. When nothing more can go, the reply says
-// that it is over the bound.
+// to a head only when it is over the bound even with the second one waiting, and output says so; from that bound on the second
+// conversation may be listed again. When nothing more can go, the reply says that it is over the bound.
 func TestTheReflectionBoundTakesTheLeastUsefulPartsFirst(t *testing.T) {
 	long := func(n int) string { return strings.Repeat("x", n) }
 	view := reflectView{HowToSubmit: "submit reviews, wiki and memory", Corrections: []any{map[string]any{"ai_reason": long(1500)}},
@@ -180,7 +180,9 @@ func TestTheReflectionBoundTakesTheLeastUsefulPartsFirst(t *testing.T) {
 			t.Fatalf("at %d bytes a part taken off at a larger bound is back: %s", bound, omitted)
 		}
 		for i, step := range steps[:deepest] { // every less useful part is gone before a more useful one goes
-			if i != 3 && !strings.Contains(omitted, step) { // the list of lessons may fit whole again once a conversation is a head
+			// the list of lessons may fit whole again once a conversation is a head; and once the first conversation is a head
+			// (it is over the bound even alone), the second one may come back whole or as a head
+			if firstHead := strings.Contains(omitted, steps[6]); i != 3 && !(firstHead && (i == 4 || i == 5)) && !strings.Contains(omitted, step) {
 				t.Fatalf("at %d bytes %q went before %q: %s", bound, steps[deepest], step, omitted)
 			}
 		}
@@ -190,12 +192,12 @@ func TestTheReflectionBoundTakesTheLeastUsefulPartsFirst(t *testing.T) {
 		}
 		sources := reply["sources"].([]any)
 		first := sources[0].(map[string]any)
-		firstCut := strings.Contains(omitted, steps[6]) // only after the second conversation waits
-		if (first["head"] == true) != firstCut || firstCut && !strings.Contains(omitted, steps[5]) ||
+		firstCut := strings.Contains(omitted, steps[6])
+		if (first["head"] == true) != firstCut ||
 			!firstCut && !strings.HasPrefix(first["source_material"].(map[string]any)["request"].(string), "first "+long(700)) ||
 			first["targets"].([]any)[0].(map[string]any)["trace_id"] != "1111111111111111" ||
 			first["memories"].([]any)[0].(map[string]any)["quote"].(map[string]any)["key"] != "lesson:1:1" || reply["how_to_submit"] != view.HowToSubmit {
-			t.Fatalf("at %d bytes what submit needs is not all there, or the first conversation is cut before the last step: %.400s", bound, raw)
+			t.Fatalf("at %d bytes what submit needs is not all there, or the first conversation is cut and output does not say so: %.400s", bound, raw)
 		}
 		// the second conversation is listed with its target and its delivery, or it waits and is counted
 		waits := strings.Contains(omitted, steps[5])

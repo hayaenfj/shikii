@@ -37,14 +37,14 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, additi
 		}
 		originals := material["observations"].([]notebook.Observation)
 		var original workCompletion
-		if len(originals) != 1 || originals[0].Kind != "agent" || originals[0].Title != "Work result and remaining conditions" || json.Unmarshal([]byte(originals[0].Content), &original) != nil || workHash(original) != w.Result.Signature {
+		if len(originals) != 1 || originals[0].Kind != "agent" || originals[0].Title != workResultTitle || json.Unmarshal([]byte(originals[0].Content), &original) != nil || workHash(original) != w.Result.Signature {
 			return item, errors.New("the original saved result changed or is unavailable")
 		}
 		if len(w.Result.Evidence) > 0 && !trialBasisCurrent(book, w.Result.Evidence) {
 			return item, errors.New("the saved result evidence changed; record its corrected result")
 		}
 		if len(c.Evidence) > 0 {
-			if e := selfEvidence(w, c.Ref, c.Evidence); e != nil {
+			if e := selfEvidence(book, w, c.Ref, c.Evidence); e != nil {
 				return item, e
 			}
 			bound, e := bindWorkEvidence(book, w, c.Evidence, resolve)
@@ -63,7 +63,7 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, additi
 	evidence := pending.Evidence
 	var e error
 	if len(c.Evidence) > 0 {
-		if e = selfEvidence(w, c.Ref, c.Evidence); e != nil {
+		if e = selfEvidence(book, w, c.Ref, c.Evidence); e != nil {
 			return item, e
 		}
 		evidence, e = bindWorkEvidence(book, w, c.Evidence, resolve)
@@ -88,7 +88,7 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, additi
 		return item, e
 	}
 	originals := material["observations"].([]notebook.Observation)
-	if len(originals) != 1 || originals[0].Kind != "agent" || originals[0].Title != "Work result and remaining conditions" {
+	if len(originals) != 1 || originals[0].Kind != "agent" || originals[0].Title != workResultTitle {
 		return item, errors.New("the original pending result is unavailable")
 	}
 	var original workCompletion
@@ -105,7 +105,7 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, additi
 			Turn     string   `json:"turn"`
 			Evidence []string `json:"evidence"`
 		}{c.Ref, pending.Turn, evidence})
-		e = captureWorkTrialSource(book, w, workObservation{Kind: "agent", Title: "Recovered work result evidence", Content: string(data), report: true}, &pending.Source, "result-recovery:"+c.Ref, item, save, commit)
+		e = captureWorkTrialSource(book, w, workObservation{Kind: "agent", Title: workRecoveryTitle, Content: string(data), report: true}, &pending.Source, "result-recovery:"+c.Ref, item, save, commit)
 		if e != nil {
 			return item, e
 		}
@@ -121,7 +121,7 @@ func repairWorkResult(book notebook.Book, w *workState, c workCompletion, additi
 		Turn     string   `json:"turn"`
 		Evidence []string `json:"evidence"`
 	}{c.Ref, pending.Turn, pending.Evidence})
-	if len(observed) != 1 || observed[0].Title != "Recovered work result evidence" || observed[0].Content != string(want) {
+	if len(observed) != 1 || observed[0].Title != workRecoveryTitle || observed[0].Content != string(want) {
 		return item, errors.New("the recovered result binding is unavailable or changed")
 	}
 	if pending.Complete {

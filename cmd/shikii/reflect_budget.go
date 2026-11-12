@@ -16,9 +16,11 @@ import (
 //  3. the examples of earlier corrections
 //  4. the close lessons at the end of the list
 //  5. the raw text of the conversations after the first, which become heads like the ones after them
-//  6. the newest conversations, when even the heads do not fit: they are not listed but counted in more_pending, and the next
+//  6. the texts of the delivered lessons, which keep their keys (a turn that started many subagents)
+//  7. the newest conversations, when even that does not fit: they are not listed but counted in more_pending, and the next
 //     query lists them (the first conversation always stays)
-//  7. the raw text of the first conversation, when it alone is over the bound: it becomes a head too
+//
+// A first conversation that alone is over the bound is a head from the start: the steps then work on the others.
 //
 // output names each step taken and how to read what was left out. A reply that fits is returned as it is. size measures the whole
 // reply the way the transport sends it (the MCP tool result, or the CLI's line).
@@ -97,18 +99,43 @@ func limitReflectQuery(view reflectView, budget int, size func(any) int) any {
 	// one more conversation becomes a head (the newest of those that came with their raw text; the first stays whole).
 	current := view
 	heads := 0
+	// The one exception: a first conversation that is over the bound even when every other one waits (a request with a pasted
+	// log of 30 KB). Its raw text cannot come in any reply of this size, so it is a head from the start and output says so. Left
+	// whole it made every other conversation wait and then became a head all the same, or put the reply over the bound (audits
+	// of 0.31.0, two rounds). At the bound where this sets in, conversations that waited behind it are listed again.
+	first := []string{}
+	if len(current.Sources) > 0 && !current.Sources[0].Head {
+		// the reply the steps below end with when nothing else helps: the first conversation alone, the others counted
+		alone, others, whole := current, len(current.Sources)-1, 0
+		for _, s := range current.Sources[1:] {
+			if !s.Head {
+				whole++
+			}
+		}
+		alone.Sources, alone.MorePending = current.Sources[:1], current.MorePending+others
+		last := []string{}
+		if others > 0 {
+			last = []string{fmt.Sprintf("the last %d conversations (counted in more_pending: query again after the submit)", others)}
+		}
+		if _, fits := try(alone, 4, 0, whole, last...); !fits {
+			sources := append([]reflectSource{}, current.Sources...)
+			sources[0] = reflectHead(sources[0])
+			current.Sources = sources
+			first = []string{"the raw text of the first conversation (it alone is over max_bytes: read it with wiki query <its id>)"}
+		}
+	}
 	for {
 		low, high := -1, len(current.Lessons) // the most lessons that fit; -1: not even none
 		for low < high {
 			middle := (low + high + 1) / 2
-			if _, fits := try(current, 4, middle, heads); fits {
+			if _, fits := try(current, 4, middle, heads, first...); fits {
 				low = middle
 			} else {
 				high = middle - 1
 			}
 		}
 		if low >= 0 {
-			reply, _ := try(current, 4, low, heads)
+			reply, _ := try(current, 4, low, heads, first...)
 			return reply
 		}
 		next := -1
@@ -129,20 +156,28 @@ func limitReflectQuery(view reflectView, budget int, size func(any) int) any {
 	// Even the heads do not fit (about 30 pending conversations filled the bound, and the reply went over it: audit of 0.31.0).
 	// The newest conversations wait, counted in more_pending like the ones beyond the listing's own limit: they come once these are
 	// settled. The first conversation always stays.
-	notes := []string{}
+	// Even the heads do not fit with the texts of their delivered lessons: the deliveries keep their keys only (reflectBare), which
+	// is all submit needs.
+	base := first
+	for _, s := range current.Sources {
+		if len(s.Memories) > 0 {
+			sources := make([]reflectSource, len(current.Sources))
+			for i, s := range current.Sources {
+				sources[i] = reflectBare(s)
+			}
+			current.Sources = sources
+			base = append(append([]string{}, first...), "the texts of the delivered lessons (each keeps its source_id and key: wiki query lesson:<id> reads one)")
+			if reply, fits := try(current, 4, 0, heads, base...); fits {
+				return reply
+			}
+			break
+		}
+	}
+	notes := base
 	for dropped := 1; len(current.Sources) > 1; dropped++ {
 		current.Sources = append([]reflectSource{}, current.Sources[:len(current.Sources)-1]...)
 		current.MorePending++
-		notes = []string{fmt.Sprintf("the last %d conversations (counted in more_pending: query again after the submit)", dropped)}
-		if reply, fits := try(current, 4, 0, heads, notes...); fits {
-			return reply
-		}
-	}
-	// The first conversation alone is over the bound (a request with a pasted log of 30 KB): as the last step it comes as a head
-	// too, and output says so. Left whole it put the reply over the bound, which the agent's tool cuts blindly (audit of 0.31.0).
-	if len(current.Sources) == 1 && !current.Sources[0].Head {
-		current.Sources = []reflectSource{reflectHead(current.Sources[0])}
-		notes = append(notes, "the raw text of the first conversation (it alone is over max_bytes: read it with wiki query <its id>)")
+		notes = append(append([]string{}, base...), fmt.Sprintf("the last %d conversations (counted in more_pending: query again after the submit)", dropped))
 		if reply, fits := try(current, 4, 0, heads, notes...); fits {
 			return reply
 		}

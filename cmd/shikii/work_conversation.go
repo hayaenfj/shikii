@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/hex"
-	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -91,8 +90,27 @@ func preparedWorkTask(s *hookSession, w *workState, req workRequest) (string, ma
 	}
 	context["provided_bytes"] = len(task)
 	context["quote_notice"] = "Conversation references quote bounded planning excerpts. Task text supplies context, including joined human messages; it is not a new quotation reference or permission."
-	if workContextSize(map[string]any{"task": task, "task_context": context}) > workSourceBudget {
-		return "", nil, errors.New("the stored request exceeds the preparation budget; read the original human message in the host conversation and use the individual planning and recording operations")
+	// The task may take the largest reply a caller can name, less what the rest of the smallest reply needs. As JSON a character
+	// such as < takes six bytes, so 50 KiB of pasted HTML is 130 KiB there: with the budget of the other texts (128 KiB) the
+	// preparation was refused and the agent held no receipt (audit of 0.31.0). Only a request that is nearly all such characters
+	// does not fit even so: it is cut like one longer than what the hook keeps, and says so in the same words.
+	fits := func(text string) bool {
+		context["provided_bytes"] = len(text)
+		return workContextSize(map[string]any{"task": text, "task_context": context}) <= workSourceBudget*3-workTaskReserve
+	}
+	if !fits(task) {
+		context["text_status"] = "stored_request_truncated"
+		context["next_action"] = "Read the original human message in the host conversation before interpreting missing conditions; stored text cannot reconstruct the omitted tail."
+		low, high := 0, len(task) // the longest head that fits
+		for low < high {
+			if middle := (low + high + 1) / 2; fits(cut(task, middle)) {
+				low = middle
+			} else {
+				high = middle - 1
+			}
+		}
+		task = cut(task, low)
+		fits(task) // provided_bytes of what is returned
 	}
 	return task, context, nil
 }

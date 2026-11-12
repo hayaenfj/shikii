@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -153,7 +152,7 @@ func cmdNotebook(args []string) error {
 		if err != nil || len(data) > limit {
 			return fmt.Errorf("wiki %s input exceeds %d KiB or could not be read", req.Operation, limit>>10)
 		}
-		if len(bytes.TrimSpace(data)) == 0 {
+		if noJSON(data) {
 			return emptyInputRefusal("wiki", "wiki "+req.Operation)
 		}
 		var target any = &req.Draft

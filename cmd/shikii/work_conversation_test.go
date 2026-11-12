@@ -124,7 +124,7 @@ func TestAuditDeliveryCurrentStoredTextBoundary(t *testing.T) {
 			t.Fatal(e)
 		}
 		_, e = workCall(t, b, "prepare", map[string]any{"session_id": "planning", "turn_id": s.TurnID, "query": "formats"})
-		if e == nil || !strings.Contains(e.Error(), "preparation budget") {
+		if e == nil || !strings.Contains(e.Error(), "exceed max_bytes") {
 			t.Fatal("oversized encoded task must fail explicitly", e)
 		}
 		dir, e := openWorkSessions(root)

@@ -229,12 +229,12 @@ func reflectHead(s reflectSource) reflectSource {
 		}
 		cutMemories = append(cutMemories, o)
 	}
-	// The targets keep what submit needs (spec, trace_id, the question); the texts they carry are cut like the conversation's own:
-	// a target holds the whole request in original_inputs, so a head of a conversation with a pasted log was as large as the
-	// conversation itself and made every conversation after it wait (audit of 0.31.0).
+	// The targets keep what submit needs (spec, trace_id, the question) and the list of changed files, which is what a target
+	// about the scope of the changes is scored on (30 paths at most). The texts of the conversation they carry are cut like the
+	// conversation's own: a target holds the whole request in original_inputs, so a head of a conversation with a pasted log was
+	// as large as the conversation itself and made every conversation after it wait (audit of 0.31.0).
 	cutTargets := make([]reviewTarget, 0, len(s.Targets))
 	for _, target := range s.Targets {
-		target.Files = cut(target.Files, reflectHeadBytes)
 		if len(target.OriginalInputs) > 0 {
 			inputs := make(map[string]string, len(target.OriginalInputs))
 			for key, text := range target.OriginalInputs {
@@ -245,6 +245,24 @@ func reflectHead(s reflectSource) reflectSource {
 		cutTargets = append(cutTargets, target)
 	}
 	return reflectSource{Source: source, Targets: cutTargets, WikiPending: s.WikiPending, Memories: cutMemories, Head: true}
+}
+
+// reflectBare is a conversation whose delivered lessons keep only what submit needs: the source, the key, the page and its
+// revision, who it went to, and a correction cut like a head's. A turn that started many subagents has a delivery for each (61 in
+// the audit of 0.31.0), and even its head was over the CLI's bound; wiki query lesson:<id> reads a lesson whole.
+func reflectBare(s reflectSource) reflectSource {
+	bare := make([]store.MemoryObservation, 0, len(s.Memories))
+	for _, o := range s.Memories {
+		q := store.MemoryQuote{Key: o.Quote.Key, ID: o.Quote.ID, Revision: o.Quote.Revision}
+		if c := o.Quote.Correction; c != nil { // a correction is answered with correction_result: the delivery says it is one
+			shortened := *c
+			shortened.Quote, shortened.Action = cut(c.Quote, reflectHeadBytes), cut(c.Action, reflectHeadBytes)
+			q.Correction = &shortened
+		}
+		bare = append(bare, store.MemoryObservation{SourceID: o.SourceID, Parent: o.Parent, Agent: o.Agent, At: o.At, Quote: q})
+	}
+	s.Memories = bare
+	return s
 }
 
 type reflectReceipt struct {
@@ -453,7 +471,7 @@ func cmdReflect(args []string) error {
 	if args[0] != "query" {
 		// read once here, so an empty standard input is told apart from JSON that cannot be read; decodeReflect keeps its own limit
 		data, err := io.ReadAll(io.LimitReader(stdin, reflectInputMax+1))
-		if err == nil && len(bytes.TrimSpace(data)) == 0 {
+		if err == nil && noJSON(data) {
 			return emptyInputRefusal("reflect", "reflect "+args[0])
 		}
 		var input io.Reader = bytes.NewReader(data)

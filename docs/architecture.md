@@ -43,7 +43,7 @@ Decision questions are handled by the decision model (TypeSafe's Jev is recommen
 
 Implementation: `cmd/shikii/hook.go`, `cmd/shikii/hook_feedback.go`. Details: [hook connection](../integrations/claude-code.md).
 
-Before starting work, the usual agent organizes the current request, the decisions already made and the open questions from the original text as evidence. `hook plan query / submit` hands over the recent conversation and the needed wiki pages, and checks quotes, project and revisions. The four ready-made questions for a new project are worded so they also work for documents, research and business work, but they do not confuse observing changed files with business work done elsewhere. Updates keep the existing questions and calibration.
+Before starting work, the usual agent organizes the current request, the decisions already made and the open questions from the original text as evidence. `work prepare` hands over the recent conversation and the needed wiki pages, and `work record` checks quotes, project and revisions (`hook plan query / submit` is the older entry for the same). The four ready-made questions for a new project are worded so they also work for documents, research and business work, but they do not confuse observing changed files with business work done elsewhere. Updates keep the existing questions and calibration.
 
 ## 3. Grow lessons with sources from conversation
 

@@ -204,7 +204,7 @@ func TestAuditCTheProcedureRecordIsNotEvidence(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if raw := auditJSON(later["errors"]); later["complete"] == true || !strings.Contains(raw, "a report this work wrote about itself") {
+		if raw := auditJSON(later["errors"]); later["complete"] == true || !strings.Contains(raw, "wrote about itself") {
 			t.Errorf("a later result with nothing observed cites the procedure record as %q and is not refused: complete=%v errors=%s", ref, later["complete"], raw)
 		}
 	}
@@ -281,6 +281,9 @@ func TestAuditCReportsOfARecordWrittenBeforeTheyWereNoted(t *testing.T) {
 		t.Fatal(err)
 	}
 	second := f.prepare(ids, "CSV export filters")
+	if carried, _ := second["carried"].(map[string]any); carried != nil && strings.Contains(auditJSON(carried["sources"]), "observed") {
+		t.Errorf("a record without the note of its reports hands them over as observations: %s", auditJSON(carried["sources"]))
+	}
 	repaired, err := f.record(second, map[string]any{"result": map[string]any{"ref": idA, "evidence": []any{"result"}}})
 	if err == nil && repaired["complete"] == true {
 		t.Errorf("a record without the note of its reports was prepared again, and report A is complete with report B (result) as its evidence: %.300s", auditJSON(repaired["saved"]))
@@ -321,5 +324,26 @@ func TestAuditCStandaloneHowToRecordWhenTheReplyIsShortened(t *testing.T) {
 		if strings.Contains(how, "(current,") {
 			t.Errorf("INVARIANT 10: %s: a receipt without hook ids is told to cite current (evidence takes references (current, ...)), which its record refuses", c.name)
 		}
+	}
+}
+
+// A trial is evidence a result can cite, so a report is no evidence of a trial either (audit E of 0.31.0, an unconfirmed doubt:
+// the way round through a trial was open).
+func TestAuditEATrialCannotCiteAReport(t *testing.T) {
+	_, _, b, p := reasoningFixture(t)
+	saveReasoning(t, b, p["receipt"], reasoningInput("start", "current"), nil)
+	saved, err := workCall(t, b, "record", map[string]any{"receipt": p["receipt"], "observations": []any{trialObservation("The totals match.")},
+		"result": map[string]any{"changed": "Checked the totals.", "checked": "Compared the totals.", "evidence": []string{"new1"}}})
+	if err != nil || saved["storage"].(map[string]any)["result_source"] == "" {
+		t.Fatalf("precondition: the result is saved: %v %.300s", err, auditJSON(saved))
+	}
+	planned, err := workCall(t, b, "record", map[string]any{"receipt": p["receipt"], "trial": map[string]any{"plan": trialPlan("small", "result")}})
+	if raw := auditJSON(planned) + fmt.Sprint(err); !strings.Contains(raw, "wrote about itself") {
+		t.Errorf("a trial plan cites the result of this work as its evidence and is not refused: %.400s", raw)
+	}
+	// negative: the observation the work saved is evidence of a trial
+	kept, err := workCall(t, b, "record", map[string]any{"receipt": p["receipt"], "trial": map[string]any{"plan": trialPlan("small", "observed1")}})
+	if raw := auditJSON(kept) + fmt.Sprint(err); strings.Contains(raw, "wrote about itself") {
+		t.Errorf("a trial plan citing a saved observation is refused as if it cited a report: %.400s", raw)
 	}
 }

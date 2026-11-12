@@ -25,6 +25,9 @@ const continuedWorkHowTo = "Use this receipt and its initial recording contract.
 // and keeps the way back to it; max_bytes asks for another size.
 const cliPrepareBytes = 28 << 10
 
+// workTaskReserve is what the largest reply keeps free of the task: the receipt, how_to_record, output and the references.
+const workTaskReserve = 16 << 10
+
 // workMinBudget is the smallest max_bytes a prepare takes; the largest is workSourceBudget*3. The help names both from here.
 const workMinBudget = 8192
 

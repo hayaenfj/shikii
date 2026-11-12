@@ -174,7 +174,7 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 				if w.citingEvidence { // the work's own reports are sources, and not evidence (selfEvidence refuses them)
 					kept := usable[:0]
 					for _, name := range usable {
-						if !w.Reports[w.Sources[name]] {
+						if name != "result" && name != "procedure" && !w.Reports[w.Sources[name]] {
 							kept = append(kept, name)
 						}
 					}

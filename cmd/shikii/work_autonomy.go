@@ -222,8 +222,7 @@ func recordProcedureFeedback(book notebook.Book, w *workState, c *workCompletion
 	e := recoverProcedureFeedback(book, w, save, commit)
 	view := p.View
 	if e == nil && view != nil && view.Source != "" {
-		w.Sources["procedure"] = view.Source
-		markReport(w, view.Source) // written from the result report: what the work says about itself, not what it observed
+		w.Sources["procedure"] = view.Source // written from the result report: selfEvidence knows it by its title
 		e = save()
 	}
 	return view, e
@@ -303,7 +302,6 @@ func recoverPreparedProcedure(root, scope string, dir *os.Root, name string, w *
 		if p.CloseReport && p.Pending != nil && p.Indexed == p.Pending.Snapshot.ID && w.Result != nil && w.Result.Source == p.Indexed && workResultReviewCurrent(w) && !w.Reasoning.WikiPending && !reasoningPublicationsPending(w) && len(w.Reasoning.PendingCaptures) == 0 && trialPendingCount(w.Reasoning) == 0 && pendingResultCount(w.Reasoning) == 0 {
 			if p.View != nil && p.View.Source != "" {
 				w.Sources["procedure"] = p.View.Source
-				markReport(w, p.View.Source)
 			}
 			resolve := func(refs []string) ([]string, error) {
 				ids := []string{}

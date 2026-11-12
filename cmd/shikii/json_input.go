@@ -34,6 +34,12 @@ func decodeStrictObject(data []byte, target any) (err error, extra bool) {
 	return nil, dec.Decode(&trailing) != io.EOF
 }
 
+// noJSON reports whether an input holds no JSON at all: nothing, white space, or a byte order mark with nothing after it. The
+// entries that answer an empty standard input with their forms ask this, so a mark alone gets the same answer as nothing.
+func noJSON(data []byte) bool {
+	return len(bytes.TrimSpace(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf")))) == 0
+}
+
 // decodeObject reads the JSON object of an entry that passes over keys it does not know: the decision API (decide, label, tune),
 // which the MCP tools shikii_decide, shikii_label and shikii_tune reach, and the entries the page calls (redo, the tune actions,
 // restoring answers, wiki claims). What it cannot read is worded by the same reader as decodeStrictObject. Before, these entries

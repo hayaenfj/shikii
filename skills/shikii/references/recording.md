@@ -104,7 +104,7 @@ not preserve this new session progress.
 ### Bounded reading and memory upgrades
 
 prepare accepts optional max_bytes, 8192–393216 UTF-8 JSON bytes, for the complete
-response (default 65536; 28672 bytes on the CLI, a size an agent's shell shows whole; a longer request is not cut, and the reply grows to hold it).
+response (default 65536; 28672 bytes on the CLI, a size an agent's shell shows whole; a longer request is not cut, and the reply grows to hold it; the hook keeps 64 KiB of a request, and `task_context` says when it kept less).
 output reports omitted fields and recovery directions.
 Use exact article/source queries only when necessary. Omitted text is not supplied
 or read; unavailable conditions, counterexamples and premise warnings remain
@@ -282,8 +282,8 @@ article lock covers each ending-revision check and completion publication,
 including the final session write; it is released during model inference.
 The common hooks verify saved records, not the internal thought process or every tool's
 execution order. No new model, setting or person scoring is needed. A standalone
-agent-supplied preparation can record the same review but cannot satisfy another
-hook turn. Update the binary and skills and reopen agent sessions together before
+agent-supplied preparation can record the same review, citing `newN` or
+`knowledgeN` (it has no `current`), but cannot satisfy another hook turn. Update the binary and skills and reopen agent sessions together before
 using this contract; older writers do not preserve this progress.
 
 ## Expectations, execution and the next check (0.27.0)

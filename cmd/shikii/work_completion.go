@@ -32,7 +32,12 @@ func validateWorkCompletion(c *workCompletion) error {
 // selfEvidence refuses evidence that names the result itself, or another report this work wrote about itself (an earlier result,
 // an ending review). Such a report is saved as a source of its own (under the next observedN name, and as result), so a result with
 // nothing observed could cite it and be complete; two reports could cite each other (audit of 0.31.0).
-func selfEvidence(w *workState, result string, refs []string) error {
+//
+// A report is known by what it is, not only by the note this receipt took of it: the source's own title (workReportSource). Three
+// rounds of the audit each found a name under which a report reached a receipt without the note (after a preparation again,
+// after a save that failed once, as a pending observation evidenceN of this or of an earlier request, in a record written before
+// the notes). The note (Reports) is still what keeps a report out of the references handed over and listed.
+func selfEvidence(book notebook.Book, w *workState, result string, refs []string) error {
 	for _, ref := range refs {
 		id := w.Sources[ref]
 		if id == "" {
@@ -44,6 +49,8 @@ func selfEvidence(w *workState, result string, refs []string) error {
 			what = "this result itself"
 		case w.Reports[id]:
 			what = "a report this work wrote about itself (an earlier result or an ending review), not something it observed"
+		case workReportSource(book, id):
+			what = "a report a work wrote about itself (a result, an ending review or the record of its procedure), not something that was observed"
 		default:
 			continue
 		}
@@ -54,6 +61,31 @@ func selfEvidence(w *workState, result string, refs []string) error {
 		return fmt.Errorf("evidence %q is %s: cite what you checked (%s), or leave evidence out", ref, what, cite)
 	}
 	return nil
+}
+
+// The sources a work writes about itself, by the titles it gives them (kind agent): a result, its ending review, the source that
+// binds a result to its evidence, and the record of the procedure a result closed (written by notebook.RecordProcedure).
+const (
+	workResultTitle   = "Work result and remaining conditions"
+	workReviewTitle   = "Evidence-linked work judgment and ending review"
+	workRecoveryTitle = "Recovered work result evidence"
+	workProcedureName = "Procedure execution"
+)
+
+// workReport reports whether a source with this kind and title is one a work wrote about itself.
+func workReport(kind, title string) bool {
+	return kind == "agent" && (title == workResultTitle || title == workReviewTitle || title == workRecoveryTitle || title == workProcedureName)
+}
+
+// workReportSource reads a saved source and reports whether it is one a work wrote about itself. A reference that is no saved
+// observation (current, a page, a conversation) is none.
+func workReportSource(book notebook.Book, id string) bool {
+	material, err := book.ReadSources([]string{id})
+	if err != nil {
+		return false
+	}
+	originals, _ := material["observations"].([]notebook.Observation)
+	return len(originals) == 1 && workReport(originals[0].Kind, originals[0].Title)
 }
 
 // currentRef is "current, " in a sentence that lists what evidence can cite, and nothing for a receipt without hook ids: it has no
@@ -105,11 +137,11 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 			return workItem{Kind: "result", Ref: "result"}, e
 		}
 		originals := material["observations"].([]notebook.Observation)
-		if len(originals) != 1 || originals[0].Title != "Work result and remaining conditions" || originals[0].Content != string(data) {
+		if len(originals) != 1 || originals[0].Title != workResultTitle || originals[0].Content != string(data) {
 			return workItem{Kind: "result", Ref: "result"}, errors.New("the saved result changed or is unavailable")
 		}
 		if w.Result.Ready {
-			if e := selfEvidence(w, w.Result.Source, c.Evidence); e != nil {
+			if e := selfEvidence(book, w, w.Result.Source, c.Evidence); e != nil {
 				return workItem{Kind: "result", Ref: "result", ID: w.Result.Source}, e
 			}
 			bound, e := bindWorkEvidence(book, w, c.Evidence, resolve)
@@ -126,14 +158,13 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 		}
 	}
 	if id == "" {
-		_, id, err = captureWorkObservation(book, w, workObservation{Kind: "agent", Title: "Work result and remaining conditions", Content: string(data), Reference: evidenceVersion, report: true}, save, commit)
+		_, id, err = captureWorkObservation(book, w, workObservation{Kind: "agent", Title: workResultTitle, Content: string(data), Reference: evidenceVersion, report: true}, save, commit)
 	}
 	item := workItem{Kind: "result", Ref: "result", ID: id}
 	if err != nil {
 		return item, err
 	}
 	w.Sources["result"] = id
-	markReport(w, id) // also for a saved result that is used again: no capture runs for it
 	w.Result = &workCompletionRef{ReviewGeneration: w.Reasoning.Generation, Source: id, Signature: signature, Unresolved: c.Remaining != "" || c.Sufficient != nil && !*c.Sufficient}
 	w.Reasoning.Result = w.Result
 	if w.Reasoning.PendingResults == nil {
@@ -153,7 +184,7 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 	if err = save(); err != nil {
 		return item, err
 	}
-	if err = selfEvidence(w, id, c.Evidence); err != nil {
+	if err = selfEvidence(book, w, id, c.Evidence); err != nil {
 		return item, err
 	}
 	evidence, err := bindWorkEvidence(book, w, c.Evidence, resolve)

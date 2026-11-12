@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -222,14 +221,19 @@ func workEncode(t workToken) string {
 	b, _ := json.Marshal(t)
 	return base64.RawURLEncoding.EncodeToString(b)
 }
+
+// errInvalidReceipt says what a receipt is and where it comes from: the call was refused with "invalid work receipt" alone when
+// the receipt was left out, left as the help's <receipt>, or the hook's ids were sent to record instead (audit of 0.31.0).
+var errInvalidReceipt = errors.New("invalid work receipt: pass the receipt of the reply of work prepare (prepare first, with the ids of the hook notice or with query and request)")
+
 func workDecode(token string) (workToken, error) {
 	var t workToken
 	if len(token) > 1000 {
-		return t, errors.New("invalid work receipt")
+		return t, errInvalidReceipt
 	}
 	data, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil || json.Unmarshal(data, &t) != nil || t.Session == "" || len(t.Session) > 200 || len(t.Turn) != 16 || len(t.Nonce) != 32 {
-		return t, errors.New("invalid work receipt")
+		return t, errInvalidReceipt
 	}
 	if workEncode(t) != token {
 		return t, errors.New("the work receipt changed")
@@ -394,7 +398,7 @@ func runWork(root, scope, operation string, req workRequest) (any, error) {
 	return nil, errors.New("work operation must be prepare or record")
 }
 
-func prepareWork(root, scope string, req workRequest) (any, error) {
+func prepareWork(root, scope string, req workRequest) (out any, err error) {
 	if _, e := workOutputBudget(req.MaxBytes); e != nil {
 		return nil, e
 	}
@@ -448,6 +452,15 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 		if err = writeWorkSession(dir, name, s); err != nil {
 			return nil, err
 		}
+		// A preparation without hook ids makes a session record of its own before it knows that the reply fits. When it is
+		// refused, no receipt names that record: it is taken away again (the CLI's widening ran the preparation up to three
+		// times and each refused attempt left one, until the cleaning after seven days: audit of 0.31.0).
+		defer func() {
+			if err != nil {
+				dir.Remove(name)
+				dir.Remove(name + ".work.lock")
+			}
+		}()
 		contextRevision = workHash(s.Planning)
 	} else {
 		value, e := runPlanning(root, scope, "query", planningRequest{SessionID: req.SessionID, TurnID: req.TurnID, Query: req.Query, workPrepare: true})
@@ -486,6 +499,16 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 			markReport(w, id)
 		}
 	}
+	if handover != nil {
+		// A record written before reports were noted (0.30.8) hands its reports over as observations: they are known by what they
+		// are, noted here and not handed on.
+		for ref, id := range handover.Sources {
+			if workReportSource(notebook.Book{Root: root, Scope: scope}, id) {
+				markReport(w, id)
+				delete(handover.Sources, ref)
+			}
+		}
+	}
 	carried := takeOver(w, handover)
 	if carried != nil && again {
 		carried["next_action"] = "This request was prepared before. The references of that preparation are valid with this receipt: cite the pages and the saved sources without reading them again, and edit the pages it did not edit. A page it edited is read again before another edit (prepare with this receipt and query lesson:<id>). Record with this receipt."
@@ -503,13 +526,6 @@ func prepareWork(root, scope string, req workRequest) (any, error) {
 	w.Result = w.Reasoning.Result
 	if w.Result != nil && w.Result.Source != "" {
 		w.Sources["result"] = w.Result.Source
-		markReport(w, w.Result.Source)
-	}
-	for id, pending := range w.Reasoning.PendingResults { // reports that wait for their evidence, and the sources that bind it
-		markReport(w, id)
-		if pending != nil {
-			markReport(w, pending.Source)
-		}
 	}
 	restoreReasoningCaptures(w)
 	if err := bindReasoningOwner(w.Reasoning, req.SessionID); err != nil {
@@ -646,7 +662,7 @@ func cmdWork(args []string) error {
 	if err != nil || len(data) > 8<<20 {
 		return errors.New("work JSON transport exceeds 8 MiB")
 	}
-	if len(bytes.TrimSpace(data)) == 0 {
+	if noJSON(data) {
 		return emptyInputRefusal("work", "work "+args[0])
 	}
 	var req workRequest

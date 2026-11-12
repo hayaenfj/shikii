@@ -220,7 +220,11 @@ func recordWorkTrial(book notebook.Book, w *workState, request workTrialRequest,
 			return item, err
 		}
 		bound := *request.Plan
-		var err error
+		// a trial is evidence a result can cite: a report cited here would reach the result by that way round
+		err := selfEvidence(book, w, "", bound.Evidence)
+		if err != nil {
+			return item, err
+		}
 		bound.Evidence, err = bindWorkEvidence(book, w, bound.Evidence, resolve)
 		if err != nil {
 			return item, err
@@ -269,7 +273,10 @@ func recordWorkTrial(book notebook.Book, w *workState, request workTrialRequest,
 			return item, err
 		}
 		bound := *request.Result
-		var err error
+		err := selfEvidence(book, w, "", bound.Evidence)
+		if err != nil {
+			return item, err
+		}
 		bound.Evidence, err = bindWorkEvidence(book, w, bound.Evidence, resolve)
 		if err != nil {
 			return item, err

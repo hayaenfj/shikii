@@ -260,7 +260,7 @@ func TestAuditD_A5_DefaultReplyOverTheDocumentedBound(t *testing.T) {
 	if len(out) <= cliPrepareBytes {
 		t.Fatalf("precondition: the reply of a request of %d bytes is over the CLI's own bound: %d bytes", len(prompt), len(out))
 	}
-	if !strings.Contains(note, "A request longer than that is not cut: the reply grows to hold it.") {
+	if !strings.Contains(note, "A request longer than that is not cut: the reply grows to hold it") {
 		t.Errorf("a request of %d bytes, no max_bytes: the reply is %d bytes, and the help says only that the CLI keeps it within %d: %s", len(prompt), len(out), cliPrepareBytes, note)
 	}
 	for _, doc := range []string{"docs/guide.md", "docs/guide.ja.md", "skills/shikii/references/recording.md"} {
