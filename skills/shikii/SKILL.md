@@ -17,6 +17,7 @@ Use it at five moments:
 
 ## Write briefly
 
+- Replies to the person: the key points as short bullets, in plain, concise words, the result first. Keep what they need to act on (what was done, results, failures, what is left, decisions they must make); do not drop those to be shorter.
 - Use short bullets for judgments, notes, reports and failure explanations; one point per bullet. Keep only what changes the decision or supports the result.
 - For a failure, retain the relevant **expectation, observation, cause, correction/next check and evidence**. Mark an unverified cause as a hypothesis or unknown. Omit inapplicable items; small replies need no full template.
 - State conditions, exceptions, uncertainty and source/revision refs. Cite evidence once; reuse supplied context instead of repeating it. Keep exact quotations and original source material unchanged.
