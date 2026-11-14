@@ -12,7 +12,7 @@ func publishWorkNote(book notebook.Book, w *workState, n workNote, d notebook.Dr
 	if n.Target != "" && n.Target != "new" {
 		target, ok := w.Articles[n.Target]
 		if !ok {
-			return item, nil, errors.New("unknown prepared article target; use a knowledge reference from prepare: " + listRefs(sortedRefs(w.Articles)) + "; for another page, prepare with this receipt and query lesson:<id>")
+			return item, nil, errors.New("unknown or ambiguous prepared article target; use an explicit knowledge reference from prepare: " + listRefs(sortedRefs(w.Articles)) + "; for another page, prepare with this receipt and query lesson:<id>")
 		}
 		patch := notebook.Patch{ID: target.ID, Revision: target.Revision, Sources: d.Sources, ChangeReason: d.ChangeReason, Edits: n.Edits, Passages: d.Passages, Learning: d.Learning}
 		preview, err = book.PreviewPatch(patch)

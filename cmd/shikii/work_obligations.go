@@ -93,6 +93,7 @@ func requiredNoteSignature(w *workState, n workNote) string {
 }
 
 func reserveRequiredNote(book notebook.Book, w *workState, n workNote, save func() error, commit workCommitter) (string, workNote, error) {
+	targetID := w.Articles[n.Target].ID
 	// An ID is an alias only when the receipt holds one version of that page.
 	if sourceIDText(n.Target) {
 		ref, revision := "", ""
@@ -101,8 +102,11 @@ func reserveRequiredNote(book notebook.Book, w *workState, n workNote, save func
 			if article.ID != n.Target {
 				continue
 			}
+			targetID = article.ID
 			if revision != "" && revision != article.Revision {
-				return "", n, errors.New("article target names multiple prepared revisions; use an explicit knowledge reference: " + listRefs(sortedRefs(w.Articles)))
+				// Keep the unresolved ID so publication refuses it after its intent and sources are retained.
+				ref = ""
+				break
 			}
 			ref, revision = candidate, article.Revision
 		}
@@ -147,7 +151,7 @@ func reserveRequiredNote(book notebook.Book, w *workState, n workNote, save func
 		for key, article := range w.Articles {
 			intent.Articles[key] = article
 		}
-		r.RequiredNotes[ref] = &workRequiredNote{TargetID: w.Articles[n.Target].ID, Signature: signature, Pending: n.Ref, PendingWork: w.Nonce, Inline: intent, At: time.Now().UTC()}
+		r.RequiredNotes[ref] = &workRequiredNote{TargetID: targetID, Signature: signature, Pending: n.Ref, PendingWork: w.Nonce, Inline: intent, At: time.Now().UTC()}
 		r.WikiPending = true
 		if err := save(); err != nil {
 			return ref, n, err
