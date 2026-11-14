@@ -2,6 +2,20 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.32.0 — Review wiki wording and reduce recording work
+
+### Highlights
+
+- Ask the agent to "tidy shikii" to check wiki wording against its sources and correct overstatement and repeated explanations. The skill keeps meaning, conditions, exceptions and history; shortening text is not its goal.
+- Before saving new or revised claims, the skill guides the agent through checking them against the original request and sources. It distinguishes an unreported result from work that was not performed, including in the final reply.
+- Request hooks now deliver the prepared context directly. The agent can read it and save an ordinary result without making a separate preparation call.
+
+### Fixes
+
+- Saved articles and their sources are returned for review, with saving and review completion shown separately. Reviews of multiple edited articles continue in batches without unrelated articles taking their place.
+- A short follow-up still requires the agent to decide whether it continues the previous request. Saving a result alone no longer bypasses that check.
+- Preparation that overlaps another preparation keeps the existing references instead of overwriting them. Evidence for a report saved with an article edit follows the revision written by that same operation.
+
 ## 0.31.0 — Easier for an agent to call: fewer failed calls, replies that fit, and no approval prompt in Codex
 
 ### Highlights

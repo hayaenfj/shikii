@@ -9,12 +9,12 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-1977%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-1996%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.31.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.32.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.31.0では、エージェントがshikiiを呼びやすくしました。ヘルプと断りが次に送る物を示し、返事はエージェントの道具が表示できる大きさに収まり、作業の途中であなたが発言してもエージェントは読んだ物を失わず、Codexはshikiiの道具を、呼ぶたびに確認せずに実行します。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
+0.32.0では、「shikiiを整理して」と頼んでwikiの言い過ぎや反復を見直せるようになりました。意味・条件・例外を保つ手順を加え、エージェントの準備と保存後確認の手間も減らしました。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
 
 同じプロジェクトへ書く本体を全て更新し、hookなしの場合は既存のプロジェクトで `shikii --init` を実行して作法も更新してください。その後、エージェントのセッション・ページ・MCPを起動し直します。既存の記録を保持し、原資料を残したメモリ更新作業をエージェントへ届けます。進捗は英語で表示します。詳しくは[記憶と学習](../memory-and-learning.ja.md)を参照してください。
 
@@ -120,7 +120,7 @@ export PATH="$HOME/.local/bin:$PATH"
 shikii hook install --yes
 ```
 
-シェルの設定でも `~/.local/bin` をPATHに加え、続けて手順3で利用するプロジェクトを初期化してください。版を指定する時は、両方のコマンドの `@latest` を `@v0.31.0` のようなタグへ置き換えます。
+シェルの設定でも `~/.local/bin` をPATHに加え、続けて手順3で利用するプロジェクトを初期化してください。版を指定する時は、両方のコマンドの `@latest` を `@v0.32.0` のようなタグへ置き換えます。
 
 Goを上げた後や実行ファイルを動かした後にhookが働かなくなったら、上のインストーラーのコマンドをもう一度流してください。多くは実行ファイルそのものが消えていて(miseのようなGoの版の管理ツールでは、Goを上げると `go install` が置いた版ごとのフォルダごと消えます)、`shikii doctor` も一緒に消えています。`shikii` がまだ動く時は `shikii doctor` を流すと、hookやCodexの登録が、もう無い・動かせないshikiiの実行ファイルを指している時はそう言い、直し方を出します。
 
@@ -170,7 +170,7 @@ shikiiがエージェントに入れた物を外します。`~/.claude/settings.
 
 hookを入れると、毎回のターンの2つの瞬間が残ります。エージェントが始める前の依頼と、終えた後の返答と変わったファイルです。次の人の発言が一組を閉じます。前の依頼の続きだけの発言(「ok」「続けて」「それでいこう」など)は、前の依頼にまとめます。続きかどうかはエージェントが着手前の整理で決め、決まった相づちの一覧は予備です。エージェントはそこから出典付きの教訓を書き、shikiiは似た仕事の前に関係する教訓を届けます。エージェントは振り返りで、届いた教訓が役立ったかを報告します。保存した評価から、同じ入り口で繰り返し使われなかった教訓や判断を妨げた教訓を、判断と証拠付きで優先して見直しに回します。エージェントが出典を確認してから編集し、変更不要という判断も保存できます。不明な評価や古い版の評価を、悪い評価として扱いません。
 
-0.31.0では、エージェントが呼ぶ入口が、誤った呼び方に原因と次に送る内容を返し、ヘルプはそのまま実行できる形を表示します。返事はreceiptから始まり、エージェントの道具が表示できる大きさに収まります。収まらない時も、検索の候補の上位と教訓の題は残ります。作業の途中であなたが発言した時は、中断された作業の参照を次の準備が引き継ぎます。Codexはshikiiの道具を、承認の確認なしで実行します（shikiiが書いた登録に `default_tools_approval_mode = "approve"` を書くためです）。
+0.32.0では、依頼hookが文脈と証拠を準備して届けます。エージェントは内容を読み、通常の結果を1回の保存操作で記録できます。記事を編集した場合は、返された保存後の本文と出典を確認し、その確認を記録します。hookがない場合は、従来どおり準備と保存を呼び出します。
 
 0.30.5では、履歴整理の読取からファイル置換まで、記録と回答の追記と同じ錠を保持します。同時保存による消失を防ぎ、削除しない確認実行の動きは保持します。
 

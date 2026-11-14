@@ -9,12 +9,12 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-1977%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-1996%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.31.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.32.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.31.0 makes shikii easier for an agent to call: help and refusals say what to send next, replies fit what the agent's tool shows, a message you send mid-work no longer costs the agent what it had read, and Codex runs shikii's tools without asking before each call. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
+Version 0.32.0 lets you ask the agent to "tidy shikii" and review overstatement and repetition in the wiki. The skill preserves meaning, conditions and exceptions, while preparation and review after saving take fewer separate calls. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
 
 Update all writers sharing a project, refresh skills with `shikii --init` when using no hooks, then reopen agent sessions and restart the page and MCP. Existing records are retained; the agent receives source-preserving memory upgrade work with English progress. [Memory and learning](docs/memory-and-learning.md) explains what changes.
 
@@ -120,7 +120,7 @@ export PATH="$HOME/.local/bin:$PATH"
 shikii hook install --yes
 ```
 
-Keep `~/.local/bin` on PATH in your shell settings, then initialize the projects you choose in step 3. To install a specific release, replace `@latest` in both commands with a tag such as `@v0.31.0`.
+Keep `~/.local/bin` on PATH in your shell settings, then initialize the projects you choose in step 3. To install a specific release, replace `@latest` in both commands with a tag such as `@v0.32.0`.
 
 If the hooks stop working after you upgrade Go or move the binary, run the installer command above again: the binary itself is often what is gone (with a Go version manager such as mise, a Go upgrade removes the per-version folder `go install` put it in), and `shikii doctor` with it. When `shikii` still runs, `shikii doctor` says when the hooks or the Codex registration point to a shikii binary that no longer exists or cannot run, and how to fix it.
 
@@ -170,7 +170,7 @@ Procedure reuse returns at most two candidate outcomes, prioritizing current con
 
 With the hooks installed, two moments of every turn are kept: the request before the agent starts, and the reply and the changed files after it ends. The next human message closes the pair. A message that only continues the previous request ("ok", "continue", "sounds good") is attached to it instead; the agent decides this in its pre-start organizing, and a fixed list of acknowledgements is the fallback. The agent writes lessons with sources from them, and shikii delivers relevant lessons before similar work. In reflection the agent reports whether a delivered lesson helped. Saved assessments also prioritize lessons for review: repeated unused deliveries at the same entry point, or a harmful delivery, bring the lesson back with the decisions and evidence. The agent checks its sources before changing it, and a no-change review also settles that evidence. Unknown and older-revision assessments do not count as negative feedback.
 
-In 0.31.0, the entries an agent calls answer a wrong call with its cause and what to send next, and help prints forms that run as written. A reply starts with its receipt and stays within what an agent's tool shows; when it does not fit, the top search candidates and the lesson titles remain. A message you send mid-work hands the references of the interrupted work to the next preparation. Codex runs shikii's MCP tools without an approval prompt, because the registration shikii wrote carries `default_tools_approval_mode = "approve"`.
+In 0.32.0, the request hook prepares and delivers context and evidence. The agent reads it and can save an ordinary result in one call. After editing an article, it checks the returned saved text and sources, then records that review. Without hooks, the agent still calls preparation and recording explicitly.
 
 In 0.30.5, history cleanup holds the same locks as record and answer appends until its replacement file is in place. This prevents concurrent saves from being lost; dry runs keep their existing behavior.
 

@@ -111,6 +111,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.30.7 | Past answers of yours that never helped are no longer shown to the agent. |
 | 0.30.8 | That decision can be undone on the page. Lines you were writing before a request are no longer treated as the agent's. |
 | 0.31.0 | An agent's calls to its memory fail less often. A message you send mid-work no longer costs the agent what it had read. |
+| 0.32.0 | Checks wiki wording against sources while preserving meaning; delivers prepared context and saved articles for review. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -323,3 +324,11 @@ So help now prints forms that run as written, a refusal says its cause and what 
 The other change is for a message you send while the agent is working. Until now that started a new request, and the agent read the same pages again. In 0.31.0 the next preparation takes over the pages it had read and the sources it had saved. Only references go over: the result is reported as the new request's own.
 
 Before and after were compared by sending the same small request to real agents. Each was measured a few times, so this does not say every request improves by the same amount.
+
+### In 0.32.0, check what memory says while reducing recording work
+
+Ask the agent to "tidy shikii" to review existing articles against their original sources. The skill preserves conditions, exceptions, uncertainty and history, and repairs unsupported wording or repetition with the same meaning. It does not use length as a quality target or turn an unreported result into a claim that the work was not performed.
+
+New or revised claims are checked against the original request and sources before saving. Interpretations, translations and combined sources receive a separate review when available; direct copying that meets the skill's conditions can be checked by the author. The agent reports any unavailable independent review. These instructions guide the agent; they do not guarantee the quality of every generated sentence.
+
+Request hooks now deliver prepared context directly. After saving an edited article, shikii returns its text and source references for review, and distinguishes successful saving from completed review. The agent still checks the content and records its review. Stored knowledge keeps its sources and history.
