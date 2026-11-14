@@ -5,16 +5,16 @@ import (
 	"testing"
 )
 
-// The skill's references say what an agent that holds no receipt does first (planning.md: prepare with the hook's ids, then
-// record), and that a first conversation over the bound even alone comes as a head (review.md). Both are what 0.31.0 does, and no
-// test held the sentences (audit J of 0.31.0: taking either out passed every test).
+// Reference guidance distinguishes missing preparation from a supplied hook preparation, and preserves bounded-source recovery.
 func TestTheReferencesSayWhatAReceiptlessAgentDoesFirst(t *testing.T) {
-	for path, words := range map[string]string{
-		"../../skills/shikii/references/planning.md": "prepare first with the current hook\u2019s IDs when you hold no receipt",
-		"../../skills/shikii/references/review.md":   "A first conversation over the bound even alone comes as a head from the start.",
+	for path, words := range map[string][]string{
+		"../../skills/shikii/references/planning.md": {"When the hook supplies prepared work, read it directly", "prepare first only when no usable preparation remains", "After explicit replacement preparation, use `receipt` instead of those IDs."},
+		"../../skills/shikii/references/review.md":   {"A first conversation over the bound even alone comes as a head from the start."},
 	} {
-		if !strings.Contains(string(mustRead(t, path)), words) {
-			t.Errorf("%s does not say %q", path, words)
+		for _, word := range words {
+			if !strings.Contains(string(mustRead(t, path)), word) {
+				t.Errorf("%s does not say %q", path, word)
+			}
 		}
 	}
 }

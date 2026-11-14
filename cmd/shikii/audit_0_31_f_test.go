@@ -261,40 +261,54 @@ func TestAuditFInitWithoutHooksAddsTheCodexLineAndLeavesTheHooksOff(t *testing.T
 	}
 }
 
-// planning.md's minimal record for a short message, with the receipt of the prepare its Stop names, settles the Stop. Audit F
-// found the minimal form written with the hook's ids: work record refused it, and hook plan submit left the Stop blocked.
+// The documented hook-ID example and its explicit-replacement form both settle a short message.
 func TestAuditFPlanningMinimalRecordSettlesAShortMessage(t *testing.T) {
 	planning := string(mustRead(t, "../../skills/shikii/references/planning.md"))
-	at := strings.Index(planning, "the minimal `")
-	if at < 0 || !strings.Contains(planning[at:at+400], "is enough") {
-		t.Fatal("planning.md no longer has the minimal record")
+	const prefix = "For example, `"
+	at := strings.Index(planning, prefix)
+	if at < 0 {
+		t.Fatal("planning.md no longer has its record example")
 	}
-	minimal := planning[at+len("the minimal `"):]
+	minimal := planning[at+len(prefix):]
 	minimal = minimal[:strings.Index(minimal, "`")]
-	repo, root, _ := planningFixture(t)
-	t.Chdir(repo)
-	ids := auditFSecondShort(t, repo)
-	if reason, blocked := auditFStop(t, repo, auditFSession, false); !blocked || !strings.Contains(reason, "work record") {
-		t.Fatalf("precondition: the Stop of the short message asks for work record: %s", reason)
+	for _, replaced := range []bool{false, true} {
+		t.Run(fmt.Sprint(replaced), func(t *testing.T) {
+			repo, _, _ := planningFixture(t)
+			t.Chdir(repo)
+			ids := auditFSecondShort(t, repo)
+			if reason, blocked := auditFStop(t, repo, auditFSession, false); !blocked || !strings.Contains(reason, "work record") {
+				t.Fatalf("the short message asks for work record: %s", reason)
+			}
+			var hookIDs, record map[string]any
+			if json.Unmarshal([]byte(ids), &hookIDs) != nil || json.Unmarshal([]byte(minimal), &record) != nil {
+				t.Fatal("the hook IDs and documented example must be JSON")
+			}
+			if record["session_id"] != "<hook session>" || record["turn_id"] != "<hook turn>" {
+				t.Fatal("the example must use the current hook identifiers", record)
+			}
+			record["session_id"], record["turn_id"] = hookIDs["session_id"], hookIDs["turn_id"]
+			if replaced {
+				prepared, err := agentCLI(t, strings.TrimSuffix(ids, "}")+`,"query":"CSV export tabs"}`, "work", "prepare")
+				if err != nil {
+					t.Fatal(err)
+				}
+				delete(record, "session_id")
+				delete(record, "turn_id")
+				record["receipt"] = prepared["receipt"]
+			}
+			body, err := json.Marshal(record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			saved, err := agentCLI(t, string(body), "work", "record")
+			if err != nil || saved["complete"] != true {
+				t.Fatal("the documented form must save", saved, err)
+			}
+			if reason, blocked := auditFStop(t, repo, auditFSession, true); blocked {
+				t.Errorf("the documented form must settle the short message: %s", reason)
+			}
+		})
 	}
-	prepared, err := agentCLI(t, strings.TrimSuffix(ids, "}")+`,"query":"CSV export tabs"}`, "work", "prepare")
-	if err != nil {
-		t.Fatal(err)
-	}
-	receipt, _ := prepared["receipt"].(string)
-	body := strings.ReplaceAll(minimal, "<receipt>", receipt)
-	if !json.Valid([]byte(body)) || !strings.Contains(body, receipt) {
-		t.Fatalf("the minimal record with the receipt filled in is not JSON with the receipt: %s", body)
-	}
-	saved, err := agentCLI(t, body, "work", "record")
-	if err != nil {
-		t.Fatalf("planning.md's minimal record is refused by work record: %v", err)
-	}
-	t.Logf("saved: %.200s", auditJSON(saved["saved"]))
-	if reason, blocked := auditFStop(t, repo, auditFSession, true); blocked {
-		t.Errorf("planning.md says the minimal record is enough; after it the Stop is still blocked: %s", reason)
-	}
-	_ = root
 }
 
 // recording.md says a receipt without hook ids records the same review citing newN or knowledgeN, and has no current. Its
