@@ -53,6 +53,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 		lines = uncommittedLines(agent, in.CWD, listingHeader(request), listing)
 	}
 	turnID := store.NewTraceID()
+	in.workTurn = turnID
 	previous, _, _ := readSessionLatest(in.SessionID) // the request this one replaces: whether its work is handed over (work_handover.go)
 	noteSessionRequest(in.SessionID, agent, turnID)
 	in.stateNoted = true

@@ -4,16 +4,51 @@ Use this as the ordinary workflow from 0.19. `work prepare` gathers the current 
 
 Built-in instructions use English independently of the person's display language. Keep requests, wiki quotations, reported reasons and other source text in their original language. Configured-language question/answer labels are display evidence, not translated instructions. Write replies and work-record prose in the person's requested language.
 
-## Ordinary work takes two calls
+## Find the relevant step
 
-1. Call prepare once with the host's hook identifiers and topic words. Without
-   hooks, supply an agent task with query/request. Preparation saves a timestamped
-   start, not an invented AI judgment or human agreement.
-2. At the end, record once with its receipt and the following content. Combine
-   any needed notes, provisional reviews, memory and maintenance in that call.
+For an ordinary task, start with [Prepare once; record the result](#prepare-once-record-the-result).
+Use the returned context to choose further sections; this reference is not a
+checklist to read in full on every request.
+
+- Explaining known evidence: [Keep records relevant](#keep-records-relevant).
+- Saving an article or source: [Record what you judged](#record-what-you-judged).
+- Pending reflection: [Reflect without rebuilding identifiers](#reflect-without-rebuilding-identifiers).
+- Failed or partial saves: [Check the result and retry](#check-the-result-and-retry).
+- Omitted evidence or upgrade progress: [Bounded reading and memory upgrades](#bounded-reading-and-memory-upgrades).
+- Trials and comparisons: [Expectations, execution and the next check](#expectations-execution-and-the-next-check-0270).
+
+## Prepare once; record the result
+
+1. Read the preparation supplied by the request hook; do not call prepare again
+   from scratch. The hook searches the request text; check relevance and extend
+   with its receipt and topic words when needed. Without a supplied preparation,
+   call prepare with hook IDs and topic words, or query/request without hooks.
+   Preparation saves a timestamped start, never an invented AI judgment.
+2. At the end, record the result with the hook session_id/turn_id and any needed notes,
+   provisional reviews and memory. Include maintenance only for pages this call
+   does not edit. For edited pages, read the saved `procedure_reviews[].article`
+   and check it against the sources; if omitted, query its returned ID/revision.
+   Then record maintenance with
+   the returned `procedure_reviews` ref. Do not send their old
+   maintenance ref with the edit.
+
+Hook IDs can record only the hook's initial preparation in that project and turn.
+An explicit replacement prepare can reassign local references, so it requires its
+new receipt. A receipt remains supported in all paths, including hosts without
+hooks. Topic extensions keep the existing receipt. Expired or foreign contexts
+are refused; IDs do not select another turn or bypass evidence checks.
+
+Article revision and watched-premise notices are separate checks. A false
+`premise_changed` does not mean the article revision is unchanged. Read the
+revision too. Memory-upgrade progress concerns the source-preserving review of
+older pages, not whether the current result was saved; an unclassified passage
+is unresolved interpretation, not an order to classify every sentence now.
+
+Prefer the hook IDs for an ordinary result. Use a receipt instead when there
+was no hook preparation or you explicitly replaced it.
 
 ```json
-{"receipt":"<receipt>","result":{
+{"session_id":"<hook session_id>","turn_id":"<hook turn_id>","result":{
   "changed":"Checked the existing export; no new lasting knowledge.",
   "checked":"The synthetic two-tenant export retained the owner filter.",
   "evidence":["new1"],"remaining":""
@@ -43,7 +78,9 @@ Continued work can send only its new result and notes under the same receipt.
 Inspect storage.status: saved means the original result and requested work were
 saved; saved-pending means the original exists but some organization/review remains;
 unconfirmed means persistence was not confirmed. complete concerns the submitted
-recording, not success of the underlying task. Retry failed/pending refs only,
+recording, not success of the underlying task. When present, review_complete
+separately reports whether the saved pages still need review. Read the returned
+article and sources and follow next_action before treating review as finished. Retry failed/pending refs only,
 without restating a saved result. Required-note recovery retains its original
 payload and evidence across preparation. Missing sources and stale revisions need
 explicit recovery; neither is an evaluated success. The existing Stop checks keep
@@ -175,12 +212,16 @@ edited article itself still needs review. New evidence, changed premises and the
 the previous exact-version behavior. Review submissions still require the latest
 revision and key, including current related revisions.
 
-## Keep records brief
+## Keep records relevant
 
 - Use short bullets in agent-authored judgment, note and report text; one point per bullet. Reuse context and cite evidence once.
 - Explain a failure with the relevant expectation, observation, cause, correction/next check and evidence. Label an unverified cause as a hypothesis or unknown; omit inapplicable items.
 - Preserve deciding conditions, exceptions, uncertainty and source/revision refs. Keep exact quotations and original source material unchanged.
 - Keep the existing JSON fields, types and byte limits. Bullets belong inside text values, not new fields or arrays. Small replies need only the required short review; trials and comparisons remain optional.
+- `result` records this work; `notes` update reusable knowledge. Omit notes for unchanged knowledge, including a routine successful check. New or changed rules, tests and procedures still need a note. Use the matching article and exact edits; see [wiki.md](wiki.md).
+- Before publishing new or revised claims in notes, choose the check in [source-review.md](source-review.md). Check direct, attributed transfers yourself; batch drafts needing separate review into one call and validate its corrections before recording. A result-only record and an unchanged storage retry do not need this review.
+- For an explanation based on already-read evidence, use the hook's supplied preparation and record the result once. Without a supplied preparation and with the complete relevant article available in context, use topic words and `reasoning:{depth:"brief"}` in prepare. Compare the current revision and premise notices. Reuse the retained text only when both remain unchanged; recover the current full text if they changed, deciding conditions are missing, or the earlier text is unavailable. Do not request a pinned old revision just to make it match. Required pending reviews still apply. Add other records only for actual changes, evidence or supplied assessment refs.
+- Separate the person's decisions, observations and proposals; keep each claim within its evidence and conditions. Explain the result to the person before internal recording steps. Do not treat fewer words as better quality. For changes to these instructions, use [content-quality.md](content-quality.md).
 
 ## Prepare once
 
@@ -452,7 +493,7 @@ The outcome index retains at most 128 records within the search journal's existi
 
 ## Record what you judged
 
-An outcome with both failure and correction immediately returns pending `procedure_reviews`, also available from ordinary maintenance as `outcome-feedback`. Each review has a short `ref`, the current procedure revision, original action/conditions/evidence, exact current text candidates and the reported proposed correction. Compare these before editing; a temporary failure or a different condition does not establish that the procedure is wrong. Record a source-backed note; its response returns updated `procedure_reviews`. Check the saved change and record `maintenance:[{ref,reason}]` with that latest ref to complete review. An edit alone does not complete review and the old ref is stale. For a checked no-change conclusion, record the reason with the original ref. Keys cover the article, related knowledge and indexed execution evidence: reviewed unchanged evidence does not recur, while a new result reopens review. If a procedure changed, read its current revision with the same receipt before patching. Additional older outcomes are counted but only two are supplied per review; inspect their sources when needed. A report whose saved report or evidence is missing or was changed is listed as unreadable: its `unknown` names the sources to recover (`<source id> (missing)`, `(changed)` or `(unreadable)`), none of its content is shown, and `maintenance` for that article is refused until they are back. Tell the person which sources to recover; do not review or edit from a report you could not read. The rest of the list is unaffected, and while other work waits such articles take at most one of its two places.
+An outcome with both failure and correction immediately returns pending `procedure_reviews`, also available from ordinary maintenance as `outcome-feedback`. Each review has a short `ref`, the current procedure revision, original action/conditions/evidence, exact current text candidates and the reported proposed correction. Compare these before editing; a temporary failure or a different condition does not establish that the procedure is wrong. Record a source-backed note; its response returns updated `procedure_reviews`. Read the returned `procedure_reviews[].article` and check its sources and conditions, then record `maintenance:[{ref,reason}]` with that latest ref to complete review. `review_complete:false` means review remains even if `complete:true` confirms the submitted batch was saved; `next_action` names the follow-up. Query the exact returned revision only if the article is unavailable. An edit alone does not complete review and the old ref is stale. For a checked no-change conclusion, record the reason with the original ref. Keys cover the article, related knowledge and indexed execution evidence: reviewed unchanged evidence does not recur, while a new result reopens review. If a procedure changed, read its current revision with the same receipt before patching. Additional older outcomes are counted but only two are supplied per review; inspect their sources when needed. A report whose saved report or evidence is missing or was changed is listed as unreadable: its `unknown` names the sources to recover (`<source id> (missing)`, `(changed)` or `(unreadable)`), none of its content is shown, and `maintenance` for that article is refused until they are back. Tell the person which sources to recover; do not review or edit from a report you could not read. The rest of the list is unaffected, and while other work waits such articles take at most one of its two places.
 
 Pipe content to `shikii work record`:
 
@@ -483,11 +524,21 @@ or the pending note's reference, a returned article target and exact edits. The 
 
 A pending note with relationships, watched premises or a correction cannot be merged through exact text edits: record rejects it explicitly. Use ordinary wiki ingest for structural changes, or target new to retain the pending draft as a separate article.
 
-For an existing article, use its prepared reference and precise edits:
+For an existing article, use its prepared reference and precise edits. Existing
+sources are retained; add only the new evidence refs supplied by this work. Do not
+copy raw IDs from the article's sources list into notes[].sources.
 
 ```json
 {"receipt":"<receipt>","notes":[{"target":"knowledge1","sources":["observed1"],"change_reason":"The checked behavior now includes date filters.","edits":[{"field":"body","before":"Preserve tenant filters.","after":"Preserve tenant and date filters."}]}]}
 ```
+
+An existing target takes its prepared `knowledgeN` ref, or its article ID when
+this receipt holds only one revision of that article. Multiple prepared revisions
+require an explicit ref. A result in the same batch can cite that article: its
+evidence follows the revision this batch saved, but never another writer's edit.
+Edited pages return current `procedure_reviews` even without prior outcomes.
+Read the saved page, then use the returned ref for any maintenance review; a
+key from before the edit is stale.
 
 The recorded revision is checked atomically. Other sections, citations and relationships remain. A stale revision requires reading and reconciling the current article, using the same receipt for an additional lookup when possible; it never becomes permission to overwrite. Use the existing patch/ingest operations for structural changes such as replacements, related links or watched-file baselines. Keep current body limits and provenance requirements.
 
@@ -496,7 +547,7 @@ The recorded revision is checked atomically. Other sections, citations and relat
 Use the prepared content to record:
 
 - `reviews:[{ref,answer:"yes|no|unknown",reason}]` for provisional scores. Read the original question, inputs, model answer and human reply. Each prepared memory also retains its actual delivery request, agent, tool, phrase and time; distinguish these from the parent conversation. Agreement with a model is an agreed machine outcome, never a person's answer.
-- `memory:[{ref,result,decision,evidence,correction_result?}]` for delivered memory. Use the existing result values (helpful, unused, harmful, unknown); a helpful result needs a concrete decision and checked effect. Preserve the first assessment. Never infer helpfulness from delivery, successful tests, silence or a save.
+- `memory:[{ref,result,decision,evidence,correction_result?}]` for the refs in `pending[].memory[]`. A `knowledgeN` article is not an assessment ref; omit memory when none was prepared. Use the existing result values (helpful, unused, harmful, unknown); a helpful result needs a concrete decision and checked effect. Preserve the first assessment. Never infer helpfulness from delivery, successful tests, silence or a save.
 - `reviewed:["source1","evidence1"]` when you read a source and it supports no lasting lesson. Save any intended knowledge first.
 - `maintenance:[{ref,reason}]` after checking the displayed task against its sources. A changed article or neighborhood invalidates the retained key.
 

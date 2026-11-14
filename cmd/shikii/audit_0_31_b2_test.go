@@ -11,30 +11,30 @@ import (
 
 // More probes of audit B (0.31.0). Both only printed what the candidate did; each now fails when what it shows is broken.
 
-// The Stop block for a turn that changed a file and prepared nothing: what skills/shikii/references/planning.md says Stop asks for.
+// The Stop block for a hook-prepared turn that changed a file without saving its ending result.
 func TestAuditB_StopBlockAfterAChangedFile(t *testing.T) {
-	repo, _, _ := planningFixture(t)
+	repo, root, _ := planningFixture(t)
 	t.Chdir(repo)
-	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
+	preparedHookReply(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest}))
+	turnID := loadSession(root, "planning").TurnID
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# changed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."}))
 	t.Logf("blocked=%v\n%s", blocked, reason)
 	if !blocked {
-		t.Fatalf("finishing with a changed file and nothing prepared is stopped: %s", reason)
+		t.Fatalf("finishing with a changed file and no saved ending result is stopped: %s", reason)
 	}
-	// INVARIANT 7: one flow, work prepare then work record, with the way to call it through the MCP tool
-	for _, w := range []string{" work prepare", "the same way to work record", "the MCP tool shikii_wiki, operation prepare", "MCP: operation record"} {
+	// INVARIANT 7: the real hook prepares once; Stop directs its IDs and result to work record, including the MCP form.
+	for _, w := range []string{"has its hook-prepared start and needs the saved ending result", planJSON("planning", turnID), "result:{changed,checked?,evidence?:[refs],remaining?}", " work record", "the MCP tool shikii_wiki, operation record"} {
 		if !strings.Contains(reason, w) {
 			t.Errorf("the block lacks %q:\n%s", w, reason)
 		}
 	}
-	// The legacy flow is named only to say that it is not run. Checked as what is allowed, not as a list of the old sentences:
-	// with that one phrase taken out, the block does not name hook plan at all (planning.md said Stop requests hook plan submit).
-	const allowed = "do not also run hook plan query, which replaces its receipt"
-	if rest := strings.ReplaceAll(reason, allowed, ""); !strings.Contains(reason, allowed) || strings.Contains(rest, "hook plan") {
-		t.Errorf("the block names hook plan other than to say %q:\n%s", allowed, reason)
+	for _, obsolete := range []string{"hook plan", "receipt of your work prepare"} {
+		if strings.Contains(reason, obsolete) {
+			t.Errorf("the hook-prepared block requires an obsolete preparation step %q:\n%s", obsolete, reason)
+		}
 	}
 }
 

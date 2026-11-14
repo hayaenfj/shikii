@@ -111,6 +111,15 @@ func runHook(t *testing.T, event string, in map[string]any) string {
 			supplyReasoningFixture(root, session)
 		}
 	}
+	return runManualHook(t, event, in)
+}
+
+// Legacy guard fixtures supply their reasoning prerequisite and exercise the
+// manual preparation path. New flow tests keep the real hook preparation.
+func runManualHook(t *testing.T, event string, in map[string]any) string {
+	previous := hookWorkPreparation
+	hookWorkPreparation = func(string, *hookInput, *hookOut) {}
+	defer func() { hookWorkPreparation = previous }()
 	return runUnreviewedHook(t, event, in)
 }
 

@@ -15,7 +15,8 @@ func auditBReadingFixture(t *testing.T) (string, string, notebook.Book, map[stri
 	repo, root, _ := planningFixture(t)
 	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
 	reasoningPage(t, b, "CSV audit reading", "howto", strings.Repeat("Keep the requested CSV owner condition in the recovered source.\n\n", 80))
-	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "reasoning", "cwd": repo, "prompt": planningTestRequest})
+	// Brief must be the initial reading depth, before any automatic focused read.
+	runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "reasoning", "cwd": repo, "prompt": planningTestRequest})
 	p, err := workCall(t, b, "prepare", map[string]any{"session_id": "reasoning", "turn_id": loadSession(root, "reasoning").TurnID, "query": "CSV audit reading", "reasoning": map[string]any{"depth": "brief"}})
 	if err != nil || p["reading"] == nil {
 		t.Fatal("synthetic reading preparation failed", err)
@@ -136,12 +137,8 @@ func TestReadingAuditBPendingOmissionSurvivesNextHumanTurn(t *testing.T) {
 	if _, err := b.OutcomeSources([]string{original.Source}); err != nil {
 		t.Fatal("snapshot was not persisted", err)
 	}
-	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "reasoning", "cwd": repo, "prompt": "Check another CSV ownership condition."})
+	next := preparedHookReply(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "reasoning", "cwd": repo, "prompt": "Check another CSV ownership condition."}))
 	after := loadSession(root, "reasoning")
-	next, err := workCall(t, b, "prepare", map[string]any{"session_id": "reasoning", "turn_id": after.TurnID, "query": "CSV audit reading"})
-	if err != nil {
-		t.Fatal("next turn preparation failed", err)
-	}
 	retry, err := workCall(t, b, "record", map[string]any{"receipt": next["receipt"], "reading": map[string]any{"ref": ref}})
 	if _, err := workCall(t, b, "record", map[string]any{"receipt": p["receipt"], "reading": map[string]any{"ref": ref}}); err == nil {
 		t.Fatal("the previous turn receipt became valid again")
@@ -208,12 +205,14 @@ func TestReadingAuditBInterruptedCaptureSurvivesReplacementPreparation(t *testin
 			if memo.At.IsZero() {
 				t.Fatal("original capture time missing")
 			}
+			var next map[string]any
 			if newTurn {
-				runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "reasoning", "cwd": repo, "prompt": "Check another CSV condition after capture interruption."})
-			}
-			next, err := workCall(t, b, "prepare", map[string]any{"session_id": "reasoning", "turn_id": loadSession(root, "reasoning").TurnID, "query": "CSV audit reading"})
-			if err != nil {
-				t.Fatal("replacement preparation failed", err)
+				next = preparedHookReply(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "reasoning", "cwd": repo, "prompt": "Check another CSV condition after capture interruption."}))
+			} else {
+				next, err = workCall(t, b, "prepare", map[string]any{"session_id": "reasoning", "turn_id": loadSession(root, "reasoning").TurnID, "query": "CSV audit reading"})
+				if err != nil {
+					t.Fatal("replacement preparation failed", err)
+				}
 			}
 			v, err = workCall(t, b, "record", map[string]any{"receipt": next["receipt"], "reading": map[string]any{"ref": ref}})
 			if err != nil || v["complete"] != true {

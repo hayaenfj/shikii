@@ -285,9 +285,8 @@ func TestAuditB_CarriedPagesCanBeEdited(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ask := func(prompt string) string {
-			runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt})
-			return loadSession(root, "planning").TurnID
+		ask := func(prompt string) map[string]any {
+			return preparedHookReply(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt}))
 		}
 		refOf := func(prepared map[string]any) string {
 			for _, raw := range prepared["knowledge"].([]any) {
@@ -297,10 +296,7 @@ func TestAuditB_CarriedPagesCanBeEdited(t *testing.T) {
 			}
 			return ""
 		}
-		first, err := workCall(t, b, "prepare", map[string]any{"session_id": "planning", "turn_id": ask(planningTestRequest), "query": "CSV export filters"})
-		if err != nil {
-			t.Fatal(err)
-		}
+		first := ask(planningTestRequest)
 		ref := refOf(first)
 		now := "The export keeps the filters."
 		if editedBefore {
@@ -312,10 +308,7 @@ func TestAuditB_CarriedPagesCanBeEdited(t *testing.T) {
 			}
 			now = "The export keeps the filters and the totals."
 		}
-		second, err := workCall(t, b, "prepare", map[string]any{"session_id": "planning", "turn_id": ask("Also check the dates of the CSV export."), "query": "invoice numbering"})
-		if err != nil {
-			t.Fatal(err)
-		}
+		second := ask("Also check the dates of the CSV export.")
 		carried, _ := json.Marshal(second["carried"])
 		edit := func(target string) (map[string]any, error) {
 			return workCall(t, b, "record", map[string]any{"receipt": second["receipt"],

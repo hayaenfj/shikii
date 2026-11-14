@@ -46,7 +46,11 @@ func saveReasoning(t *testing.T, b notebook.Book, receipt any, reasoning map[str
 
 func TestReasoningHookRequiresWorkEvenWithoutPrepare(t *testing.T) {
 	repo, root, _ := planningFixture(t)
-	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "reasoning", "cwd": repo, "prompt": planningTestRequest})
+	runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "reasoning", "cwd": repo, "prompt": planningTestRequest})
+	before := loadSession(root, "reasoning")
+	if before.Planning.Work != nil || before.Reasoning == nil || !before.Reasoning.Required || !before.Reasoning.PreparedAt.IsZero() {
+		t.Fatal("the manual hook must require review without preparing work")
+	}
 	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": "reasoning", "cwd": repo, "last_assistant_message": "Checked."})
 	if !strings.Contains(out, "reasoning-before-end") || !strings.Contains(out, "work prepare") || loadSession(root, "reasoning").Judged {
 		t.Fatalf("a request must retain its reasoning obligation before prepare: %s", out)

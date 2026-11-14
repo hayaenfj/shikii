@@ -3,6 +3,7 @@ package notebook
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -160,7 +161,15 @@ func sameMaintenanceContent(previous maintenanceCheckpoint, task MaintenanceTask
 }
 
 func (b Book) Maintenance() ([]MaintenanceTask, error) {
-	return b.maintenance(nil)
+	return b.maintenance(nil, false)
+}
+
+// MaintenanceForPages applies the page selection before the two-review limit.
+func (b Book) MaintenanceForPages(ids []string) ([]MaintenanceTask, error) {
+	if len(ids) == 0 {
+		return []MaintenanceTask{}, nil
+	}
+	return b.maintenance(ids, false)
 }
 
 // OutcomeMaintenance returns pending reviews only for the procedures just used.
@@ -169,14 +178,49 @@ func (b Book) OutcomeMaintenance(ids []string) ([]MaintenanceTask, error) {
 	if len(ids) == 0 {
 		return []MaintenanceTask{}, nil
 	}
-	return b.maintenance(ids)
+	return b.maintenance(ids, true)
 }
 
-func (b Book) maintenance(ids []string) ([]MaintenanceTask, error) {
+func (b Book) maintenance(ids []string, outcomesOnly bool) ([]MaintenanceTask, error) {
 	b = b.scopedRead()
-	pages, _, err := b.pages()
+	pages, issues, err := b.pages()
 	if err != nil {
 		return nil, err
+	}
+	if ids != nil && !outcomesOnly {
+		// Maintain also rejects unreadable pages: their relationships are unknown.
+		if len(issues) > 0 {
+			return nil, fmt.Errorf("wiki page %s is unreadable or changed; restore it or inspect wiki lint before reviewing", issues[0].Page)
+		}
+		known := map[string]Page{}
+		for _, p := range pages {
+			known[p.ID] = p
+		}
+		for _, id := range ids {
+			p, exists := known[id]
+			if !exists {
+				return nil, fmt.Errorf("selected page %s is missing; restore its current article before reviewing", id)
+			}
+			if p.Status == "deleted" {
+				continue
+			}
+			required := append([]string{id}, p.Related...)
+			required = append(required, p.Replaces...)
+			for _, other := range pages {
+				if slices.Contains(other.Related, id) || slices.Contains(other.Replaces, id) {
+					required = append(required, other.ID)
+				}
+			}
+			for _, relatedID := range required {
+				related, exists := known[relatedID]
+				if !exists {
+					return nil, fmt.Errorf("related page %s is missing; restore it before reviewing page %s", relatedID, id)
+				}
+				if len(b.sourceIssues(related)) > 0 {
+					return nil, fmt.Errorf("page %s has unreadable or changed sources; restore them before reviewing page %s", relatedID, id)
+				}
+			}
+		}
 	}
 	if len(pages) == 0 {
 		return []MaintenanceTask{}, nil
@@ -201,7 +245,7 @@ func (b Book) maintenance(ids []string) ([]MaintenanceTask, error) {
 		return nil, err
 	}
 	for _, task := range tasks {
-		if ids != nil && (!slices.Contains(ids, task.PageID) || task.OutcomeTotal == 0) {
+		if ids != nil && !slices.Contains(ids, task.PageID) || outcomesOnly && task.OutcomeTotal == 0 {
 			continue
 		}
 		previous, seen := checkpoints[task.PageID]

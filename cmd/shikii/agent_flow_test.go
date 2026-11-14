@@ -34,7 +34,7 @@ func TestTheNoticeAndTheStopBlockAskForOneFlow(t *testing.T) {
 		}
 		return reply, err
 	}
-	notice := feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest}))
+	notice := feedbackContext(t, runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest}))
 	for _, w := range []string{"Do not run the legacy hook plan query: it replaces the receipt.", "result:{changed,checked?,evidence?:[refs],remaining?}"} {
 		if !strings.Contains(notice, w) {
 			t.Errorf("the notice lacks %q: %s", w, notice)
@@ -132,7 +132,7 @@ func TestTheNoticeAndTheStopBlockAskForOneFlow(t *testing.T) {
 	}
 
 	// a receipt replaced by a later preparation says so, and what to use
-	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest + " Also the totals."})
+	runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest + " Also the totals."})
 	next := `"session_id":"planning","turn_id":"` + loadSession(root, "planning").TurnID + `"`
 	first, err := cli(`{`+next+`,"query":"CSV export filters"}`, "work", "prepare")
 	if err != nil {
@@ -176,7 +176,7 @@ func TestTheNoticeAndTheStopBlockNameTheMCPForm(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	t.Chdir(repo)
 	h := newServer(serveOpts{storeDir: root, projectScope: feedbackScope(repo)})
-	notice := feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest}))
+	notice := feedbackContext(t, runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest}))
 	if !strings.Contains(notice, "work prepare (or as work to the MCP tool shikii_wiki, operation prepare)") {
 		t.Errorf("the notice names the MCP form of prepare: %s", notice)
 	}
@@ -234,7 +234,7 @@ func TestAMessageDuringWorkHandsItsReferencesToTheNextPreparation(t *testing.T) 
 	h := newServer(serveOpts{storeDir: root, projectScope: feedbackScope(repo)})
 	ask := func(prompt string) string { // the person's message; returns the ids of its notice
 		t.Helper()
-		notice := feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt}))
+		notice := feedbackContext(t, runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt}))
 		for _, line := range strings.Split(notice, "\n") {
 			if strings.HasPrefix(line, `{"session_id":`) {
 				return line
@@ -385,24 +385,66 @@ func TestAShortMessageIsSettledByTheWorkRecord(t *testing.T) {
 		t.Fatalf("the notice carries the ids: %s", notice)
 		return ""
 	}
-	first := ids(feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})))
-	prepared, _ := mcpToolCall(t, h, "shikii_wiki", `{"operation":"prepare","work":`+strings.TrimSuffix(first, "}")+`,"query":"CSV export filters"}}`)
-	receipt, _ := json.Marshal(prepared["structuredContent"].(map[string]any)["receipt"])
-	mcpToolCall(t, h, "shikii_wiki", `{"operation":"record","work":{"receipt":`+string(receipt)+`,"result":{"changed":"Nothing.","checked":"Read the export."}}}`)
+	firstHook := runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
+	preparedHookReply(t, firstHook)
+	first := ids(feedbackContext(t, firstHook))
+	firstSaved, _ := mcpToolCall(t, h, "shikii_wiki", `{"operation":"record","work":`+strings.TrimSuffix(first, "}")+`,"result":{"changed":"Nothing.","checked":"Read the export."}}}`)
+	if firstSaved["structuredContent"].(map[string]any)["complete"] != true {
+		t.Fatalf("the first request result is saved by its hook IDs: %v", firstSaved)
+	}
 	if reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."})); blocked {
 		t.Fatalf("the first request ends: %s", reason)
 	}
 
-	second := ids(feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "Use tabs there."})))
+	secondHook := runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "Use tabs there."})
+	preparedHookReply(t, secondHook)
+	second := ids(feedbackContext(t, secondHook))
+	before := loadSession(root, "planning")
+	if before.Planning.Result != nil || before.Planning.Grouping == nil || before.Planning.Grouping.Settled || !before.Planning.Work.HookPrepared {
+		t.Fatal("the hook must prepare work without settling the short message's grouping")
+	}
 	reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done."}))
-	if !blocked || strings.Contains(reason, "hook plan submit") || !strings.Contains(reason, `"continues_previous":true or false to the work record below`) || !strings.Contains(reason, "work prepare") {
+	if !blocked || strings.Contains(reason, "hook plan submit") || strings.Contains(reason, "work prepare") || strings.Contains(reason, "receipt") || !strings.Contains(reason, `"continues_previous":true or false to the work record below`) || !strings.Contains(reason, "work record") || !strings.Contains(reason, second) || loadSession(root, "planning").Judged {
 		t.Fatalf("the block asks for the work record alone, with continues_previous in it:\n%s", reason)
 	}
-	prepared, _ = mcpToolCall(t, h, "shikii_wiki", `{"operation":"prepare","work":`+strings.TrimSuffix(second, "}")+`,"query":"tabs"}}`)
-	receipt, _ = json.Marshal(prepared["structuredContent"].(map[string]any)["receipt"])
-	saved, _ := mcpToolCall(t, h, "shikii_wiki", `{"operation":"record","work":{"receipt":`+string(receipt)+`,"agreed":{"unknown":true},"open":{"unknown":true},"continues_previous":true,"result":{"changed":"Nothing.","checked":"Read the export."}}}`)
+	start := strings.Index(reason, `{"session_id":`)
+	var requestedIDs map[string]any
+	if start < 0 {
+		t.Fatal("the Stop recovery must supply the short message's IDs", reason)
+	}
+	if err := json.NewDecoder(strings.NewReader(reason[start:])).Decode(&requestedIDs); err != nil || len(requestedIDs) != 2 || requestedIDs["session_id"] != "planning" || requestedIDs["turn_id"] != before.TurnID {
+		t.Fatal("the Stop recovery must use the current request IDs", requestedIDs, err)
+	}
+	requestedIDs["result"] = map[string]string{"changed": "Nothing.", "checked": "Read the export."}
+	resultOnly, err := json.Marshal(map[string]any{"operation": "record", "work": requestedIDs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	onlySaved, _ := mcpToolCall(t, h, "shikii_wiki", string(resultOnly))
+	if onlySaved["structuredContent"].(map[string]any)["complete"] != true {
+		t.Fatal("the ending result must be saved before checking the separate grouping obligation", onlySaved)
+	}
+	only := loadSession(root, "planning")
+	if only.Planning.Result != nil || only.Planning.Grouping.Settled || only.Reasoning.Finish == nil {
+		t.Fatal("saving only the result must finish reasoning without inventing a grouping decision")
+	}
+	reason, blocked = stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done.", "stop_hook_active": true}))
+	if !blocked || !strings.Contains(reason, "continues_previous") || !strings.Contains(reason, "work record") || strings.Contains(reason, "hook plan submit") || loadSession(root, "planning").Judged {
+		t.Fatal("a saved result must not bypass grouping or replace the hook's work flow", reason)
+	}
+	requestedIDs["agreed"], requestedIDs["open"] = map[string]bool{"unknown": true}, map[string]bool{"unknown": true}
+	requestedIDs["continues_previous"] = true
+	input, err := json.Marshal(map[string]any{"operation": "record", "work": requestedIDs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, _ := mcpToolCall(t, h, "shikii_wiki", string(input))
 	if saved["structuredContent"].(map[string]any)["complete"] != true {
 		t.Fatalf("the record the block describes is saved: %v", saved["structuredContent"])
+	}
+	after := loadSession(root, "planning")
+	if after.Planning.Result == nil || !after.Planning.Grouping.Settled || !after.Planning.Grouping.Joined {
+		t.Fatal("the work record must persist the continuation decision and plan")
 	}
 	if reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Done.", "stop_hook_active": true})); blocked {
 		t.Errorf("the turn ends after that record: %s", reason)

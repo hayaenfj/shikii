@@ -93,6 +93,23 @@ func requiredNoteSignature(w *workState, n workNote) string {
 }
 
 func reserveRequiredNote(book notebook.Book, w *workState, n workNote, save func() error, commit workCommitter) (string, workNote, error) {
+	// An ID is an alias only when the receipt holds one version of that page.
+	if sourceIDText(n.Target) {
+		ref, revision := "", ""
+		for _, candidate := range sortedRefs(w.Articles) {
+			article := w.Articles[candidate]
+			if article.ID != n.Target {
+				continue
+			}
+			if revision != "" && revision != article.Revision {
+				return "", n, errors.New("article target names multiple prepared revisions; use an explicit knowledge reference: " + listRefs(sortedRefs(w.Articles)))
+			}
+			ref, revision = candidate, article.Revision
+		}
+		if ref != "" {
+			n.Target = ref
+		}
+	}
 	if w.Reasoning == nil {
 		return "", n, nil
 	}

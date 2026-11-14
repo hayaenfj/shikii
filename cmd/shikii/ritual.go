@@ -84,11 +84,16 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 	// a turn the person's guard stopped is also GroupingAsked (so the Stop after the block judges it): only a short message's grouping was asked for
 	grouping := groupingAsk(snapshot) || (snapshot.TurnID != "" && snapshot.GroupingAsked == snapshot.TurnID && groupingShort(groupingOf(snapshot)))
 	if p := snapshot.Planning; p != nil && p.TurnID == snapshot.TurnID && !p.ReasoningOnly && ((known && len(changed) > 0) || grouping) {
-		pass := p.Result != nil || snapshot.Reasoning != nil && !snapshot.Reasoning.PreparedAt.IsZero()
+		prepared := snapshot.Reasoning != nil && !snapshot.Reasoning.PreparedAt.IsZero()
+		hookPrepared := p.Work != nil && p.Work.HookPrepared && !p.Work.Standalone
+		if grouping && hookPrepared {
+			prepared = false // The hook did not interpret the person's short follow-up.
+		}
+		pass := p.Result != nil || prepared
 		reason := ""
 		if !pass {
 			remaining++
-			if known && len(changed) > 0 {
+			if known && len(changed) > 0 && !hookPrepared {
 				reason = planningBlockReason(in.SessionID, snapshot.TurnID, len(changed))
 				if reasoningLeftNow > 0 {
 					reason = planningWithWorkReason(len(changed))
@@ -103,7 +108,7 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 					reason += " Include continues_previous (true or false) in " + where + " for this short message."
 				}
 			} else {
-				reason = groupingBlockReason(in.SessionID, snapshot.TurnID)
+				reason = groupingBlockReason(in.SessionID, snapshot.TurnID, hookPrepared)
 				if reasoningLeftNow > 0 { // the work record below is asked for anyway: it carries continues_previous, and one flow is asked for
 					reason = groupingWithWorkReason()
 				}
@@ -117,7 +122,7 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 		reason := ""
 		if left > 0 {
 			remaining += left
-			reason = reasoningBlockReason(in.SessionID, snapshot.TurnID, r)
+			reason = reasoningBlockReason(in.SessionID, snapshot.TurnID, r, snapshot.Planning)
 			failed = append(failed, reason)
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualReasoning, Pass: left == 0, Reason: reason, Recheck: recheck})
@@ -316,10 +321,14 @@ func groupingShort(g *requestGrouping) bool {
 	return g != nil && !isAckReply(g.Reply) && utf8.RuneCountInString(strings.TrimSpace(g.Reply)) < outcomeMovedMinRunes
 }
 
-// groupingBlockReason is the one line of the Stop block that asks only for continues_previous, with the minimal JSON hook plan submit accepts.
-func groupingBlockReason(sessionID, turnID string) string {
+// groupingBlockReason asks for the missing grouping decision through the current preparation's flow.
+func groupingBlockReason(sessionID, turnID string, hookPrepared bool) string {
 	b, _ := json.Marshal(map[string]any{"session_id": sessionID, "turn_id": turnID, "agreed": map[string]bool{"unknown": true}, "open": map[string]bool{"unknown": true}, "continues_previous": false})
-	return fmt.Sprintf("The person's message is short and not a bare acknowledgement, and this turn was not organized, so it is not known whether it continues the previous request: pass %s on standard input to %s hook plan submit (continues_previous true when it only continues or answers the previous request and asks for nothing new), then finish", b, hookExe())
+	command := hookExe() + " hook plan submit"
+	if hookPrepared {
+		command = hookExe() + " work record (or as work to the MCP tool shikii_wiki, operation record)"
+	}
+	return fmt.Sprintf("The person's message is short and not a bare acknowledgement, and this turn was not organized, so it is not known whether it continues the previous request: pass %s on standard input to %s (continues_previous true when it only continues or answers the previous request and asks for nothing new), then finish", b, command)
 }
 
 // groupingWithWorkReason is that line when the same block also asks for work prepare and work record: the record carries
@@ -341,12 +350,15 @@ func planningWithWorkReason(changed int) string {
 	return fmt.Sprintf("The plan has not been sorted out, yet %s changed and you are about to finish: the work prepare below sorts it out (add agreed and open to work record when the person agreed on something or a choice is open); do not also run hook plan query, which replaces its receipt.", files)
 }
 
-// reasoningBlockReason is the review's line of the Stop block: what is still missing and the one call that supplies it. After a
-// prepared start it asks only for the ending, with the receipt the agent holds (asking for work prepare again made agents prepare
-// twice).
-func reasoningBlockReason(sessionID, turnID string, r *reasoningProgress) string {
+// The hook's first preparation uses its request IDs; explicit preparation keeps
+// its receipt so replaced local references cannot bind to different evidence.
+func reasoningBlockReason(sessionID, turnID string, r *reasoningProgress, p *planningFrame) string {
 	next := reasoningView(r).Next
 	if r.Start != nil || !r.PreparedAt.IsZero() {
+		if p != nil && p.TurnID == turnID && p.Work != nil && p.Work.HookPrepared && !p.Work.Standalone {
+			next = strings.Replace(next, "Record the checked result once with this receipt", "Record the checked result once with these IDs", 1)
+			return fmt.Sprintf("The built-in check %s has its hook-prepared start and needs the saved ending result. Send %s and %s on standard input to %s work record (or as work to the MCP tool shikii_wiki, operation record). %s", ritualReasoning, planJSON(sessionID, turnID), workResultShape, hookExe(), next)
+		}
 		return fmt.Sprintf("The built-in check %s has its prepared start and needs the saved ending result. Send the receipt of your work prepare and %s on standard input to %s work record (or as work to the MCP tool shikii_wiki, operation record) (prepare again, with %s and topic words in query, only when you no longer hold the receipt). %s", ritualReasoning, workResultShape, hookExe(), planJSON(sessionID, turnID), next)
 	}
 	return fmt.Sprintf("The built-in check %s needs a prepared start and a saved ending result. Send %s with topic words in query on standard input to %s work prepare (or as work to the MCP tool shikii_wiki, operation prepare), read reasoning and the evidence, then send its receipt and %s the same way to work record (MCP: operation record). %s", ritualReasoning, planJSON(sessionID, turnID), hookExe(), workResultShape, next)

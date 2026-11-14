@@ -141,7 +141,7 @@ func TestAuditFReflectQueryWithManySubagentDeliveries(t *testing.T) {
 func TestAuditFRecordWithoutAReceiptIsToldWhatToSend(t *testing.T) {
 	repo, _, _ := planningFixture(t)
 	t.Chdir(repo)
-	ids := noticeIDs(t, feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": auditFSession, "cwd": repo, "prompt": planningTestRequest})))
+	ids := noticeIDs(t, feedbackContext(t, runManualHook(t, "user-prompt-submit", map[string]any{"session_id": auditFSession, "cwd": repo, "prompt": planningTestRequest})))
 	for name, input := range map[string]string{
 		"the ids of the notice sent to work record":     strings.TrimSuffix(ids, "}") + `,"result":{"changed":"Nothing.","checked":"Read."}}`,
 		"no receipt at all":                             `{"result":{"changed":"Nothing.","checked":"Read."}}`,

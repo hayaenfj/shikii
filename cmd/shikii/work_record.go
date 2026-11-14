@@ -47,6 +47,13 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 			}
 		}
 	}
+	if req.Receipt == "" {
+		var err error
+		req.Receipt, err = hookWorkReceipt(root, scope, req.SessionID, req.TurnID)
+		if err != nil {
+			return nil, err
+		}
+	}
 	token, err := workDecode(req.Receipt)
 	if err != nil {
 		return nil, err
@@ -224,6 +231,9 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 	}
 	noteSources, stopped := batch.recordNotes(noteRefs)
 	if stopped {
+		return result, nil
+	}
+	if batch.refreshResultEvidence() {
 		return result, nil
 	}
 	batch.recordReflection(noteSources)

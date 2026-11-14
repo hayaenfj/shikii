@@ -214,14 +214,12 @@ func TestACallThatCannotBeReadIsAnsweredWithTheForms(t *testing.T) {
 	}
 }
 
-// The notice every request gets named the command and this turn's ids, but not how they reach it ("Pass the identifiers below to
-// shikii work prepare with topic words in query"), which is why sessions began by asking the command for help. It now says that the
-// JSON goes on standard input, and the JSON line it gives, with query added, is accepted by the command as it is.
+// The hook supplies preparation; its IDs and an ending result can be sent to the named command on standard input.
 func TestPlanningNoticeSaysHowItsJSONReachesTheCommand(t *testing.T) {
 	repo, _, _ := planningFixture(t)
 	t.Chdir(repo)
-	notice := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest}))
-	for _, w := range []string{"on standard input to ", " work prepare", "with topic words in query added", "End with work record the same way"} {
+	notice := feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest}))
+	for _, w := range []string{"this task is prepared below", "on standard input to ", " work record", "topic words in query", "using its receipt"} {
 		if !strings.Contains(notice, w) {
 			t.Errorf("the notice lacks %q: %s", w, notice)
 		}
@@ -237,14 +235,14 @@ func TestPlanningNoticeSaysHowItsJSONReachesTheCommand(t *testing.T) {
 	if ids == nil {
 		t.Fatalf("the notice gives this turn's ids as a JSON line: %s", notice)
 	}
-	ids["query"] = "CSV export filters"
+	ids["result"] = map[string]any{"changed": "Explained the current CSV filters."}
 	input, _ := json.Marshal(ids)
 	var out string
 	var err error
-	withStdin(t, string(input), func() { out, err = captureErr(func() error { return cmdWork([]string{"prepare"}) }) })
+	withStdin(t, string(input), func() { out, err = captureErr(func() error { return cmdWork([]string{"record"}) }) })
 	var reply map[string]any
-	if err != nil || json.Unmarshal([]byte(out), &reply) != nil || reply["receipt"] == nil {
-		t.Fatalf("the notice's JSON with query added prepares the task: %v %s", err, out)
+	if err != nil || json.Unmarshal([]byte(out), &reply) != nil || reply["complete"] != true {
+		t.Fatalf("the notice's JSON with result added records the prepared task: %v %s", err, out)
 	}
 }
 

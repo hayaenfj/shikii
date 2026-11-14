@@ -250,27 +250,26 @@ func TestBothNoticesNameTheMCPCallWithTheIdsInsideWork(t *testing.T) {
 	for _, c := range []struct {
 		name    string
 		fixture func(t *testing.T) (repo, root string)
-		notice  string // a sentence only this notice has
 	}{
 		{"with a planning judgment", func(t *testing.T) (string, string) {
 			repo, root, _ := planningFixture(t)
 			return repo, root
-		}, "prepare this task once"},
+		}},
 		{"without a planning judgment", func(t *testing.T) (string, string) {
 			repo := gitRepo(t)
 			return repo, hookEnv(t, fakeAgentModel(t, func(string) float64 { return 0.1 }), repo)
-		}, "it registers the start"},
+		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			repo, root := c.fixture(t)
 			t.Chdir(repo)
 			h := newServer(serveOpts{storeDir: root, projectScope: feedbackScope(repo)})
 			notice := feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "s1", "cwd": repo, "prompt": "fix the typo in a.go"}))
-			if !strings.Contains(notice, c.notice) || !strings.Contains(notice, "work prepare ("+noticeMCPForm+")") {
+			if !strings.Contains(notice, "this task is prepared below") || mcpFormProblem(strings.SplitN(notice, "\n", 2)[0]) != "" {
 				t.Fatalf("the request gets the notice %s, with the MCP form beside the command: %s", c.name, notice)
 			}
 			ids := noticeIDs(t, notice)
-			work := strings.TrimSuffix(ids, "}") + `,"query":"typo in a.go"}`
+			work := strings.TrimSuffix(ids, "}") + `,"result":{"changed":"Nothing.","checked":"Read a.go."}}`
 			call := func(arguments string) (map[string]any, string) {
 				params, _ := json.Marshal(map[string]any{"name": "shikii_wiki", "arguments": json.RawMessage(arguments)})
 				result, _ := handleRPC(rpcRequest{JSONRPC: "2.0", ID: json.RawMessage("1"), Method: "tools/call", Params: params}, h)["result"].(map[string]any)
@@ -278,19 +277,13 @@ func TestBothNoticesNameTheMCPCallWithTheIdsInsideWork(t *testing.T) {
 				return result, string(raw)
 			}
 			// the ids beside operation, as "(MCP: shikii_wiki, operation prepare)" was read: refused
-			if result, raw := call(`{"operation":"prepare",` + strings.TrimPrefix(work, "{")); result["isError"] != true || !strings.Contains(raw, "is a field of work") {
+			if result, raw := call(`{"operation":"record",` + strings.TrimPrefix(work, "{")); result["isError"] != true || !strings.Contains(raw, "is a field of work") {
 				t.Errorf("the ids beside operation are refused, and the refusal names work: %s", raw)
 			}
 			// as the notice says: the JSON as work
-			result, raw := call(`{"operation":"prepare","work":` + work + `}`)
-			prepared, _ := result["structuredContent"].(map[string]any)
-			if result["isError"] == true || prepared["receipt"] == nil {
-				t.Fatalf("the notice's JSON with query added, as work, prepares the task through the MCP tool: %s", raw)
-			}
-			receipt, _ := json.Marshal(prepared["receipt"])
-			result, raw = call(`{"operation":"record","work":{"receipt":` + string(receipt) + `,"result":{"changed":"Nothing.","checked":"Read a.go."}}}`)
+			result, raw := call(`{"operation":"record","work":` + work + `}`)
 			if saved, _ := result["structuredContent"].(map[string]any); result["isError"] == true || saved["complete"] != true {
-				t.Errorf("work record the same way, with the receipt and the result, records the task: %s", raw)
+				t.Errorf("the hook IDs and result inside work record the prepared task: %s", raw)
 			}
 		})
 	}
@@ -301,7 +294,7 @@ func TestBothNoticesNameTheMCPCallWithTheIdsInsideWork(t *testing.T) {
 func TestTheStopBlockSaysWhichCallTakesContinuesPrevious(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	t.Chdir(repo)
-	first := noticeIDs(t, feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})))
+	first := noticeIDs(t, feedbackContext(t, runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})))
 	prepared, err := agentCLI(t, strings.TrimSuffix(first, "}")+`,"query":"CSV export filters"}`, "work", "prepare")
 	if err != nil {
 		t.Fatal(err)
@@ -314,7 +307,7 @@ func TestTheStopBlockSaysWhichCallTakesContinuesPrevious(t *testing.T) {
 		t.Fatalf("the first request ends: %s", reason)
 	}
 	// a short message that is not a bare acknowledgement, and a file changed with nothing prepared
-	second := noticeIDs(t, feedbackContext(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "Use tabs there."})))
+	second := noticeIDs(t, feedbackContext(t, runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "Use tabs there."})))
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# changed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

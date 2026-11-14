@@ -12,6 +12,22 @@ import (
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
+func preparedHookReply(t *testing.T, out string) map[string]any {
+	t.Helper()
+	_, encoded, found := strings.Cut(feedbackContext(t, out), "shikii prepared work:\n")
+	if !found {
+		t.Fatal("the real hook did not deliver its preparation")
+	}
+	var prepared map[string]any
+	if err := json.Unmarshal([]byte(encoded), &prepared); err != nil {
+		t.Fatal("the hook preparation was not complete JSON", err)
+	}
+	if receipt, ok := prepared["receipt"].(string); !ok || receipt == "" {
+		t.Fatal("the hook preparation did not supply its receipt")
+	}
+	return prepared
+}
+
 func autonomyRun(t *testing.T, b notebook.Book, task, evidence string, sufficient *bool) (map[string]any, map[string]any) {
 	t.Helper()
 	p := readingLearningPrepare(t, b, task, "")
@@ -90,7 +106,8 @@ func TestWorkAutonomyRecoversIndexWithoutResendingResult(t *testing.T) {
 			t.Fatal(e)
 		}
 		session := "procedure-recovery"
-		runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "Check the original source condition."})
+		// The fixed query must be the first read to reach procedure indexing.
+		runManualHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "Check the original source condition."})
 		first, e := workCall(t, book, "prepare", map[string]any{"session_id": session, "turn_id": loadSession(root, session).TurnID, "query": "Reading source recovery"})
 		if e != nil {
 			t.Fatal(e)
@@ -115,10 +132,9 @@ func TestWorkAutonomyRecoversIndexWithoutResendingResult(t *testing.T) {
 		if e = os.Remove(checkpoint); e != nil {
 			t.Fatal(e)
 		}
-		runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "Now check a different source condition."})
-		next, e := workCall(t, book, "prepare", map[string]any{"session_id": session, "turn_id": loadSession(root, session).TurnID, "query": "Reading source recovery"})
-		if e != nil || next["procedure_recovery"] != nil {
-			t.Fatal("the new request must resume the old saved feedback", next["procedure_recovery"], e)
+		next := preparedHookReply(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "Now check a different source condition."}))
+		if next["procedure_recovery"] != nil {
+			t.Fatal("the new request must resume the old saved feedback", next["procedure_recovery"])
 		}
 		data, e := os.ReadFile(checkpoint)
 		if e != nil || !strings.Contains(string(data), "proposed") {

@@ -101,6 +101,7 @@ type workCompletionRef struct {
 	Evidence         []string `json:"evidence,omitempty"`
 }
 type workRequest struct {
+	fromHook          bool                   // Internal preparation whose complete reply is delivered by the prompt hook.
 	responseSize      func(any) int          // Host transport sizing; never supplied by the caller.
 	MaxBytes          int                    `json:"max_bytes,omitempty"`
 	Result            *workCompletion        `json:"result,omitempty"`
@@ -177,6 +178,7 @@ type workState struct {
 	Nonce           string                                `json:"nonce"`
 	At              time.Time                             `json:"at"`
 	Standalone      bool                                  `json:"standalone,omitempty"`
+	HookPrepared    bool                                  `json:"hook_prepared,omitempty"`
 	Query           string                                `json:"query"`
 	Task            string                                `json:"task,omitempty"`
 	Current         string                                `json:"current,omitempty"`
@@ -208,6 +210,7 @@ type workResult struct {
 	Comparison       *workComparisonView       `json:"comparison,omitempty"`
 	Reasoning        reasoningStatus           `json:"reasoning"`
 	Complete         bool                      `json:"complete"`
+	ReviewComplete   *bool                     `json:"review_complete,omitempty"`
 	Saved            []workItem                `json:"saved"`
 	Errors           []workItem                `json:"errors,omitempty"`
 	Pending          []any                     `json:"pending"`
@@ -218,7 +221,8 @@ type workResult struct {
 
 type workProcedureReview struct {
 	notebook.MaintenanceTask
-	Ref string `json:"ref"`
+	Ref     string         `json:"ref"`
+	Article *notebook.Page `json:"article,omitempty"`
 }
 
 func workHash(v any) string {
@@ -477,6 +481,9 @@ func prepareWork(root, scope string, req workRequest) (out any, err error) {
 		}
 		staged := value.(stagedPlanningQuery)
 		s, contextRevision, planningContext = staged.Session, staged.Revision, staged.Notice
+		if req.fromHook && s.Planning.Work != nil {
+			return nil, errors.New("this request was already prepared; keep its existing receipt")
+		}
 		if err := archiveReasoningPending(notebook.Book{Root: root, Scope: scope}, s); err != nil {
 			return nil, err
 		}
@@ -495,6 +502,7 @@ func prepareWork(root, scope string, req workRequest) (out any, err error) {
 		}
 	}
 	w := &workState{Replies: map[string]workReply{}, Nonce: store.NewTraceID() + store.NewTraceID(), At: time.Now().UTC(), Standalone: standalone, Query: req.Query, Current: s.Planning.Sources["current_user"], Pages: s.Planning.KnowledgePages, Keys: map[string]string{}, Sources: map[string]string{}, Articles: map[string]store.KnowledgeReference{}, Reviews: map[string]workReviewRef{}, Memory: map[string]workMemoryRef{}, Maintenance: map[string]notebook.MaintenanceReview{}, Captures: map[string]workCapture{}, Saved: map[string]workItem{}, Pending: map[string]notebook.Draft{}, PendingKeys: map[string]string{}, PendingOrigins: map[string]string{}, Expected: map[string]store.KnowledgeReference{}}
+	w.HookPrepared = req.fromHook && s.Planning.Work == nil
 	handover, again := s.Planning.Handover, false // the references of the request this one interrupted
 	if previous := s.Planning.Work; previous != nil {
 		// This request prepared again (the agent no longer held the receipt). The new receipt keeps what the earlier one read,
@@ -631,6 +639,8 @@ func prepareWork(root, scope string, req workRequest) (out any, err error) {
 	}
 	if standalone { // no hook recorded a request, so there is no current to cite
 		reply["how_to_record"] = compactHowToRecord(w)
+	} else if w.HookPrepared {
+		reply["how_to_record"] = strings.Replace(compactWorkHowTo, "with this receipt", "with the hook's session_id/turn_id (or this receipt)", 1)
 	}
 	read, err = limitWorkPreparation(book, w, reply, quoted, req.MaxBytes, req.responseSize)
 	if err != nil {

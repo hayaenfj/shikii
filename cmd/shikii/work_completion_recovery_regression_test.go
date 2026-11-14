@@ -127,7 +127,8 @@ func TestWorkRegressionR2PendingProcedureAcrossTurn(t *testing.T) {
 			session := "synthetic-procedure-boundary"
 			b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
 			reasoningPage(t, b, "Synthetic owner state", "howto", strings.Repeat("Inspect the synthetic ownership state before continuing.\n\n", 60))
-			runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "Check synthetic first owner state."})
+			// Keep the fixed first query eligible for the injected indexing failure.
+			runManualHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "Check synthetic first owner state."})
 			p, e := workCall(t, b, "prepare", map[string]any{"session_id": session, "turn_id": loadSession(root, session).TurnID, "query": "Synthetic owner state"})
 			if e != nil {
 				t.Fatal(e)
@@ -150,12 +151,14 @@ func TestWorkRegressionR2PendingProcedureAcrossTurn(t *testing.T) {
 			if e != nil || first["complete"] != false {
 				t.Fatal("fixture must interrupt procedure write", e)
 			}
+			var p2 map[string]any
 			if next {
-				runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "Check synthetic second owner state."})
-			}
-			p2, e := workCall(t, b, "prepare", map[string]any{"session_id": session, "turn_id": loadSession(root, session).TurnID, "query": "Synthetic owner state"})
-			if e != nil {
-				t.Fatal(e)
+				p2 = preparedHookReply(t, runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "Check synthetic second owner state."}))
+			} else {
+				p2, e = workCall(t, b, "prepare", map[string]any{"session_id": session, "turn_id": loadSession(root, session).TurnID, "query": "Synthetic owner state"})
+				if e != nil {
+					t.Fatal(e)
+				}
 			}
 			end, e := workCall(t, b, "record", map[string]any{"receipt": p2["receipt"], "result": map[string]any{"changed": "SYNTHETIC-NEXT-RESULT"}})
 			if e != nil {

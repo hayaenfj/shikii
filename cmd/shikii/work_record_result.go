@@ -49,3 +49,24 @@ func (b *workRecordBatch) recordResult(qualityEvidence workQualityEvidence, bind
 	}
 	return reportSource, false
 }
+
+// The original report is captured first; its evidence must cover the completed
+// batch too. bindWorkEvidence follows only revisions this receipt itself wrote.
+func (b *workRecordBatch) refreshResultEvidence() bool {
+	if b.req.Result == nil || b.req.Result.Ref != "" || len(b.req.Notes) == 0 || !b.result.Complete || b.w.Result == nil || !b.w.Result.Ready {
+		return false
+	}
+	err := selfEvidence(b.book, b.w, forResult, b.w.Result.Source, b.req.Result.Evidence)
+	if err == nil {
+		var bound []string
+		bound, err = bindWorkEvidence(b.book, b.w, b.req.Result.Evidence, b.resolve)
+		if err == nil && !slices.Equal(bound, b.w.Result.Evidence) {
+			b.w.Result.Evidence = bound
+			err = b.save()
+		}
+	}
+	if err != nil {
+		b.add(workItem{Kind: "result", Ref: "result", Error: err.Error()})
+	}
+	return b.halt()
+}

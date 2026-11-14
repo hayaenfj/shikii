@@ -226,6 +226,9 @@ func runHookEvent(event string) error {
 	if summary != "" {
 		out.System = joinLines(out.System, summary)
 	}
+	if event == "user-prompt-submit" && in.workTurn != "" {
+		hookWorkPreparation(agent, &in, &out)
+	}
 	if b := out.json(hookEventName(event)); b != nil {
 		fmt.Fprintln(stdout, string(b))
 	}

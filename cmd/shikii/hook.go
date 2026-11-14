@@ -120,6 +120,7 @@ type hookInput struct {
 	// stateNoted: this event has changed the state of the session's turn (sessionLatest); when the hook leaves before it does,
 	// sessionTurnOnExit changes it (work_handover.go)
 	stateNoted bool
+	workTurn   string // Only the request this prompt hook created may be prepared.
 	// late is a Stop run at the next request. It checks that required work is saved before judging, but emits no recovery feedback
 	// and writes no check receipts: a later human fix is not agent recovery.
 	late bool
