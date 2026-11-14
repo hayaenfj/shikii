@@ -5,7 +5,7 @@ needed assessments with its single ending work record. Do not call reflect query
 again when prepare supplied complete originals. The individual workflow below is
 for deeper recovery and older integrations.
 
-For ordinary work from 0.19, use [recording.md](recording.md): prepare once, then record semantic content with its receipt. The operations below remain available for deeper work and existing integrations.
+For ordinary work, use [recording.md](recording.md): read the hook preparation when supplied, otherwise call prepare; then record semantic content with the unchanged hook IDs or the current receipt. The operations below remain available for deeper work and existing integrations.
 
 "Did it stay within what was asked" and "did it finish what was asked" are scored provisionally by the usual agent from the conversation and the work's outcome. Each target shows the decision model's answer first; the person is asked only when your score differs from it or you held back (`unknown`).
 

@@ -1,6 +1,6 @@
 # Build knowledge from conversations
 
-For ordinary work from 0.19, use [recording.md](recording.md): prepare once, then record semantic content with its receipt. The operations below remain available for deeper work and existing integrations.
+For ordinary work, use [recording.md](recording.md): read the hook preparation when supplied, otherwise call prepare; then record semantic content with the unchanged hook IDs or the current receipt. The operations below remain available for deeper work and existing integrations.
 
 Apply Karpathy's [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): retain sources, integrate them into connected knowledge, and revisit it through queries and maintenance. The active agent edits the knowledge; shikii checks provenance and stores revisions. Use the host's existing agent facilities for the source review below; do not provision another model service or ask the person to organize the wiki.
 

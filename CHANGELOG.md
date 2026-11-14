@@ -13,7 +13,9 @@
 ### Fixes
 
 - Saved articles and their sources are returned for review, with saving and review completion shown separately. Reviews of multiple edited articles continue in batches without unrelated articles taking their place.
+- Large saved article text that does not fit a review response comes with a link to retrieve the exact version. The article itself and the pending review are preserved.
 - A short follow-up still requires the agent to decide whether it continues the previous request. Saving a result alone no longer bypasses that check.
+- An edit rejected because its article revision is ambiguous remains pending. Resending the report cannot mark that unfinished edit complete.
 - Preparation that overlaps another preparation keeps the existing references instead of overwriting them. Evidence for a report saved with an article edit follows the revision written by that same operation.
 
 ## 0.31.0 — Easier for an agent to call: fewer failed calls, replies that fit, and no approval prompt in Codex

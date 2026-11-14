@@ -27,7 +27,8 @@ checklist to read in full on every request.
 2. At the end, record the result with the hook session_id/turn_id and any needed notes,
    provisional reviews and memory. Include maintenance only for pages this call
    does not edit. For edited pages, read the saved `procedure_reviews[].article`
-   and check it against the sources; if omitted, query its returned ID/revision.
+   and check it against the sources; if omitted for the response budget, use its
+   exact `article_query`. Omitted text remains unread.
    Then record maintenance with
    the returned `procedure_reviews` ref. Do not send their old
    maintenance ref with the edit.
@@ -225,7 +226,7 @@ revision and key, including current related revisions.
 
 ## Prepare once
 
-With the current request's hook identifiers, pipe this to `shikii work prepare`:
+For supplied preparation, reuse its receipt for topic extensions. When no hook preparation was supplied, pipe this with the current request's hook identifiers to `shikii work prepare`:
 
 ```json
 {"session_id":"<current hook session>","turn_id":"<current hook turn>","query":"CSV export filters"}
@@ -493,7 +494,7 @@ The outcome index retains at most 128 records within the search journal's existi
 
 ## Record what you judged
 
-An outcome with both failure and correction immediately returns pending `procedure_reviews`, also available from ordinary maintenance as `outcome-feedback`. Each review has a short `ref`, the current procedure revision, original action/conditions/evidence, exact current text candidates and the reported proposed correction. Compare these before editing; a temporary failure or a different condition does not establish that the procedure is wrong. Record a source-backed note; its response returns updated `procedure_reviews`. Read the returned `procedure_reviews[].article` and check its sources and conditions, then record `maintenance:[{ref,reason}]` with that latest ref to complete review. `review_complete:false` means review remains even if `complete:true` confirms the submitted batch was saved; `next_action` names the follow-up. Query the exact returned revision only if the article is unavailable. An edit alone does not complete review and the old ref is stale. For a checked no-change conclusion, record the reason with the original ref. Keys cover the article, related knowledge and indexed execution evidence: reviewed unchanged evidence does not recur, while a new result reopens review. If a procedure changed, read its current revision with the same receipt before patching. Additional older outcomes are counted but only two are supplied per review; inspect their sources when needed. A report whose saved report or evidence is missing or was changed is listed as unreadable: its `unknown` names the sources to recover (`<source id> (missing)`, `(changed)` or `(unreadable)`), none of its content is shown, and `maintenance` for that article is refused until they are back. Tell the person which sources to recover; do not review or edit from a report you could not read. The rest of the list is unaffected, and while other work waits such articles take at most one of its two places.
+An outcome with both failure and correction immediately returns pending `procedure_reviews`, also available from ordinary maintenance as `outcome-feedback`. Each review has a short `ref`, the current procedure revision, original action/conditions/evidence, exact current text candidates and the reported proposed correction. Compare these before editing; a temporary failure or a different condition does not establish that the procedure is wrong. Record a source-backed note; its response returns updated `procedure_reviews`. Read the returned `procedure_reviews[].article` and check its sources and conditions, then record `maintenance:[{ref,reason}]` with that latest ref to complete review. `review_complete:false` means review remains even if `complete:true` confirms the submitted batch was saved; `next_action` names the follow-up. When article text is omitted to fit the response budget, read the exact `article_query` before reviewing it. Otherwise query the returned revision only if the article is unavailable. An edit alone does not complete review and the old ref is stale. For a checked no-change conclusion, record the reason with the original ref. Keys cover the article, related knowledge and indexed execution evidence: reviewed unchanged evidence does not recur, while a new result reopens review. If a procedure changed, read its current revision with the same receipt before patching. Additional older outcomes are counted but only two are supplied per review; inspect their sources when needed. A report whose saved report or evidence is missing or was changed is listed as unreadable: its `unknown` names the sources to recover (`<source id> (missing)`, `(changed)` or `(unreadable)`), none of its content is shown, and `maintenance` for that article is refused until they are back. Tell the person which sources to recover; do not review or edit from a report you could not read. The rest of the list is unaffected, and while other work waits such articles take at most one of its two places.
 
 Pipe content to `shikii work record`:
 
