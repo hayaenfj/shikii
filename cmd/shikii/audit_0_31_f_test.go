@@ -283,6 +283,9 @@ func TestAuditFPlanningMinimalRecordSettlesAShortMessage(t *testing.T) {
 			if json.Unmarshal([]byte(ids), &hookIDs) != nil || json.Unmarshal([]byte(minimal), &record) != nil {
 				t.Fatal("the hook IDs and documented example must be JSON")
 			}
+			if continues, ok := record["continues_previous"].(bool); !ok || continues {
+				t.Fatal("the example must explicitly use continues_previous false", record)
+			}
 			if record["session_id"] != "<hook session>" || record["turn_id"] != "<hook turn>" {
 				t.Fatal("the example must use the current hook identifiers", record)
 			}
