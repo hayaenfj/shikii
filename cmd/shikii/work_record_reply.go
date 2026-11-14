@@ -29,7 +29,7 @@ func finishWorkRecordReply(book notebook.Book, w *workState, req workRequest, re
 		workStorageState(w, result)
 	}
 	if result.ReviewComplete != nil && !*result.ReviewComplete {
-		next := "The batch save and article review are separate. Read each procedure_reviews[].article, check its sources and conditions, then record maintenance:[{ref,reason}] with this receipt. Further pending articles follow in batches of two; an edit alone does not complete review."
+		next := "The batch save and article review are separate. Read each procedure_reviews[].article (recover an omitted article using article_query), check its sources and conditions, then record maintenance:[{ref,reason}] with this receipt. Further pending articles follow in batches of two; an edit alone does not complete review."
 		if len(result.ProcedureReviews) == 0 {
 			next = "Article review remains incomplete. Resolve the reported maintenance error, then retry with this receipt."
 		}
@@ -37,5 +37,25 @@ func finishWorkRecordReply(book notebook.Book, w *workState, req workRequest, re
 			result.NextAction += " "
 		}
 		result.NextAction += next
+	}
+	limitSavedReviewArticles(req, result)
+}
+
+// A saved article is optional delivery, not optional review. Keep each review's
+// identity and exact recovery query when its body does not fit the host reply.
+func limitSavedReviewArticles(req workRequest, result *workResult) {
+	budget := cliPrepareBytes
+	if req.responseSize != nil {
+		budget = 64 << 10
+	}
+	size := workPreparationSizer([]func(any) int{req.responseSize})
+	for i := len(result.ProcedureReviews) - 1; i >= 0 && size(result)+1 > budget; i-- {
+		review := &result.ProcedureReviews[i]
+		if review.Article == nil {
+			continue
+		}
+		review.Article = nil
+		review.ArticleQuery = map[string]string{"operation": "query", "query": "lesson:" + review.PageID + "@" + review.Revision}
+		review.NextAction = joinLines(review.NextAction, "Article text omitted to fit the response budget. Read article_query before recording this review; omitted text is unread.")
 	}
 }

@@ -221,8 +221,9 @@ type workResult struct {
 
 type workProcedureReview struct {
 	notebook.MaintenanceTask
-	Ref     string         `json:"ref"`
-	Article *notebook.Page `json:"article,omitempty"`
+	Ref          string            `json:"ref"`
+	Article      *notebook.Page    `json:"article,omitempty"`
+	ArticleQuery map[string]string `json:"article_query,omitempty"`
 }
 
 func workHash(v any) string {

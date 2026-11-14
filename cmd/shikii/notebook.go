@@ -270,7 +270,7 @@ func (s *server) handleNotebook(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err)
 		return
 	}
-	if req.Work != nil && req.Operation == "prepare" {
+	if req.Work != nil && (req.Operation == "prepare" || req.Operation == "record") {
 		// Match the compact representation used by the work response budget.
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = writeReply(w, result)
