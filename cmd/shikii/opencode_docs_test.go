@@ -76,6 +76,33 @@ func TestDocsSayOpenCodeReadsNoPluginOfShikiisUnderOPENCODE_CONFIG_DIR(t *testin
 	}
 }
 
+// shikii's plugin runs stop in OpenCode's experimental.idle hook, inside the turn, so opencode run waits for it
+// (TestOpenCodePluginRunsStopBeforeTheExecutionEnds). Every document that describes the plugin says so, and says what an OpenCode that
+// does not run that hook leaves out: opencode run with a private server (--standalone, or no background service running) has exited
+// before a stop run after the turn. The integration guide names the hook.
+func TestDocsSayStopRunsInsideTheTurnInOpenCodeAndWhenItCannot(t *testing.T) {
+	docs := map[string]string{}
+	for _, f := range []string{"README.md", "docs/readme/README_ja.md", "integrations/claude-code.md", "integrations/claude-code.ja.md"} {
+		docs[f] = readDocT(t, f)
+	}
+	docs["CHANGELOG.md 0.34.0"] = changelogSectionT(t, readDocT(t, "CHANGELOG.md"), "0.34.0")
+	docs["CHANGELOG_ja.md 0.34.0"] = changelogSectionT(t, readDocT(t, "CHANGELOG_ja.md"), "0.34.0")
+	for name, text := range docs {
+		if !strings.Contains(text, "plugins/shikii") && !strings.Contains(text, "OpenCode 2.x") {
+			t.Fatalf("%s no longer describes the OpenCode plugin; check this test by hand", name)
+		}
+		want := []string{"`opencode run`", "`--standalone`"}
+		if strings.HasPrefix(name, "integrations/") {
+			want = append(want, "`experimental.idle`")
+		}
+		for _, w := range want {
+			if !strings.Contains(text, w) {
+				t.Errorf("%s does not say where the plugin's end-of-turn check runs and when it cannot (%s)", name, w)
+			}
+		}
+	}
+}
+
 // xdgSentencesWithoutAbsolute lists the sentences of text that name $XDG_CONFIG_HOME without saying it counts only as an absolute path
 // ("absolute", or the Japanese for an absolute path). shikii follows XDG_CONFIG_HOME only when it is absolute (opencodeConfigDir; a
 // relative one is ignored, as TestHookInstallPutsOpenCodePluginUnderXDGConfigHome checks), so "when it is set" says more than it does.

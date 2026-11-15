@@ -22,6 +22,7 @@
 - shikii's plugin does not show text to you, so guard explanations and the other notes shikii shows in Claude Code and Codex do not appear in OpenCode. shikii's plugin adds no hook before a command either, so guards that refuse a command do not run there.
 - An OpenCode started with `OPENCODE_CONFIG_DIR` reads plugins only from that folder, so it does not read shikii's plugin. `shikii doctor` says so.
 - OpenCode 1.x still uses only the MCP settings and the skill.
+- shikii's plugin runs the end-of-turn check inside the turn, through an experimental OpenCode hook (OpenCode 2.3.0), so `opencode run` waits for it. An OpenCode that does not run that hook checks only after the turn ends, and `opencode run` with a private server (`--standalone`, or when no background service is running) has exited by then, so the check does not run there.
 
 ## 0.33.0 — Agents read less and get a smaller MCP tool
 

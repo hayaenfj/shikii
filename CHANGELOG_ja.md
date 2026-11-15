@@ -22,6 +22,7 @@
 - shikii のプラグインはあなたへ文を見せないので、止める検査の説明など、Claude Code と Codex で表示する文は OpenCode には出ません。shikii のプラグインはコマンドの前の hook も持たないので、コマンドを拒む止める検査も動きません。
 - `OPENCODE_CONFIG_DIR` を設定して起こした OpenCode は、そのフォルダからだけプラグインを読むので、shikii のプラグインを読みません。`shikii doctor` がそう知らせます。
 - OpenCode 1.x は、これまでどおり MCP の設定と skill だけを使います。
+- shikii のプラグインは、終了時の確認を OpenCode の試験段階の hook(OpenCode 2.3.0)で回の中で動かすので、`opencode run` もその確認を待ちます。その hook を動かさない OpenCode では回が終わった後にしか確認できず、自前のサーバーで動く `opencode run`(`--standalone`、または常駐のサービスが動いていない時)はその時にはもう終わっているので、確認は動きません。
 
 ## 0.33.0 — エージェントが読む量と、MCP の道具の説明を減らす
 
