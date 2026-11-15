@@ -41,6 +41,8 @@ web/.ui-test/
 
 # Local records of work, checks and updates. Not part of the published documents
 /docs/operations.md
+# A local primer in Japanese for people new to shikii. Kept on this machine, not published
+/docs/shikii-for-beginners.ja.md
 
 # This project's working rules (for agents, kept only on the owner's machine). Not shipped
 /AGENTS.md
