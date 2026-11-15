@@ -4,7 +4,9 @@
 // with the same JSON on stdin:
 //   - the person's request          -> shikii hook user-prompt-submit (its additionalContext goes on the request's message)
 //   - the first request of a session, and right after a summary of the conversation (compaction) -> shikii hook session-start
-//   - the end of a turn             -> shikii hook stop (a block makes OpenCode continue the turn with the reason)
+//   - the end of a turn             -> shikii hook stop (a block makes OpenCode continue the turn with the reason). It runs in OpenCode's
+//     experimental.idle hook, inside the execution: opencode run exits as soon as the execution ends, and ends the private server it
+//     started (--standalone, or no background service running) with it, before a stop started from session.execution.succeeded can run
 // A turn is what this plugin saw start: the person's request, a continuation it sent itself, or a subagent's report that wakes the
 // session. An execution that no turn of those started (a summary the person asked for) runs no stop, and neither does a turn that was
 // interrupted or failed (Claude Code runs no Stop for those). One OpenCode server runs a plugin
@@ -213,6 +215,23 @@ export default Plugin.define({
       }
     }
 
+    // OpenCode 2.3.0 runs this hook when a turn has nothing left to do and waits for it before the execution ends: a continuation sent
+    // here goes on in the same execution, so the execution (and opencode run with it) ends only after the last stop, as a Claude Code turn
+    // ends after its Stop hook. A turn whose stop ran here runs none at session.execution.succeeded (running no longer has it); an OpenCode
+    // that does not run this hook gets the stop at that event.
+    try {
+      const added: any = ctx.session.hook("experimental.idle", async (e: any) => {
+        try {
+          await stop(e?.sessionID)
+        } catch {
+          // add nothing
+        }
+      })
+      added?.catch?.(() => {})
+    } catch {
+      // an OpenCode that does not take the hook: stop runs at session.execution.succeeded
+    }
+
     // a subagent that finished puts its report into the parent session, and that wakes the parent for a turn the person did not ask for
     // (no prompt hook runs): like Claude Code's notification of a finished task, its stop is not stop_hook_active. The event reaches the
     // plugin of every folder, so only a session this instance saw a request of is woken.
@@ -245,7 +264,7 @@ export default Plugin.define({
           ends.set(sid, (ends.get(sid) ?? 0) + 1)
           inherited.delete(sid) // the execution that was the old folder's turn is over
         }
-        if (ev.type === "session.execution.succeeded") await stop(sid)
+        if (ev.type === "session.execution.succeeded") await stop(sid) // a turn whose stop the idle hook did not run
         else if (ev.type === "session.execution.failed" || (ev.type === "session.execution.interrupted" && ev.data?.reason !== "superseded")) ended(sid)
         else if (ev.type === "session.inbox.enqueued" && ev.data?.item?.type === "synthetic" && ev.data.item.payload?.metadata?.source === "subagent") await woken(sid)
         else if (ev.type === "session.moved") {

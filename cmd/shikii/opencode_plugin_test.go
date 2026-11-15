@@ -399,7 +399,7 @@ func TestDoctorChecksTheBinaryTheOpenCodePluginRuns(t *testing.T) {
 // nothing of the spike (a marker word, SPIKE_ variables) is left in.
 func TestOpenCodePluginBodyWrapsEveryHookAndMarksItsOwnTurns(t *testing.T) {
 	body := opencodePluginFiles("/x/shikii")[opencodeIndexFile]
-	for _, hook := range []string{`ctx.session.hook("prompt", async (e: any) => {`, `ctx.session.hook("context", async (e: any) => {`, `const stop = async (sessionID: string) => {`} {
+	for _, hook := range []string{`ctx.session.hook("prompt", async (e: any) => {`, `ctx.session.hook("context", async (e: any) => {`, `ctx.session.hook("experimental.idle", async (e: any) => {`, `const stop = async (sessionID: string) => {`} {
 		i := strings.Index(body, hook)
 		if i < 0 {
 			t.Fatalf("the plugin must have %s", hook)
@@ -408,8 +408,8 @@ func TestOpenCodePluginBodyWrapsEveryHookAndMarksItsOwnTurns(t *testing.T) {
 			t.Errorf("%s must start with try { (a throw here refuses the request):\n%.120s", hook, rest)
 		}
 	}
-	if n := strings.Count(body, "ctx.session.hook("); n != 2 {
-		t.Errorf("exactly the prompt and context hooks: %d", n)
+	if n := strings.Count(body, "ctx.session.hook("); n != 3 {
+		t.Errorf("exactly the prompt, context and idle hooks: %d", n)
 	}
 	if !regexp.MustCompile(`const onEvent = async \(ev: any\) => \{\s*try \{`).MatchString(body) || !strings.Contains(body, "await stop(") {
 		t.Errorf("each event of the subscription is handled inside try")

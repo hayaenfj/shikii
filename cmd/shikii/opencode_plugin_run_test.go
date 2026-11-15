@@ -119,6 +119,7 @@ for (const [name, dir] of Object.entries(locations)) {
 }
 const first = Object.keys(locations)[0]
 const stateDir = scenario.stateDir
+let exited = false // an "idle" step with exit ended the execution: the scenario stopped there
 
 for (const step of scenario.steps) {
   try {
@@ -155,6 +156,19 @@ for (const step of scenario.steps) {
         broadcast({ type: "session.inbox.enqueued", data: { sessionID: step.sid, inboxID: "inbox", item: { type: "synthetic", delivery: "steer", payload: { text: "<subagent/>", metadata: { source: "subagent", childID: "child", agent: "subagent", state: "completed" } } } } })
       }
       if (!step.nowait) await settle()
+    } else if (step.op === "idle") {
+      // measured on 2.3.0 (SessionRunner): when a turn has nothing left to do, OpenCode runs the experimental.idle hook of the session's
+      // folder and waits for it. A message admitted meanwhile (the plugin's continuation) goes on in the same execution; otherwise the
+      // execution ends with session.execution.succeeded. exit: what opencode run does right then with the private server it started
+      // (--standalone, or no background service running): it ends it within milliseconds, and the scenario stops before the plugin
+      // hears the event
+      const before = prompts.length
+      if (hooks["experimental.idle"]) await hooks["experimental.idle"]({ sessionID: step.sid, background: [] })
+      if (prompts.length === before) {
+        broadcast({ type: "session.execution.succeeded", data: { sessionID: step.sid } })
+        if (step.exit) { exited = true; break }
+      }
+      await settle()
     } else if (step.op === "event") {
       // any other event of OpenCode's, with the session and what the event adds (an interrupted turn's reason, a failure's error)
       broadcast({ type: step.type, data: { sessionID: step.sid, ...(step.data ?? {}) } })
@@ -188,7 +202,7 @@ for (const step of scenario.steps) {
     errors.push(String(err))
   }
 }
-console.log(JSON.stringify({ prompts, contexts, requests, errors }))
+console.log(JSON.stringify({ prompts, contexts, requests, errors, exited }))
 process.exit(0)
 `
 
@@ -209,6 +223,7 @@ type pluginRun struct {
 	Contexts [][]string
 	Requests []modelRequest
 	Errors   []string
+	Exited   bool // an "idle" step with exit ended the execution and the scenario stopped there
 }
 
 // modelRequest is one model call as the fake OpenCode would send it: the system texts and every message's texts.
@@ -1645,5 +1660,111 @@ func TestOpenCodePluginStillGivesTheTextWhenOpenCodeGivesNoMessageID(t *testing.
 	}
 	if !slices.Contains(run.Contexts[0], "TEXT-OF-THE-REQUEST") || !slices.Contains(run.Contexts[0], "BRIEF-OF-THE-SESSION") {
 		t.Errorf("the model call still gets the brief and the request's text: %q", run.Contexts[0])
+	}
+}
+
+// Measured on 2.3.0: opencode run waits for the execution to end and then exits, and the private server it started (--standalone, or
+// no background service running) is ended with it, 40 ms after session.execution.succeeded: a stop started from that event never ran.
+// OpenCode runs its experimental.idle hook inside the execution when the turn has nothing left to do, and waits for it. The turn's stop
+// runs there, and a block's continuation goes on in the same execution, so it ends (and opencode run exits) only after the last stop.
+func TestOpenCodePluginRunsStopBeforeTheExecutionEnds(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "stop", 1, `{"decision":"block","reason":"SAVE-THE-RECORD"}`)
+	run, calls := b.play(t, map[string]any{
+		"messages": map[string]any{"s1": []map[string]any{
+			{"type": "user", "content": []map[string]any{{"type": "text", "text": "a request"}}},
+			{"type": "assistant", "content": []map[string]any{{"type": "text", "text": "THE-REPLY"}}},
+		}},
+		"steps": []map[string]any{
+			{"op": "prompt", "sid": "s1", "text": "a request"},
+			{"op": "idle", "sid": "s1", "exit": true}, // the turn ends: stop blocks, and the continuation keeps the execution going
+			{"op": "idle", "sid": "s1", "exit": true}, // the continuation ends: its stop lets the execution end, and the server goes
+		}})
+	if len(run.Errors) != 0 {
+		t.Fatalf("no hook throws: %v", run.Errors)
+	}
+	stops := stopsOf(calls)
+	if len(stops) != 2 {
+		t.Fatalf("the turn and its continuation run stop before the execution ends: %d stops, want 2", len(stops))
+	}
+	if stops[0].Stdin["stop_hook_active"] != false || stops[1].Stdin["stop_hook_active"] != true {
+		t.Errorf("the first stop is not stop_hook_active and the continuation's is: %v / %v", stops[0].Stdin, stops[1].Stdin)
+	}
+	if stops[0].Stdin["last_assistant_message"] != "THE-REPLY" || stops[0].Pwd != b.project {
+		t.Errorf("stop gets the turn's reply and runs in the project's folder: %v in %s", stops[0].Stdin, stops[0].Pwd)
+	}
+	if len(run.Prompts) != 1 || run.Prompts[0].Text != "SAVE-THE-RECORD" || run.Prompts[0].Metadata["shikii"] != "stop-continue" {
+		t.Errorf("the block's reason is sent, marked as the plugin's own, before the execution ends: %+v", run.Prompts)
+	}
+	if !run.Exited {
+		t.Errorf("the execution ended after the continuation's stop")
+	}
+}
+
+// The end of the execution follows the idle hook: a turn whose stop ran in the idle hook runs no second stop at session.execution.succeeded.
+// An OpenCode that does not run the idle hook still gets the stop at that event (the turns ended with "succeeded" in the tests above).
+func TestOpenCodePluginRunsOneStopWhenTheIdleHookAndTheEndOfTheExecutionBothCome(t *testing.T) {
+	b := newPluginBox(t)
+	_, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "a request"},
+		{"op": "idle", "sid": "s1"}, // the idle hook, then session.execution.succeeded, heard by the plugin
+		{"op": "prompt", "sid": "s1", "text": "the next request"},
+		{"op": "idle", "sid": "s1"},
+	}})
+	stops := stopsOf(calls)
+	if len(stops) != 2 {
+		t.Fatalf("each of the two turns runs stop once: %d stops", len(stops))
+	}
+	for i, s := range stops {
+		if s.Stdin["stop_hook_active"] != false {
+			t.Errorf("stop %d is not stop_hook_active: %v", i+1, s.Stdin)
+		}
+	}
+}
+
+// Inside the execution too, a request is continued 8 times at most, and a halt (continue: false) is not continued: the execution ends.
+func TestOpenCodePluginStopsContinuingInsideTheExecutionAfterEightAndOnAHalt(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "stop", 0, `{"decision":"block","reason":"AGAIN"}`)
+	steps := []map[string]any{{"op": "prompt", "sid": "s1", "text": "x"}}
+	for i := 0; i < 12; i++ {
+		steps = append(steps, map[string]any{"op": "idle", "sid": "s1", "exit": true})
+	}
+	run, calls := b.play(t, map[string]any{"steps": steps})
+	if len(run.Prompts) != 8 || countCalls(calls, "stop") != 9 || !run.Exited {
+		t.Errorf("a request and its 8 continuations end in one execution: %d continuations, %d stops, ended %v (want 8, 9, true)", len(run.Prompts), countCalls(calls, "stop"), run.Exited)
+	}
+
+	h := newPluginBox(t)
+	h.answer(t, "stop", 0, `{"continue":false,"stopReason":"enough","decision":"block","reason":"R"}`)
+	run, calls = h.play(t, map[string]any{"steps": []map[string]any{{"op": "prompt", "sid": "s1", "text": "x"}, {"op": "idle", "sid": "s1", "exit": true}}})
+	if len(run.Prompts) != 0 || countCalls(calls, "stop") != 1 || !run.Exited {
+		t.Errorf("a halt ends the execution: %+v, %d stops", run.Prompts, countCalls(calls, "stop"))
+	}
+}
+
+// A shikii that fails, prints something broken or is not there never makes the idle hook throw (OpenCode would fail the execution), and
+// nothing is continued: the execution ends as it would without the plugin.
+func TestOpenCodePluginTheIdleHookNeverThrowsWhenShikiiFails(t *testing.T) {
+	for name, setup := range map[string]func(t *testing.T, b *pluginBox){
+		"garbage on stdout":  func(t *testing.T, b *pluginBox) { b.mode(t, "garbage") },
+		"exit code 1":        func(t *testing.T, b *pluginBox) { b.mode(t, "exit1") },
+		"wrong types":        func(t *testing.T, b *pluginBox) { b.answer(t, "stop", 0, `{"decision":"block","reason":42}`) },
+		"the binary is gone": func(t *testing.T, b *pluginBox) { b.install(t, filepath.Join(b.dir, "gone", "shikii")) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			b := newPluginBox(t)
+			setup(t, b)
+			run, _ := b.play(t, map[string]any{"steps": []map[string]any{
+				{"op": "prompt", "sid": "s1", "text": "x"},
+				{"op": "idle", "sid": "s1", "exit": true},
+			}})
+			if len(run.Errors) != 0 {
+				t.Errorf("the idle hook threw: %v", run.Errors)
+			}
+			if len(run.Prompts) != 0 || !run.Exited {
+				t.Errorf("nothing is continued and the execution ends: %+v, ended %v", run.Prompts, run.Exited)
+			}
+		})
 	}
 }
