@@ -92,6 +92,12 @@ export default Plugin.define({
       return typeof text === "string" ? text : ""
     }
 
+    // ask shikii for the session's brief again and keep it; until it answers, the old one stays
+    const refreshBrief = async (sessionID: string) => {
+      const out = await hook("session-start", sessionID)
+      if (out !== undefined) brief.set(sessionID, additional(out))
+    }
+
     const turnNumber = (sessionID: string): number => generation.get(sessionID) ?? 0
     const bump = (sessionID: string) => generation.set(sessionID, turnNumber(sessionID) + 1)
 
@@ -131,7 +137,8 @@ export default Plugin.define({
       try {
         if (!sessionID || !running.delete(sessionID)) return // not a turn this instance saw start (a summary alone, another folder's session)
         const started = turnNumber(sessionID)
-        if (!(await mine(sessionID))) return
+        // not asked again where the session is: running was only set for a session of this folder, and a session moved while its turn
+        // ran still ends the turn here, in the folder that prepared the request (the instance of the new folder never saw it start)
         const messages: any = await ctx.session.context({ sessionID })
         const list: any[] = Array.isArray(messages) ? messages : []
         const last = [...list].reverse().find((m) => m?.type === "assistant")
@@ -180,16 +187,22 @@ export default Plugin.define({
         if (ev.type === "session.execution.succeeded") await stop(sid)
         else if (ev.type === "session.execution.failed" || (ev.type === "session.execution.interrupted" && ev.data?.reason !== "superseded")) ended(sid)
         else if (ev.type === "session.inbox.enqueued" && ev.data?.item?.type === "synthetic" && ev.data.item.payload?.metadata?.source === "subagent") await woken(sid)
-        else if (ev.type === "session.moved") sessions.delete(sid) // ask again where it is now
+        else if (ev.type === "session.moved") {
+          sessions.delete(sid) // ask again where it is now
+          if (await mine(sid)) {
+            // it came to this folder: take it over. The rest of a turn that was running goes on under this instance's context hook, so
+            // it gets this project's brief now (the request's own text cannot be handed over: the request was counted where it was made)
+            seen.add(sid)
+            await refreshBrief(sid)
+          }
+        }
         else if (ev.type === "session.text.ended" && running.has(sid) && typeof ev.data?.text === "string") {
           const id = String(ev.data.assistantMessageID)
           let t = texts.get(sid)
           if (!t || t.id !== id) texts.set(sid, (t = { id, byOrdinal: new Map() }))
           t.byOrdinal.set(Number(ev.data.ordinal) || 0, ev.data.text)
         } else if (ev.type === "session.compaction.ended" && seen.has(sid) && (await mine(sid))) {
-          // the summary replaced the past the brief was in: ask again now, the rest of the turn needs it; until it answers the old one stays
-          const out = await hook("session-start", sid)
-          if (out !== undefined) brief.set(sid, additional(out))
+          await refreshBrief(sid) // the summary replaced the past the brief was in: the rest of the turn needs it
         }
       } catch {
         // add nothing
