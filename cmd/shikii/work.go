@@ -379,6 +379,11 @@ func loadWorkState(dir *os.Root, scope string, t workToken) (*workState, string,
 	if err != nil {
 		return nil, name, err
 	}
+	if s.Scope == scope && s.TurnID != t.Turn && s.Planning != nil && s.Planning.Work != nil && s.Planning.Work.Nonce == t.Nonce {
+		// The work is the current one and only the request id differs: an agent changed the receipt while copying it (OpenCode
+		// 2.3.0, 2026-11-15), so no newer request started.
+		return nil, name, errors.New("this receipt was changed while copying: its work is the current one but its request id is not; send the receipt exactly as prepare returned it")
+	}
 	if err = currentPlanningFrame(s, t.Turn, scope); err != nil {
 		return nil, name, err
 	}
