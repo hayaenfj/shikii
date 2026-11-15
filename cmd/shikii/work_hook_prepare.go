@@ -69,8 +69,9 @@ func hookWorkReceipt(root, scope, session, turn string) (string, error) {
 	return workEncode(workToken{Session: session, Turn: turn, Nonce: w.Nonce}), nil
 }
 
-// hookContextMax is the most of a hook's additionalContext Claude Code shows: it cuts the rest at 10,000 characters
-// ("Hook additionalContext truncated at 10000 chars"), counted as JavaScript counts a string's length, in UTF-16 code units.
+// hookContextMax is the most of a hook's additionalContext Claude Code shows whole, counted as JavaScript counts a string's length,
+// in UTF-16 code units. A longer one is saved to a file and only a short start of it is shown, or, when it cannot be saved, cut at
+// 10,000 characters ("Hook additionalContext truncated at 10000 chars").
 const hookContextMax = 10_000
 
 // hookContextLength counts s as hookContextMax does: a character outside the Basic Multilingual Plane counts twice.

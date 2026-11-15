@@ -9,8 +9,9 @@ import (
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
-// Measured on 2026-11-16 in this project's Claude Code sessions: Claude Code shows a hook's additionalContext up to 10,000
-// characters and cuts the rest ("Hook additionalContext truncated at 10000 chars"), while the request hook delivered prepared work
+// Measured on 2026-11-16 in this project's Claude Code sessions: Claude Code shows a hook's additionalContext whole up to 10,000
+// characters and cuts the rest when it cannot save it to a file ("Hook additionalContext truncated at 10000 chars"; Claude Code
+// 2.1.325 in a sandbox saved a 16,605-character one to a file and showed about 2 KB of its start), while the request hook delivered prepared work
 // of up to 28 KiB, encoded with json.Marshal, which writes keys alphabetically: the receipt came after the lessons and the
 // conversation, so 62 requests of one session reached the agent without their receipt, their maintenance tasks and most lessons.
 // The whole context now fits that limit, and the prepared work is written in the reading order of every other reply.

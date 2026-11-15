@@ -12,7 +12,7 @@
 
 ### Fixes
 
-- The prepared work the request hook delivers now fits within what Claude Code shows of a hook's context, with the receipt first. It was often cut before, and the receipt and the later lessons did not reach the agent.
+- The prepared work the request hook delivers now fits within what Claude Code shows whole of a hook's context, with the receipt first. Before, a longer context was often cut, or saved to a file with only its start shown, and the receipt and the later lessons did not reach the agent.
 - When a time field holds a date alone, or a maintenance review in a record names a page instead of the ref from the prepare reply, the refusal now says what to send.
 
 ### Limits
