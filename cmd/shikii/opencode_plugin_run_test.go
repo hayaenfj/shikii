@@ -114,7 +114,9 @@ for (const step of scenario.steps) {
   try {
     const hooks = instances[step.at ?? first]
     if (step.op === "prompt") {
-      await hooks.prompt({ sessionID: step.sid, prompt: { text: step.text }, metadata: step.metadata })
+      const sent = hooks.prompt({ sessionID: step.sid, prompt: { text: step.text }, metadata: step.metadata })
+      // nowait: the next steps run while the prompt hook still works (settle waits for it)
+      if (step.nowait) void track(() => sent); else await sent
     } else if (step.op === "context") {
       const e = { sessionID: step.sid, system: [{ type: "text", text: "BASE" }] }
       await hooks.context(e)
@@ -146,11 +148,13 @@ for (const step of scenario.steps) {
     } else if (step.op === "release") {
       fs.writeFileSync(stateDir + "/release-" + step.event + "-" + step.n, "")
     } else if (step.op === "waitCalls") {
-      // wait until the fake shikii has been started step.count times for step.event (it writes its line when it starts)
+      // wait until the fake shikii has been started step.count times for step.event (it writes its line when it starts), for at most
+      // step.within milliseconds (10 seconds when not given)
+      const tries = (step.within ?? 10000) / 20
       for (let i = 0; ; i++) {
         const lines = fs.existsSync(stateDir + "/calls.jsonl") ? fs.readFileSync(stateDir + "/calls.jsonl", "utf8").split("\n").filter((l) => l.includes('"event":"' + step.event + '"')) : []
         if (lines.length >= step.count) break
-        if (i > 500) throw new Error("the fake shikii was not started " + step.count + " times for " + step.event)
+        if (i > tries) throw new Error("the fake shikii was not started " + step.count + " times for " + step.event + " within " + (step.within ?? 10000) + " ms")
         await new Promise((resolve) => setTimeout(resolve, 20))
       }
     }
@@ -427,8 +431,14 @@ func TestOpenCodePluginPassesTheKeysHookInputReadsFromTheProjectsFolder(t *testi
 			t.Errorf("the fake shikii is called as `shikii hook <event>`: %q", c.Args)
 		}
 	}
-	if calls[1].Stdin["prompt"] != "Please fix the login" {
-		t.Errorf("user-prompt-submit gets the request's text: %v", calls[1].Stdin)
+	// the two are asked at once, so their order is not fixed
+	for _, c := range calls {
+		if c.Event == "user-prompt-submit" && c.Stdin["prompt"] != "Please fix the login" {
+			t.Errorf("user-prompt-submit gets the request's text: %v", c.Stdin)
+		}
+	}
+	if countCalls(calls, "user-prompt-submit") != 1 {
+		t.Errorf("one user-prompt-submit: %+v", calls)
 	}
 	if len(run.Contexts) != 1 || len(run.Contexts[0]) != 1 {
 		t.Errorf("a session that had no request gets nothing added: %q", run.Contexts)
@@ -1396,5 +1406,31 @@ func TestOpenCodePluginAsksForTheBriefAgainOnlyAfterASummaryWhenTheFirstAskGaveN
 	}
 	if !slices.Contains(run.Contexts[2], "BRIEF-AFTER-THE-SUMMARY") {
 		t.Errorf("after the summary the brief is there: %q", run.Contexts[2])
+	}
+}
+
+// The first request of a session asks shikii for the session's brief and for the request's text at the same time: asking for one after
+// the other would add the time of session-start to the person's first request (each may take up to 15 seconds).
+func TestOpenCodePluginAsksForTheBriefAndTheRequestsTextAtOnce(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "session-start", 0, additionalJSON("BRIEF-OF-THE-SESSION"))
+	b.answer(t, "user-prompt-submit", 0, additionalJSON("TEXT-OF-THE-REQUEST"))
+	b.hold(t, "session-start", 1)
+	run, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "the first request", "nowait": true},
+		// session-start is held until the release below (the fake shikii waits about ten seconds at most)
+		{"op": "waitCalls", "event": "user-prompt-submit", "count": 1, "within": 3000},
+		{"op": "release", "event": "session-start", "n": 1},
+		{"op": "settle"},
+		{"op": "context", "sid": "s1"},
+	}})
+	if len(run.Errors) != 0 {
+		t.Errorf("user-prompt-submit is asked while session-start still runs: %v", run.Errors)
+	}
+	if len(run.Contexts) != 1 || !slices.Contains(run.Contexts[0], "BRIEF-OF-THE-SESSION") || !slices.Contains(run.Contexts[0], "TEXT-OF-THE-REQUEST") {
+		t.Errorf("the model call has both answers: %q", run.Contexts)
+	}
+	if countCalls(calls, "session-start") != 1 || countCalls(calls, "user-prompt-submit") != 1 {
+		t.Errorf("each is asked once: %+v", calls)
 	}
 }

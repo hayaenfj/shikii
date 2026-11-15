@@ -119,8 +119,12 @@ export default Plugin.define({
         continued.set(sessionID, false)
         chain.set(sessionID, 0)
         bump(sessionID)
-        if (!brief.has(sessionID)) brief.set(sessionID, additional(await hook("session-start", sessionID)))
-        turn.set(sessionID, additional(await hook("user-prompt-submit", sessionID, { prompt: e.prompt?.text ?? "" })))
+        // both at once: one after the other would add session-start's time to the first request (shikii's writes for the two are the
+        // same and safe to run side by side, as they run for two conversations of one project)
+        const first = brief.has(sessionID) ? undefined : hook("session-start", sessionID)
+        const [started, prepared] = await Promise.all([first, hook("user-prompt-submit", sessionID, { prompt: e.prompt?.text ?? "" })])
+        if (first) brief.set(sessionID, additional(started))
+        turn.set(sessionID, additional(prepared))
       } catch {
         // add nothing
       }
