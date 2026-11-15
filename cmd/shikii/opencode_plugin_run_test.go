@@ -127,6 +127,10 @@ for (const step of scenario.steps) {
         broadcast({ type: "session.inbox.enqueued", data: { sessionID: step.sid, inboxID: "inbox", item: { type: "synthetic", delivery: "steer", payload: { text: "<subagent/>", metadata: { source: "subagent", childID: "child", agent: "subagent", state: "completed" } } } } })
       }
       if (!step.nowait) await settle()
+    } else if (step.op === "event") {
+      // any other event of OpenCode's, with the session and what the event adds (an interrupted turn's reason, a failure's error)
+      broadcast({ type: step.type, data: { sessionID: step.sid, ...(step.data ?? {}) } })
+      if (!step.nowait) await settle()
     } else if (step.op === "settle") {
       await settle()
     } else if (step.op === "release") {
@@ -821,6 +825,79 @@ func TestOpenCodePluginASubagentsReportWakesTheParentForATurnOfItsOwn(t *testing
 	}
 	if n := countCalls(calls, "user-prompt-submit"); n != 1 {
 		t.Errorf("a subagent's report is no request of the person: %d", n)
+	}
+}
+
+// A turn that ends without succeeding (the person interrupted it, OpenCode shut down, the model failed) gets no stop, as Claude Code runs
+// no Stop for those: a summary the person asks for right after it runs no stop either. A turn superseded by the person's next message
+// does not end the new turn: the new turn's stop still runs once (measured on 2.3.0: interrupted carries the reason user, shutdown,
+// superseded or inactivity).
+func TestOpenCodePluginNoStopAfterATurnThatDidNotSucceed(t *testing.T) {
+	for _, end := range []map[string]any{
+		{"op": "event", "type": "session.execution.interrupted", "sid": "s1", "data": map[string]any{"reason": "user"}},
+		{"op": "event", "type": "session.execution.interrupted", "sid": "s1", "data": map[string]any{"reason": "shutdown"}},
+		{"op": "event", "type": "session.execution.failed", "sid": "s1", "data": map[string]any{"error": map[string]any{"message": "x"}}},
+	} {
+		b := newPluginBox(t)
+		run, calls := b.play(t, map[string]any{"steps": []map[string]any{
+			{"op": "prompt", "sid": "s1", "text": "a request"},
+			end,
+			{"op": "compaction", "sid": "s1"},
+			{"op": "succeeded", "sid": "s1"}, // the end of the summary's execution
+		}})
+		if len(run.Errors) != 0 {
+			t.Fatalf("the steps ran: %v", run.Errors)
+		}
+		if stops := stopsOf(calls); len(stops) != 0 {
+			t.Errorf("after %v a summary alone ran shikii hook stop: %+v", end["data"], stops)
+		}
+	}
+	b := newPluginBox(t)
+	_, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "a request"},
+		{"op": "prompt", "sid": "s1", "text": "the next message, sent while the turn ran"},
+		{"op": "event", "type": "session.execution.interrupted", "sid": "s1", "data": map[string]any{"reason": "superseded"}},
+		{"op": "succeeded", "sid": "s1"},
+	}})
+	if stops := stopsOf(calls); len(stops) != 1 {
+		t.Errorf("the turn that superseded the first one runs stop once, got %d", len(stops))
+	}
+}
+
+// The person interrupted a continuation the plugin had sent. A subagent's report that then wakes the parent is a turn nobody typed, not a
+// continuation: its stop is not stop_hook_active.
+func TestOpenCodePluginAWokenTurnAfterAnInterruptedContinuationIsNotAContinuation(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "stop", 1, `{"decision":"block","reason":"GO-ON"}`)
+	run, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "a request"},
+		{"op": "succeeded", "sid": "s1"}, // stop 1 blocks: the plugin sends the continuation
+		{"op": "event", "type": "session.execution.interrupted", "sid": "s1", "data": map[string]any{"reason": "user"}},
+		{"op": "subagent", "sid": "s1"},
+		{"op": "succeeded", "sid": "s1"},
+	}})
+	if len(run.Errors) != 0 {
+		t.Fatalf("the steps ran: %v", run.Errors)
+	}
+	stops := stopsOf(calls)
+	if len(stops) != 2 {
+		t.Fatalf("the request and the woken turn ran stop, got %d", len(stops))
+	}
+	if stops[1].Stdin["stop_hook_active"] != false {
+		t.Errorf("the woken turn's stop is stop_hook_active: %+v", stops[1].Stdin)
+	}
+}
+
+// A report for a session this instance never saw a request of wakes nothing, even when OpenCode does not say which folder it is in: the
+// event reaches the plugin of every folder.
+func TestOpenCodePluginASubagentsReportForAnUnseenSessionWakesNothing(t *testing.T) {
+	b := newPluginBox(t)
+	_, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "subagent", "sid": "unseen"},
+		{"op": "succeeded", "sid": "unseen"},
+	}})
+	if len(calls) != 0 {
+		t.Errorf("nothing runs for a session this instance never saw: %+v", calls)
 	}
 }
 

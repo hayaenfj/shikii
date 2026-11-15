@@ -3,10 +3,11 @@
 // OpenCode 2.x has no JSON hook settings, so this plugin calls the same `shikii hook <event>` commands Claude Code and Codex call,
 // with the same JSON on stdin:
 //   - the person's request          -> shikii hook user-prompt-submit (its additionalContext goes into the model's system text)
-//   - the first request of a session, and the first after a summary of the conversation (compaction) -> shikii hook session-start
+//   - the first request of a session, and right after a summary of the conversation (compaction) -> shikii hook session-start
 //   - the end of a turn             -> shikii hook stop (a block makes OpenCode continue the turn with the reason)
 // A turn is what this plugin saw start: the person's request, a continuation it sent itself, or a subagent's report that wakes the
-// session. An execution that no turn of those started (a summary the person asked for) runs no stop. One OpenCode server runs a plugin
+// session. An execution that no turn of those started (a summary the person asked for) runs no stop, and neither does a turn that was
+// interrupted or failed (Claude Code runs no Stop for those). One OpenCode server runs a plugin
 // instance per project folder, and every instance is told every session's events: an instance acts only on sessions of its own folder.
 // Text put into the system text is not kept in the conversation, so the plugin puts the session's brief and the request's text into
 // every model call of the turn. Every hook is wrapped in try/catch and a failure or a timeout adds nothing: a hook must never stop
@@ -148,11 +149,20 @@ export default Plugin.define({
     }
 
     // a subagent that finished puts its report into the parent session, and that wakes the parent for a turn the person did not ask for
-    // (no prompt hook runs): like Claude Code's notification of a finished task, its stop is not stop_hook_active
+    // (no prompt hook runs): like Claude Code's notification of a finished task, its stop is not stop_hook_active. The event reaches the
+    // plugin of every folder, so only a session this instance saw a request of is woken.
     const woken = async (sessionID: string) => {
-      if (!sessionID || running.has(sessionID) || !(await mine(sessionID)) || running.has(sessionID)) return
+      if (!sessionID || !seen.has(sessionID) || running.has(sessionID) || !(await mine(sessionID)) || running.has(sessionID)) return
       running.add(sessionID)
+      continued.set(sessionID, false)
       bump(sessionID)
+    }
+
+    // a turn that ended without succeeding gets no stop (Claude Code runs no Stop when the person interrupts a turn or the model fails),
+    // so it is no longer running: a summary asked for afterwards runs no stop. A turn superseded by the person's next message is left
+    // alone, the prompt hook of that message may already have marked the new turn.
+    const ended = (sessionID: string) => {
+      running.delete(sessionID) // continued is read at the next stop only: the next request and a woken turn set it again
     }
 
     const onEvent = async (ev: any) => {
@@ -160,6 +170,7 @@ export default Plugin.define({
         const sid: string | undefined = ev?.data?.sessionID
         if (!sid) return
         if (ev.type === "session.execution.succeeded") await stop(sid)
+        else if (ev.type === "session.execution.failed" || (ev.type === "session.execution.interrupted" && ev.data?.reason !== "superseded")) ended(sid)
         else if (ev.type === "session.inbox.enqueued" && ev.data?.item?.type === "synthetic" && ev.data.item.payload?.metadata?.source === "subagent") await woken(sid)
         else if (ev.type === "session.compaction.ended" && seen.has(sid)) {
           // the summary replaced the past the brief was in: ask again now, the rest of the turn needs it; until it answers the old one stays
