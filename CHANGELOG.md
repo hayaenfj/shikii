@@ -6,7 +6,7 @@
 
 ### Highlights
 
-- OpenCode 2.x now gets shikii's hooks, as Claude Code and Codex do. `shikii hook install --yes` (and the first `shikii --init` on a machine) puts a small plugin in `~/.config/opencode/plugins/shikii/`, or under `$XDG_CONFIG_HOME/opencode/` when that is set. Before a request, shikii's lessons reach the model; at the end of a turn, a required record continues the turn. Reopen OpenCode after installing. OpenCode 1.x keeps using only the MCP setup and the skill.
+- OpenCode 2.x now gets shikii's hooks, as Claude Code and Codex do. `shikii hook install --yes` (and the first `shikii --init` on a machine) puts a small plugin in `~/.config/opencode/plugins/shikii/`, or under `$XDG_CONFIG_HOME/opencode/` when that is set. Before a request, shikii's lessons reach the model; at the end of a turn, a required record continues the turn. The plugin has no hook before a command, so guards that refuse a command do not run there. Reopen OpenCode after installing. OpenCode 1.x keeps using only the MCP setup and the skill.
 - A plugin folder, file or link of your own with the same name is never overwritten or followed. `shikii doctor` checks the shikii binary the plugin runs, and `shikii uninstall` removes only shikii's plugin files.
 
 ## 0.33.0 — Agents read less and get a smaller MCP tool

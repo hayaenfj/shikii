@@ -9,7 +9,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-2023%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2033%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.33.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -136,7 +136,7 @@ Goを上げた後や実行ファイルを動かした後にhookが働かなく�
 
 エージェントが `shikii --init` を実行します（自分で実行しても同じ）。初期化したプロジェクトだけで動きます。答え合わせの画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こしてブラウザで開きます（URL は `shikii page`）。この機械で最初のプロジェクトなら、hook が 1 つも入っていない時は `shikii --init` が hook も入れます（`shikii hook install --yes` と同じ。TypeSafeの鍵が無く `llama-server` が入っている機械では、手元のモデルを裏で起動します）。すでにプロジェクトがあって hook が無い機械では、hook は入れずに、入れるコマンドを表示します。既製の問い・wiki・止める検査の置き場・作業記録の置き場・MCPの設定（プロジェクトに `.mcp.json`・`opencode.json` が足されます。`AGENTS.md` と `CLAUDE.md` には書きません。Gitの除外に入るのは `.shikii/` だけです。MCPを共通の `~/.codex/config.toml` からしか読まないCodexには、プロジェクトを書かない共通の登録を1つ書き、道具を呼ぶたびにエージェントの作業フォルダを `project` で渡します。この登録には `default_tools_approval_mode = "approve"` を書くので、Codexはshikiiの道具を、呼ぶたびに確認せずに実行します。確認してほしい時は、そこを `"prompt"` と書くか、行を消します。shikiiが足し直すことはありません）・エージェントの作法が用意されます。`shikii doctor` で状態を確かめます。
 
-**OpenCodeについて。** OpenCode 2.xにはhookの設定ファイルが無いので、`shikii hook install --yes`(と、この機械で最初の `shikii --init`)が、小さなプラグインを `~/.config/opencode/plugins/shikii/` に置きます(`$XDG_CONFIG_HOME` を設定していれば、その下の `opencode/` です)。Claude CodeやCodexと同じhookを動かすので、依頼の前にshikiiの教訓がモデルに届き、必要な記録が残っていなければ、回の終わりに続きを促します。同じ名前のあなたのフォルダは上書きせず、リンクもたどらず、その旨を表示して残します。OpenCode 1.xはこのフォルダを読まず、これまでどおりMCPの設定とskillだけを使います。入れた後はOpenCodeを開き直してください。
+**OpenCodeについて。** OpenCode 2.xにはhookの設定ファイルが無いので、`shikii hook install --yes`(と、この機械で最初の `shikii --init`)が、小さなプラグインを `~/.config/opencode/plugins/shikii/` に置きます(`$XDG_CONFIG_HOME` を設定していれば、その下の `opencode/` です)。Claude CodeやCodexと同じhookを動かすので、依頼の前にshikiiの教訓がモデルに届き、必要な記録が残っていなければ、回の終わりに続きを促します。同じ名前のあなたのフォルダは上書きせず、リンクもたどらず、その旨を表示して残します。OpenCode 1.xはこのフォルダを読まず、これまでどおりMCPの設定とskillだけを使います。プラグインにはコマンドの前のhookが無いので、コマンドを拒む止める検査はOpenCodeでは動きません(終了時の確認は動きます)。入れた後はOpenCodeを開き直してください。
 
 ### 更新
 
@@ -194,7 +194,7 @@ hookを入れると、毎回のターンの2つの瞬間が残ります。エー
 
 0.18.0以降は、作業案の照合に条件・判断理由・関連記事の例外を渡し、手順の再利用に現在の条件と新しい検証を揃えます。役立った手動検索は当時の未配信記録に結び付け、通常の手入れへ戻せます。原文の抜粋を使い、意味の解釈は利用中のエージェントが行います。部分編集・診断・過去場面の比較も引き続き使えます。
 
-0.27.0では、確認前の期待と実際の結果を保存し、食い違いを次の判断へ戻します。現在の出典が有効な小さい確認を選び、同じ条件の実行2件の測定を比べられます。読む量を調整しても必須の見直しと原資料の回復を保ちます。公開前guardはClaude CodeのBashの対応呼び出しに適用し、Codexは終了時の確認を保ち、OpenCodeにはコマンド用のhookが無く、プラグインで終了時の確認を動かします。[手順](../../skills/shikii/references/recording.md#expectations-execution-and-the-next-check-0270)を参照してください。
+0.27.0では、確認前の期待と実際の結果を保存し、食い違いを次の判断へ戻します。現在の出典が有効な小さい確認を選び、同じ条件の実行2件の測定を比べられます。読む量を調整しても必須の見直しと原資料の回復を保ちます。公開前guardはClaude CodeのBashの対応呼び出しに適用し、Codexは終了時の確認、OpenCodeはMCPとskillを使います。[手順](../../skills/shikii/references/recording.md#expectations-execution-and-the-next-check-0270)を参照してください。
 
 0.16.0以降では、手動検索した記事が実際に判断に役立った時、その状況を証拠付きで残せます。同じ版を後の関連検索で見つけやすくし、読むだけでは有用と数えません。選択と見送った案の理由、前提となる最大4件のプロジェクト内ファイルも記事に結び付けられます。ハッシュの変化は再確認のきっかけであり、知識が誤りだとは決めません。保留の振り返りは着手前のqueryとsubmitにまとめられ、項目ごとの保存結果を確認して失敗分を再送できます。
 

@@ -144,6 +144,12 @@ func TestHookInstallLeavesAPersonsPluginFolderAndLinks(t *testing.T) {
 				t.Fatal(err)
 			}
 		},
+		"index.ts is a link to a file with shikii's content": func(t *testing.T, home, dir string) {
+			linkedPluginFile(t, home, dir, opencodeIndexFile, opencodePluginFiles("/old/shikii")[opencodeIndexFile])
+		},
+		"package.json is a link to a file with shikii's content": func(t *testing.T, home, dir string) {
+			linkedPluginFile(t, home, dir, opencodeJSONFile, `{"name":"shikii-opencode-plugin","main":"index.ts","kept":"by the person"}`)
+		},
 		"a link to shikii's own plugin elsewhere": func(t *testing.T, home, dir string) {
 			target := filepath.Join(home, "dotfiles", "shikii-plugin")
 			for name, body := range opencodePluginFiles("/old/shikii") {
@@ -239,6 +245,46 @@ func TestUninstallRemovesOnlyShikiisOpenCodePlugin(t *testing.T) {
 				t.Errorf("the person's entry in %s stays: %s (was %s)", p, got, body)
 			}
 		}
+	}
+}
+
+// linkedPluginFile makes the plugin folder a real folder in which one of the two files is a link to a file kept elsewhere (a dotfiles
+// folder) whose content looks like shikii's. The other file, when it is the one that is not the link, is shikii's own.
+func linkedPluginFile(t *testing.T, home, dir, linked, body string) {
+	t.Helper()
+	target := filepath.Join(home, "dotfiles", linked)
+	writeFileT(t, target, body)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(dir, linked)); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range opencodePluginFiles("/old/shikii") {
+		if name != linked {
+			writeFileT(t, filepath.Join(dir, name), content)
+		}
+	}
+}
+
+// A link inside the folder is the person's even when what it points at looks like shikii's: uninstall removes neither the link nor
+// what it points at, and leaves the folder.
+func TestUninstallLeavesALinkedFileInsideThePluginFolder(t *testing.T) {
+	for _, linked := range []string{opencodeIndexFile, opencodeJSONFile} {
+		t.Run(linked, func(t *testing.T) {
+			home := freshMachine(t)
+			dir := filepath.Join(home, ".config", "opencode", "plugins", "shikii")
+			body := opencodePluginFiles("/old/shikii")[linked]
+			linkedPluginFile(t, home, dir, linked, body)
+			before := snapshotTree(t, filepath.Join(home, ".config"), filepath.Join(home, "dotfiles"))
+			out := captureNoFail(func() error { return cmdUninstall([]string{"--yes"}) })
+			if after := snapshotTree(t, filepath.Join(home, ".config"), filepath.Join(home, "dotfiles")); !equalMaps(before, after) {
+				t.Errorf("uninstall changed the folder with a linked file or its target:\n%v\n%v\n%s", before, after, out)
+			}
+			if !strings.Contains(out, "left alone") {
+				t.Errorf("uninstall says it left the folder:\n%s", out)
+			}
+		})
 	}
 }
 

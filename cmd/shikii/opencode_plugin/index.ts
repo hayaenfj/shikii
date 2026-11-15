@@ -3,10 +3,11 @@
 // OpenCode 2.x has no JSON hook settings, so this plugin calls the same `shikii hook <event>` commands Claude Code and Codex call,
 // with the same JSON on stdin:
 //   - the person's request          -> shikii hook user-prompt-submit (its additionalContext goes into the model's system text)
-//   - the first request of a session -> shikii hook session-start
+//   - the first request of a session, and the first after a summary of the conversation (compaction) -> shikii hook session-start
 //   - the end of a turn             -> shikii hook stop (a block makes OpenCode continue the turn with the reason)
-// Every hook is wrapped in try/catch and a failure or a timeout adds nothing: a hook must never stop the work
-// (a throw in the prompt or context hook would make OpenCode refuse the request).
+// Text put into the system text is not kept in the conversation, so the plugin puts the session's brief and the request's text into
+// every model call of the turn. Every hook is wrapped in try/catch and a failure or a timeout adds nothing: a hook must never stop
+// the work (a throw in the prompt or context hook would make OpenCode refuse the request).
 import { Plugin } from "@opencode/plugin"
 import { spawn } from "node:child_process"
 
@@ -16,24 +17,27 @@ const TIMEOUT_MS: Record<string, number> = { "user-prompt-submit": 15_000, "sess
 const CONTINUE_KEY = "stop-continue" // metadata of a turn this plugin started: the next stop is stop_hook_active
 const CONTINUE_MAX = 8 // a safety net: after this many continuations in a row for one request, the plugin stops continuing
 
-// run starts `shikii hook <event>`, passes input as JSON on stdin and returns the JSON it prints (undefined when it prints none, fails or times out).
-function run(event: string, input: Record<string, unknown>): Promise<any> {
+// run starts `shikii hook <event>` in the project's folder (cwd; as Claude Code and Codex run their hooks), passes input as JSON on
+// stdin and returns the JSON it prints (undefined when it prints none, fails or times out).
+function run(event: string, input: Record<string, unknown>, cwd?: string): Promise<any> {
   return new Promise((resolve) => {
     try {
-      const child = spawn(SHIKII, ["hook", event], { stdio: ["pipe", "pipe", "ignore"] })
+      const options: Record<string, unknown> = { stdio: ["pipe", "pipe", "ignore"] }
+      if (cwd) options.cwd = cwd
+      const child = spawn(SHIKII, ["hook", event], options as any)
       let out = ""
       const timer = setTimeout(() => {
         try { child.kill() } catch {}
         resolve(undefined)
       }, TIMEOUT_MS[event] ?? 15_000)
-      child.stdout.on("data", (d) => { if (out.length < 1 << 20) out += d })
+      child.stdout!.on("data", (d: any) => { if (out.length < 1 << 20) out += d })
       child.on("error", () => { clearTimeout(timer); resolve(undefined) })
       child.on("close", () => {
         clearTimeout(timer)
         try { resolve(out.trim() ? JSON.parse(out) : undefined) } catch { resolve(undefined) }
       })
-      child.stdin.on("error", () => {})
-      child.stdin.end(JSON.stringify(input))
+      child.stdin!.on("error", () => {})
+      child.stdin!.end(JSON.stringify(input))
     } catch {
       resolve(undefined)
     }
@@ -44,10 +48,10 @@ export default Plugin.define({
   id: "shikii",
   async setup(ctx) {
     const cwd = (): string | undefined => ctx.location?.directory
-    const added = new Map<string, string[]>() // sessionID -> text added to the system text of this turn's model calls
+    const brief = new Map<string, string>() // sessionID -> the session-start text ("" when there was none); absent: ask again at the next request
+    const turn = new Map<string, string>() // sessionID -> the user-prompt-submit text of the person's last request
     const continued = new Map<string, boolean>() // sessionID -> the running turn was started by this plugin (stop_hook_active)
     const chain = new Map<string, number>() // sessionID -> continuations this plugin started since the person's last request
-    const started = new Set<string>() // sessions that already had their session-start
     const children = new Map<string, boolean>() // sessionID -> a subagent session (the person's request is not in it)
 
     // a subagent's session has a parent: Claude Code does not run UserPromptSubmit or Stop for those, so neither does this plugin
@@ -63,6 +67,11 @@ export default Plugin.define({
       }
     }
 
+    const additional = (out: any): string => {
+      const text = out?.hookSpecificOutput?.additionalContext
+      return typeof text === "string" ? text : ""
+    }
+
     ctx.session.hook("prompt", async (e: any) => {
       try {
         const sessionID: string = e.sessionID
@@ -73,25 +82,21 @@ export default Plugin.define({
         }
         continued.set(sessionID, false)
         chain.set(sessionID, 0)
-        const texts: string[] = []
-        if (!started.has(sessionID)) {
-          started.add(sessionID)
-          const brief = await run("session-start", { session_id: sessionID, cwd: cwd() })
-          const text = brief?.hookSpecificOutput?.additionalContext
-          if (typeof text === "string" && text) texts.push(text)
+        if (!brief.has(sessionID)) {
+          brief.set(sessionID, additional(await run("session-start", { session_id: sessionID, cwd: cwd() }, cwd())))
         }
-        const out = await run("user-prompt-submit", { session_id: sessionID, cwd: cwd(), prompt: e.prompt?.text ?? "" })
-        const text = out?.hookSpecificOutput?.additionalContext
-        if (typeof text === "string" && text) texts.push(text)
-        added.set(sessionID, texts)
+        turn.set(sessionID, additional(await run("user-prompt-submit", { session_id: sessionID, cwd: cwd(), prompt: e.prompt?.text ?? "" }, cwd())))
       } catch {
         // add nothing
       }
     })
 
+    // text put into the system text is not kept in the conversation: every model call of the turn, a continuation's too, gets both
     ctx.session.hook("context", async (e: any) => {
       try {
-        for (const text of added.get(e.sessionID) ?? []) e.system.push({ type: "text", text })
+        for (const text of [brief.get(e.sessionID), turn.get(e.sessionID)]) {
+          if (text) e.system.push({ type: "text", text })
+        }
       } catch {
         // add nothing
       }
@@ -109,7 +114,7 @@ export default Plugin.define({
           .map((part: any) => part.text)
           .join("\n")
         const active = continued.get(sessionID) === true
-        const out = await run("stop", { session_id: sessionID, cwd: cwd(), last_assistant_message: reply, stop_hook_active: active })
+        const out = await run("stop", { session_id: sessionID, cwd: cwd(), last_assistant_message: reply, stop_hook_active: active }, cwd())
         if (out?.decision === "block" && typeof out.reason === "string" && out.reason && out.continue !== false && (chain.get(sessionID) ?? 0) < CONTINUE_MAX) {
           chain.set(sessionID, (chain.get(sessionID) ?? 0) + 1)
           await ctx.session.prompt({ sessionID, text: out.reason, metadata: { shikii: CONTINUE_KEY } } as any)
@@ -125,6 +130,8 @@ export default Plugin.define({
         for await (const ev of ctx.event.subscribe({ signal: controller.signal }) as any) {
           try {
             if (ev?.type === "session.execution.succeeded") await stop(ev.data?.sessionID)
+            // after a summary the brief is gone from what the model sees of the past: ask again at the next request
+            if (ev?.type === "session.compaction.ended" && ev.data?.sessionID) brief.delete(ev.data.sessionID)
           } catch {
             // go on with the next event
           }

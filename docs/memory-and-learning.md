@@ -213,7 +213,7 @@ This adds review and save verification tied to the current conditions. It does n
 - Record the expected observation, conditions, method and decision before an authorized check. Link the actual reported result to the same immutable trial, then cite challenged results in an updated judgment.
 - Select a small unresolved check with current evidence. Compare two saved executions of the same case, question, conditions, method and expected outcome using paired measurements.
 - Adjust source-reading depth while keeping required reviews and exact-revision recovery. Unresolved judgments, pending saves and changed premises deepen the read.
-- Check enabled guards before supported publication calls observed by Claude Code's Bash hook. Codex retains turn-end checks; OpenCode has no command hook; OpenCode 2.x runs turn-end checks through its plugin, and 1.x uses MCP and skills.
+- Check enabled guards before supported publication calls observed by Claude Code's Bash hook. Codex retains turn-end checks; OpenCode uses MCP and skills without automatic hooks.
 - Keep judgments and failure explanations in concise bullets, preserving conditions and sources. Reports and paired values remain agent evidence, with no automatic human truth or model-weight change.
 
 The aim is for an observation to change what the agent checks next, alongside carrying context forward. A saved plan does not run an experiment; matched values need interpretation. See the [workflow and limits](../skills/shikii/references/recording.md#expectations-execution-and-the-next-check-0270).
