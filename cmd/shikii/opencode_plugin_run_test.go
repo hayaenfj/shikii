@@ -1015,6 +1015,43 @@ func TestOpenCodePluginAMovedSessionRunsItsHooksOnlyInItsNewFolder(t *testing.T)
 	}
 }
 
+// A move is told to the plugin of every folder. Only the instance of the folder the session came to takes it over and asks for its
+// brief: neither the folder it left nor an unrelated folder runs shikii for it.
+func TestOpenCodePluginOnlyTheNewFolderTakesOverAMovedSession(t *testing.T) {
+	b := newPluginBox(t)
+	projectA := b.otherProject(t)
+	projectC := filepath.Join(b.dir, "projectC")
+	if err := os.MkdirAll(projectC, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, calls := b.play(t, map[string]any{
+		"locations": map[string]any{"A": projectA, "B": b.project, "C": projectC},
+		"sessions":  map[string]any{"s1": map[string]any{"id": "s1", "location": map[string]any{"directory": projectA}}},
+		"steps": []map[string]any{
+			{"op": "prompt", "at": "A", "sid": "s1", "text": "a request in project A"},
+			{"op": "succeeded", "sid": "s1"},
+			{"op": "move", "sid": "s1", "dir": b.project},
+		},
+	})
+	var after []pluginCall
+	stopped := false
+	for _, c := range calls {
+		if c.Event == "stop" {
+			stopped = true
+			continue
+		}
+		if stopped {
+			after = append(after, c)
+		}
+	}
+	if !stopped {
+		t.Fatalf("precondition: the turn in project A ended with a stop: %+v", calls)
+	}
+	if len(after) != 1 || after[0].Event != "session-start" || after[0].Pwd != b.project {
+		t.Errorf("after the move only project B asks for the session's brief: %+v", after)
+	}
+}
+
 // A summary in the middle of a turn takes the turn's messages out of ctx.session.context, so stop would be given no reply. The plugin
 // keeps the text of the last assistant message from session.text.ended ({sessionID, assistantMessageID, ordinal, text}) and uses it
 // only when the context gives none; a new message replaces what was kept of the older one.
