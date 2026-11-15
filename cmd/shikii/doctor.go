@@ -195,6 +195,9 @@ func registeredBinaryLines(home, exe string) []string {
 		} else {
 			lines = append(lines, fmt.Sprintf("WARN %s: cannot read which shikii it runs → run %s hook install --yes to write it again", pluginWhere, shellQuote(exe)))
 		}
+		if other := opencodeOtherConfigDir(home); other != "" {
+			lines = append(lines, fmt.Sprintf("WARN %s: OPENCODE_CONFIG_DIR is set (%s) in this environment, and OpenCode 2.x then reads its plugins only from %s, so an OpenCode started with it does not read shikii's plugin → start OpenCode without OPENCODE_CONFIG_DIR, or link shikii's folder there yourself: ln -s %s %s", pluginWhere, other, filepath.Join(other, "plugins"), shellQuote(opencodePluginDir(home)), shellQuote(filepath.Join(other, "plugins", opencodePluginFolder))))
+		}
 	case opencodePluginForeign:
 		lines = append(lines, fmt.Sprintf("note %s: it is not shikii's plugin (%s), so doctor did not check it and hook install --yes leaves it as it is", pluginWhere, opencodeNotShikiis))
 	}

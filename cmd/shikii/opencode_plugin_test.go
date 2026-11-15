@@ -816,3 +816,53 @@ func TestOpenCodePluginRemovesOnlyItsFilesAndTemporaryFiles(t *testing.T) {
 		}
 	}
 }
+
+// OpenCode 2.3.0 reads its config folder, and the plugins under it, from OPENCODE_CONFIG_DIR when that is set (measured with env -i and
+// a fake HOME and XDG: a serve started with it did not load a plugin under $XDG_CONFIG_HOME/opencode/plugins/, and loaded one under
+// $OPENCODE_CONFIG_DIR/plugins/). shikii keeps writing its plugin where it does (P1), so doctor says when OpenCode would not read it.
+func TestDoctorSaysWhenOpenCodeReadsPluginsFromAnotherConfigFolder(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	home := t.TempDir()
+	exe := filepath.Join(t.TempDir(), "shikii")
+	writeFileT(t, exe, "binary")
+	if err := os.Chmod(exe, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writePluginT(t, wantPluginDir(home), exe)
+	warned := func() string {
+		for _, line := range registeredBinaryLines(home, exe) {
+			if strings.Contains(line, "OPENCODE_CONFIG_DIR is set") {
+				return line
+			}
+		}
+		return ""
+	}
+	other := t.TempDir()
+	t.Setenv("OPENCODE_CONFIG_DIR", other)
+	if line := warned(); !strings.HasPrefix(line, "WARN OpenCode plugin") || !strings.Contains(line, other) {
+		t.Errorf("with OPENCODE_CONFIG_DIR elsewhere, doctor warns that OpenCode does not read shikii's plugin: %q", line)
+	}
+	for name, value := range map[string]string{
+		"not set":                       "",
+		"set to the folder shikii uses": filepath.Join(home, ".config", "opencode"),
+	} {
+		t.Setenv("OPENCODE_CONFIG_DIR", value)
+		if line := warned(); line != "" {
+			t.Errorf("%s: OpenCode reads shikii's plugin, nothing to warn: %q", name, line)
+		}
+	}
+	// a link in the other folder's plugins/ to shikii's folder: OpenCode reads it through the link
+	t.Setenv("OPENCODE_CONFIG_DIR", other)
+	symlinkT(t, wantPluginDir(home), filepath.Join(other, "plugins", "shikii"))
+	if line := warned(); line != "" {
+		t.Errorf("a link to shikii's plugin in $OPENCODE_CONFIG_DIR/plugins is read: nothing to warn: %q", line)
+	}
+	// no shikii plugin: OpenCode has no shikii hook either way, nothing to say about the folder
+	empty := t.TempDir()
+	t.Setenv("OPENCODE_CONFIG_DIR", t.TempDir())
+	for _, line := range registeredBinaryLines(empty, exe) {
+		if strings.Contains(line, "OPENCODE_CONFIG_DIR is set") {
+			t.Errorf("without shikii's plugin there is nothing to warn about: %q", line)
+		}
+	}
+}

@@ -13,6 +13,7 @@
 ### Limits
 
 - OpenCode gives plugins no place to show text to you, so guard explanations and the other notes shikii shows in Claude Code and Codex do not appear there. A plugin has no hook before a command, so guards that refuse a command do not run.
+- An OpenCode started with `OPENCODE_CONFIG_DIR` reads plugins only from that folder, so it does not read shikii's plugin. `shikii doctor` says so.
 - OpenCode 1.x still uses only the MCP settings and the skill.
 
 ## 0.33.0 — Agents read less and get a smaller MCP tool

@@ -68,6 +68,20 @@ func opencodePluginDir(home string) string {
 	return filepath.Join(opencodeConfigDir(home), "plugins", opencodePluginFolder)
 }
 
+// opencodeOtherConfigDir is the folder OpenCode 2.x reads its config and its plugins from in place of opencodeConfigDir, when
+// OPENCODE_CONFIG_DIR names another one in this environment; "" when OpenCode reads shikii's plugin where shikii puts it. OpenCode 2.3.0
+// replaces its config folder with OPENCODE_CONFIG_DIR and reads the plugins under that one only (measured with env -i and a fake HOME
+// and XDG: a serve started with it did not load a plugin under $XDG_CONFIG_HOME/opencode/plugins/, and loaded one under
+// $OPENCODE_CONFIG_DIR/plugins/). shikii does not write there (doctor says so instead); a link there to shikii's folder is read.
+func opencodeOtherConfigDir(home string) string {
+	dir := os.Getenv("OPENCODE_CONFIG_DIR")
+	// sameFolder (project_registry.go) also takes a link or another spelling of the same folder for it
+	if dir == "" || sameFolder(dir, opencodeConfigDir(home)) || sameFolder(filepath.Join(dir, "plugins", opencodePluginFolder), opencodePluginDir(home)) {
+		return ""
+	}
+	return dir
+}
+
 // opencodePluginFiles is what shikii writes, by file name, for the binary exe (an absolute path: the plugin runs it without a shell).
 func opencodePluginFiles(exe string) map[string]string {
 	lit, _ := json.Marshal(exe)
