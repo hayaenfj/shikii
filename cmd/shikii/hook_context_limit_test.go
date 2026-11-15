@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 // Measured on 2026-11-16 in this project's Claude Code sessions: Claude Code shows a hook's additionalContext whole up to 10,000
@@ -90,39 +91,83 @@ func TestHookCountsItsBoundInCharactersNotBytes(t *testing.T) {
 	}
 }
 
-// A request the hook keeps (up to 64 KiB) can be longer than what the agent is shown with the rest of the prepared work. The
-// preparation was then refused whole, and the agent got only the notice to prepare it again (the check of 2026-11-16: about 7,000
-// characters of English, or 3,000 of pasted HTML, whose <, > and & took six characters each in the JSON). Now the hook writes the
-// JSON without escaping those characters, and when the request still does not fit, it delivers the head of the request in task,
-// with task_context saying so: the whole request is the person's message the agent has, and the hook keeps it uncut.
-func TestHookPreparesALongRequestWithTheHeadOfItsText(t *testing.T) {
+// A request the hook keeps can be longer than what the agent is shown with the rest of the prepared work. The preparation was then
+// refused whole, and the agent got only the notice to prepare it again (the checks of 2026-11-16: about 7,000 characters of
+// English, 3,000 of pasted HTML, whose <, > and & took six characters each in the JSON, and any request over the 64 KiB the hook
+// keeps). Now the hook writes its JSON without escaping those characters, a request that fits comes whole, and one that does not
+// comes as its head, of at most hookTaskHeadMax characters as delivered, with task_context saying where the rest is. The work is
+// matched (the reading case, the focus of the lessons, the procedure) on the request the hook keeps, not on the head it delivers.
+func TestHookPreparesAnyRequestWithinTheBound(t *testing.T) {
+	const en, ja = "Explain archive approval for production restore. ", "\u672c\u756a\u306e\u5fa9\u5143\u306e\u627f\u8a8d\u3092\u8aac\u660e\u3057\u3066\u3002"
 	for name, c := range map[string]struct {
-		prompt string
-		whole  bool // the whole request fits in task
+		prompt  string
+		lessons string // "", "en" or "ja": six long lessons the request finds
+		want    string // "whole", "head" (delivered_head) or "kept" (over what the hook keeps: stored_request_truncated)
 	}{
-		"8,000 characters of English": {"Explain archive approval for production restore. " + strings.Repeat("Keep the restore conditions. ", 270), false},
-		"3,000 characters of HTML":    {"Explain archive approval for production restore. " + strings.Repeat("<a>", 1000), true},
-		"5,000 kana":                  {"\u672c\u756a\u306e\u5fa9\u5143\u306e\u627f\u8a8d\u3092\u8aac\u660e\u3057\u3066\u3002" + strings.Repeat("\u3042", 5000), true},
+		"8,000 characters of English":               {en + strings.Repeat("Keep the restore conditions. ", 270), "", "head"},
+		"20,000 characters of English with lessons": {en + strings.Repeat("Keep the restore conditions. ", 690), "en", "head"},
+		"70,000 characters of English":              {en + strings.Repeat("Keep the restore conditions. ", 2420), "", "kept"},
+		"3,000 characters of HTML":                  {en + strings.Repeat("<a>", 1000), "en", "whole"},
+		"25,000 characters of &<>":                  {en + strings.Repeat("&<>", 8400), "", "head"},
+		"5,000 kana":                                {ja + strings.Repeat("\u3042", 5000), "", "whole"},
+		"9,000 kana with Japanese lessons":          {ja + strings.Repeat("\u3042", 9000), "ja", "head"},
+		"25,000 kana":                               {ja + strings.Repeat("\u3042", 25000), "", "kept"},
+		"20,000 emoji":                              {en + strings.Repeat("\U0001F600", 20000), "", "kept"},
+		"5,000 control characters":                  {en + strings.Repeat("\x01", 5000), "", "head"},
+		"quotes, backslashes and new lines":         {en + strings.Repeat("<&>\"\\\n", 1500), "", "head"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			repo, root, _ := planningFixture(t)
-			context, v := preparedHookWork(t, repo, c.prompt)
-			if v == nil {
-				t.Fatalf("the hook kept the request but delivered no prepared work: %.300s", context)
-			}
-			task, _ := v["task"].(string)
-			status := v["task_context"].(map[string]any)["text_status"]
-			if c.whole && (task != c.prompt || status != "stored_request") {
-				t.Fatalf("the whole request fits, but task is %d of its %d bytes (%v)", len(task), len(c.prompt), status)
-			}
-			if !c.whole {
-				next, _ := v["task_context"].(map[string]any)["next_action"].(string)
-				if status != "delivered_head" || len(task) >= len(c.prompt) || !strings.HasPrefix(c.prompt, task) || !strings.Contains(next, "the person's message") {
-					t.Fatalf("a request that does not fit comes as its head, and task_context says where the rest is: task %d of %d bytes, %v, %q", len(task), len(c.prompt), status, next)
+			b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
+			for i := 0; i < 6 && c.lessons != ""; i++ {
+				if c.lessons == "en" {
+					interimAddArticle(t, b, fmt.Sprintf("Archive approval %d", i), strings.Repeat("Production restore requires owner approval before the archive is restored. ", 40))
+				} else {
+					interimAddArticle(t, b, fmt.Sprintf("\u30a2\u30fc\u30ab\u30a4\u30d6\u306e\u627f\u8a8d %d", i), strings.Repeat("\u672c\u756a\u306e\u5fa9\u5143\u306b\u306f\u6240\u6709\u8005\u306e\u627f\u8a8d\u304c\u8981\u308b\u3002\u30a2\u30fc\u30ab\u30a4\u30d6\u3092\u623b\u3059\u524d\u306b\u627f\u8a8d\u3092\u5f97\u308b\u3053\u3068\u3002", 60))
 				}
 			}
-			if s := loadSession(root, "planning"); s.RequestText != strings.TrimSpace(c.prompt) { // the hook trims the white space around it
-				t.Fatalf("the hook keeps the whole request: %d of %d bytes", len(s.RequestText), len(strings.TrimSpace(c.prompt)))
+			context, v := preparedHookWork(t, repo, c.prompt)
+			if v == nil {
+				t.Fatalf("the hook kept the request (%d bytes) but delivered no prepared work: %.200s", len(c.prompt), context)
+			}
+			whole := strings.TrimSpace(c.prompt) // the hook trims the white space around a request
+			task, _ := v["task"].(string)
+			taskContext, _ := v["task_context"].(map[string]any)
+			status, _ := taskContext["text_status"].(string)
+			next, _ := taskContext["next_action"].(string)
+			if provided, _ := taskContext["provided_bytes"].(float64); int(provided) != len(task) || !strings.HasPrefix(whole, task) {
+				t.Fatalf("task must be a head of the request and provided_bytes its length: provided_bytes %v, task %d bytes", taskContext["provided_bytes"], len(task))
+			}
+			delivered, _ := orderedText(task)
+			size := hookContextLength(string(delivered))
+			switch c.want {
+			case "whole":
+				if task != whole || status != "stored_request" {
+					t.Fatalf("the whole request fits, but task is %d of its %d bytes (%s)", len(task), len(whole), status)
+				}
+			case "head", "kept":
+				wantStatus, wantNext := "delivered_head", "the person's message"
+				if c.want == "kept" {
+					wantStatus, wantNext = "stored_request_truncated", "original human message"
+				}
+				if status != wantStatus || !strings.Contains(next, wantNext) {
+					t.Fatalf("a request that does not fit comes as its head, and task_context says where the rest is: %s, %q", status, next)
+				}
+				// the head is measured as it is delivered: the next character would not fit (one character is at most \u0001)
+				if size > hookTaskHeadMax || size <= hookTaskHeadMax-len(`\u0001`) {
+					t.Fatalf("the head of the request is %d characters as delivered, not the longest within %d", size, hookTaskHeadMax)
+				}
+			}
+			s := loadSession(root, "planning")
+			if want := cut(whole, store.RecordTextLimit+4); s.RequestText != want {
+				t.Fatalf("the hook keeps the request up to its bound: %d bytes, want %d", len(s.RequestText), len(want))
+			}
+			reading := s.Planning.Work.Reasoning.Reading
+			if reading == nil {
+				t.Fatal("precondition: the preparation keeps a reading trace")
+			}
+			if want := workHash(cut(s.RequestText, store.RecordTextLimit))[:16]; reading.Case != want {
+				t.Fatalf("the reading case is %s, the hash of the delivered head; the request the hook keeps hashes to %s", reading.Case, want)
 			}
 		})
 	}

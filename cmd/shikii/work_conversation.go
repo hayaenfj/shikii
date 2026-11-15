@@ -98,32 +98,6 @@ func preparedWorkTask(s *hookSession, w *workState, req workRequest) (string, ma
 		context["provided_bytes"] = len(text)
 		return workContextSize(map[string]any{"task": text, "task_context": context}) <= workSourceBudget*3-workTaskReserve
 	}
-	if req.taskMax > 0 && context["text_status"] == "stored_request" {
-		// The hook delivers the head of a request that does not fit what the agent is shown with the rest of the prepared work;
-		// the stored request stays whole.
-		context["text_status"] = "delivered_head"
-		context["next_action"] = "Only the head of the request fits what the hook can show; the whole request is the person's message in this conversation, and shikii keeps it whole."
-		wide := fits
-		fits = func(text string) bool {
-			return wide(text) && workContextSize(map[string]any{"task": text, "task_context": context}) <= req.taskMax
-		}
-		if fits(task) {
-			context["text_status"] = "stored_request"
-			delete(context, "next_action")
-			return task, context, nil
-		}
-		low, high := 0, len(task)
-		for low < high {
-			if middle := (low + high + 1) / 2; fits(cut(task, middle)) {
-				low = middle
-			} else {
-				high = middle - 1
-			}
-		}
-		task = cut(task, low)
-		fits(task)
-		return task, context, nil
-	}
 	if !fits(task) {
 		context["text_status"] = "stored_request_truncated"
 		context["next_action"] = "Read the original human message in the host conversation before interpreting missing conditions; stored text cannot reconstruct the omitted tail."
@@ -139,4 +113,33 @@ func preparedWorkTask(s *hookSession, w *workState, req workRequest) (string, ma
 		fits(task) // provided_bytes of what is returned
 	}
 	return task, context, nil
+}
+
+// deliveredTaskHead is the copy of task the hook delivers when the whole preparation does not fit what the agent is shown: the
+// longest head whose JSON string, written as the hook writes it (orderedText), takes at most max characters. The agent has the
+// whole request in its conversation. task_context says so for a request the hook kept whole (delivered_head); one longer than what
+// the hook keeps keeps its own status and next action. The work is matched on the whole task, not on this head.
+func deliveredTaskHead(task string, context map[string]any, max int) string {
+	size := func(text string) int {
+		b, _ := orderedText(text)
+		return hookContextLength(string(b))
+	}
+	if size(task) <= max {
+		return task
+	}
+	low, high := 0, len(task) // the longest head that fits
+	for low < high {
+		if middle := (low + high + 1) / 2; size(cut(task, middle)) <= max {
+			low = middle
+		} else {
+			high = middle - 1
+		}
+	}
+	if context["text_status"] == "stored_request" {
+		context["text_status"] = "delivered_head"
+		context["next_action"] = "Only the head of the request fits what the hook can show; the whole request is the person's message in this conversation, and shikii keeps it whole."
+	}
+	task = cut(task, low)
+	context["provided_bytes"] = len(task)
+	return task
 }

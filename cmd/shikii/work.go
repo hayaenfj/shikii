@@ -103,7 +103,7 @@ type workCompletionRef struct {
 type workRequest struct {
 	fromHook          bool                   // Internal preparation whose complete reply is delivered by the prompt hook.
 	responseSize      func(any) int          // Host transport sizing; never supplied by the caller.
-	taskMax           int                    // The hook's bound on task with task_context, after JSON encoding; 0 is none.
+	taskMax           int                    // The hook's bound on the delivered task, in characters as the hook writes it; 0 is none.
 	MaxBytes          int                    `json:"max_bytes,omitempty"`
 	Result            *workCompletion        `json:"result,omitempty"`
 	Reading           *workReadingFeedback   `json:"reading,omitempty"`
@@ -604,6 +604,10 @@ func prepareWork(root, scope string, req workRequest) (out any, err error) {
 	if standalone {
 		w.Task = task
 	}
+	delivered := task
+	if req.taskMax > 0 {
+		delivered = deliveredTaskHead(task, taskContext, req.taskMax)
+	}
 	quoted := map[string]string{}
 	stage := ""
 	if req.Assignment != nil {
@@ -640,7 +644,7 @@ func prepareWork(root, scope string, req workRequest) (out any, err error) {
 	if err != nil {
 		return nil, err
 	}
-	reply := map[string]any{"memory_upgrade": memoryUpgrade, "reading": w.Reasoning.Reading, "attention": attention, "reasoning": currentReasoningView(book, w.Reasoning), "planning_required": !standalone && !s.Planning.ReasoningOnly, "collective": collective, "receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": task, "task_context": taskContext, "agent_supplied_task": standalone, "conversation": conversation, "conversation_context": conversationContext, "context_notice": planningContext, "knowledge": knowledge, "knowledge_context": knowledgeContext, "knowledge_query": knowledgeQuery, "pending": pending, "reflection_context": reflectionContext, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": compactWorkHowTo}
+	reply := map[string]any{"memory_upgrade": memoryUpgrade, "reading": w.Reasoning.Reading, "attention": attention, "reasoning": currentReasoningView(book, w.Reasoning), "planning_required": !standalone && !s.Planning.ReasoningOnly, "collective": collective, "receipt": workEncode(workToken{req.SessionID, req.TurnID, w.Nonce}), "task": delivered, "task_context": taskContext, "agent_supplied_task": standalone, "conversation": conversation, "conversation_context": conversationContext, "context_notice": planningContext, "knowledge": knowledge, "knowledge_context": knowledgeContext, "knowledge_query": knowledgeQuery, "pending": pending, "reflection_context": reflectionContext, "more_pending": reflection.MorePending, "observations": evidence, "maintenance": maintenance, "how_to_record": compactWorkHowTo}
 	if carried != nil {
 		reply["carried"] = carried
 	}

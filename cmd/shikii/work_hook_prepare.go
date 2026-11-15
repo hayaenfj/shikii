@@ -38,10 +38,10 @@ func prepareHookWork(root string, in *hookInput, out *hookOut) {
 	req.responseSize = func(v any) int { return hookContextLength(render(v).Context) }
 	v, err := prepareWork(root, s.Scope, req)
 	if err != nil && strings.Contains(err.Error(), "exceed max_bytes") {
-		// The request itself does not fit what the agent is shown with the rest (about 7,000 characters of English): the copy of it
-		// in task is cut to its head, and task_context says that the whole request is the person's message. The hook keeps the
-		// request uncut, and a refused preparation saves nothing, as in the CLI's widening.
-		req.taskMax = hookContextMax / 3
+		// The request itself does not fit what the agent is shown with the rest (about 7,000 characters of English, or any request
+		// over the 64 KiB the hook keeps): the copy of it in task is cut to its head, and task_context says where the rest is. The
+		// hook keeps the request, and a refused preparation saves nothing, as in the CLI's widening.
+		req.taskMax = hookTaskHeadMax
 		v, err = prepareWork(root, s.Scope, req)
 	}
 	if err != nil {
@@ -92,3 +92,7 @@ func hookContextLength(s string) int {
 	}
 	return n
 }
+
+// hookTaskHeadMax is the most of a request the hook delivers in task when the whole request does not fit, in characters as
+// delivered: the agent has the whole request in its conversation, so the rest of the bound goes to the lessons.
+const hookTaskHeadMax = hookContextMax / 5

@@ -656,7 +656,7 @@ and failed refs can be retried without resending it. Internal scope/completion
 grades do not ask people to score agents. A concrete task choice may still need
 the person's answer.
 
-Optional max_bytes bounds a prepare response (28672 bytes by default on the CLI; a longer request is not cut, and the reply grows to hold it; the hook keeps 64 KiB of a request, and the work it prepares fits, with the rest of its context, within the 10,000 characters Claude Code shows whole, the same for Codex and OpenCode: a request too long for that comes in `task` as its head, with `task_context.text_status` `delivered_head`, while the hook keeps the request uncut); omitted bodies retain exact recovery
+Optional max_bytes bounds a prepare response (28672 bytes by default on the CLI; a longer request is not cut, and the reply grows to hold it; the hook keeps 64 KiB of a request, and the work it prepares fits, with the rest of its context, within the 10,000 characters Claude Code shows whole, the same for Codex and OpenCode: a request too long for that comes in `task` as its head, with `task_context.text_status` `delivered_head`, or `stored_request_truncated` when it is longer than the 64 KiB the hook keeps, while the work is matched on the request the hook keeps); omitted bodies retain exact recovery
 queries. Sentence-boundary excerpts and same-receipt body or identical-excerpt reuse
 reduce rereading; reused excerpts never establish a full-body read.
 Identical host reading notices can be shared verbatim in `reading_notices` within
