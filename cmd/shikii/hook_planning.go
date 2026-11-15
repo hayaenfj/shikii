@@ -478,6 +478,12 @@ func currentPlanningFrame(s *hookSession, turnID, scope string) error {
 	switch {
 	case s.Scope != scope:
 		return errors.New(refusal + "this session's request was made in another project folder; run the command in that project")
+	case s.TurnID != turnID && s.Planning != nil && s.Planning.TurnID == s.TurnID && copiedTurnID(turnID, s.TurnID) && !earlierTurnID(s.Planning, turnID):
+		// A turn id is 16 random hex characters: one a few characters from the ongoing request's is that id changed while copying,
+		// not an earlier request's. Before, it was refused as an earlier request's, and preparing again replaced the hook's
+		// preparation (audit of 0.33.0, U-8; a receipt with its work current is loadWorkState's case). An id far from every one the
+		// session keeps cannot be told from one of a request it no longer keeps, and keeps the refusal below.
+		return errors.New(refusal + "this turn_id is the ongoing request's with a few characters changed while copying, so no newer request has started; send session_id and turn_id exactly as the hook notice gave them")
 	case s.TurnID != turnID || s.Planning == nil || s.Planning.TurnID != turnID:
 		text := refusal + "a newer request has started in this session, so these ids or this receipt belong to an earlier one; prepare again with the ids of the latest hook notice"
 		if s.Planning != nil && s.Planning.Handover != nil {
@@ -490,6 +496,40 @@ func currentPlanningFrame(s *hookSession, turnID, scope string) error {
 		return errors.New(refusal + "this request is older than the session limit; prepare again from a new request")
 	}
 	return nil
+}
+
+// copiedTurnID says whether id is current changed in at most three places (a character changed, left out, added, or two swapped).
+func copiedTurnID(id, current string) bool {
+	if id == current || current == "" || len(id) > 2*len(current) {
+		return false
+	}
+	previous := make([]int, len(current)+1)
+	for j := range previous {
+		previous[j] = j
+	}
+	for i := 1; i <= len(id); i++ {
+		row := make([]int, len(current)+1)
+		row[0] = i
+		for j := 1; j <= len(current); j++ {
+			change := 1
+			if id[i-1] == current[j-1] {
+				change = 0
+			}
+			row[j] = min(previous[j]+1, row[j-1]+1, previous[j-1]+change)
+		}
+		previous = row
+	}
+	return previous[len(current)] <= 3
+}
+
+// earlierTurnID says whether id is the turn of an earlier request this session record keeps.
+func earlierTurnID(f *planningFrame, id string) bool {
+	for _, turn := range append(append([]planningTurn{}, f.Recent...), f.Earlier...) {
+		if turn.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func currentPlanningWork(s *hookSession, req planningRequest) error {
