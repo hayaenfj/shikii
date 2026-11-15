@@ -75,3 +75,52 @@ func TestDocsSayOpenCodeReadsNoPluginOfShikiisUnderOPENCODE_CONFIG_DIR(t *testin
 		}
 	}
 }
+
+// xdgSentencesWithoutAbsolute lists the sentences of text that name $XDG_CONFIG_HOME without saying it counts only as an absolute path
+// ("absolute", or the Japanese for an absolute path). shikii follows XDG_CONFIG_HOME only when it is absolute (opencodeConfigDir; a
+// relative one is ignored, as TestHookInstallPutsOpenCodePluginUnderXDGConfigHome checks), so "when it is set" says more than it does.
+func xdgSentencesWithoutAbsolute(text string) []string {
+	var bad []string
+	for rest := text; ; {
+		i := strings.Index(rest, "XDG_CONFIG_HOME")
+		if i < 0 {
+			return bad
+		}
+		start := 0
+		for _, end := range []string{". ", "\u3002", "\n"} {
+			if j := strings.LastIndex(rest[:i], end); j >= 0 && j+len(end) > start {
+				start = j + len(end)
+			}
+		}
+		stop := len(rest)
+		for _, end := range []string{". ", "\u3002", "\n"} {
+			if j := strings.Index(rest[i:], end); j >= 0 && i+j+len(end) < stop {
+				stop = i + j + len(end)
+			}
+		}
+		if sentence := rest[start:stop]; !strings.Contains(sentence, "absolute") && !strings.Contains(sentence, "\u7d76\u5bfe\u30d1\u30b9") {
+			bad = append(bad, sentence)
+		}
+		rest = rest[stop:]
+	}
+}
+
+// The documents say where the plugin goes as opencodeConfigDir decides it: under $XDG_CONFIG_HOME only when that is an absolute path.
+func TestDocsSayXDGConfigHomeCountsOnlyWhenAbsolute(t *testing.T) {
+	// the check itself: "when that is set" is caught, the absolute condition passes
+	if bad := xdgSentencesWithoutAbsolute("It goes in `~/.config/x` (under `$XDG_CONFIG_HOME/x` when that is set). Next."); len(bad) != 1 {
+		t.Fatalf("a sentence without the absolute condition must be caught: %q", bad)
+	}
+	if bad := xdgSentencesWithoutAbsolute("It goes in `~/.config/x` (under `$XDG_CONFIG_HOME/x` when that is an absolute path). Next."); len(bad) != 0 {
+		t.Fatalf("a sentence with the absolute condition passes: %q", bad)
+	}
+	for _, f := range []string{"README.md", "docs/readme/README_ja.md", "integrations/claude-code.md", "integrations/claude-code.ja.md", "skills/shikii/SKILL.md"} {
+		text := readDocT(t, f)
+		if !strings.Contains(text, "XDG_CONFIG_HOME") {
+			t.Errorf("%s no longer names $XDG_CONFIG_HOME; check this test by hand", f)
+		}
+		for _, sentence := range xdgSentencesWithoutAbsolute(text) {
+			t.Errorf("%s: %q names $XDG_CONFIG_HOME without saying shikii follows it only as an absolute path", f, sentence)
+		}
+	}
+}

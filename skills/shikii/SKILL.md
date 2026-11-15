@@ -60,7 +60,7 @@ Use it at five moments:
 - Keep private conversations/settings and all project learning in its `.shikii/`. When asked for the answer page, run `shikii page` and return its URL/port.
 - For memory import, follow [import-memory.md](references/import-memory.md): capture originals, place/ingest supported lessons, preserve original files and add wiki pointers. One instruction from the person is enough.
 - To uninstall: run `shikii uninstall` for the preview, show it, and use `--yes` only after agreement. Keep data in `.shikii/` and `~/.shikii/agent`; pass on the printed `rm` command for binaries and ask the person to reopen agent sessions.
-- `shikii update` refreshes configured binaries, hooks and skills. Without hooks, rerun `shikii --init` after updating to refresh skills. OpenCode 2.x's hooks are a plugin in `~/.config/opencode/plugins/shikii/` (or under `$XDG_CONFIG_HOME`) that the same `shikii hook install --yes` rewrites. Use matching binaries/skills and reopen sessions; older writers may lose newer progress. Updating from 0.6.0 or earlier has a one-time store wipe.
+- `shikii update` refreshes configured binaries, hooks and skills. Without hooks, rerun `shikii --init` after updating to refresh skills. OpenCode 2.x's hooks are a plugin in `~/.config/opencode/plugins/shikii/` (or under `$XDG_CONFIG_HOME` when it is an absolute path) that the same `shikii hook install --yes` rewrites. Use matching binaries/skills and reopen sessions; older writers may lose newer progress. Updating from 0.6.0 or earlier has a one-time store wipe.
 
 ## Evidence and decision boundaries
 
