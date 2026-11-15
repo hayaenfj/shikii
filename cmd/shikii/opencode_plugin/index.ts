@@ -52,7 +52,9 @@ export default Plugin.define({
   id: "shikii",
   async setup(ctx) {
     const cwd = (): string | undefined => ctx.location?.directory
-    const brief = new Map<string, string>() // sessionID -> the session-start text ("" when there was none); absent: ask at the next request
+    // sessionID -> the session-start text, asked for at the session's first request. "" when that gave nothing (none, a failure, a
+    // timeout): it is not asked for again until a summary or a move asks again, as Claude Code runs SessionStart only at those times
+    const brief = new Map<string, string>()
     const turn = new Map<string, string>() // sessionID -> the user-prompt-submit text of the person's last request
     const continued = new Map<string, boolean>() // sessionID -> the running turn was started by this plugin (stop_hook_active)
     const chain = new Map<string, number>() // sessionID -> continuations this plugin started since the person's last request

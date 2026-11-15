@@ -1359,3 +1359,42 @@ func TestOpenCodePluginATurnThatEndsWhileAMoveIsBeingHandledLeavesNothingToTheOl
 		t.Errorf("the report after the turn ended wakes B: %+v", stops)
 	}
 }
+
+// A first session-start that gives nothing (it failed, timed out or printed nothing) leaves the session without a brief until a summary of
+// the conversation or a move asks again: the next requests do not ask again, as Claude Code runs SessionStart only at those times too.
+func TestOpenCodePluginAsksForTheBriefAgainOnlyAfterASummaryWhenTheFirstAskGaveNothing(t *testing.T) {
+	b := newPluginBox(t)
+	b.fail(t, "session-start", 1)
+	b.answer(t, "session-start", 2, additionalJSON("BRIEF-AFTER-THE-SUMMARY"))
+	run, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "one"},
+		{"op": "context", "sid": "s1"},
+		{"op": "prompt", "sid": "s1", "text": "two"},
+		{"op": "context", "sid": "s1"},
+		{"op": "compaction", "sid": "s1"},
+		{"op": "context", "sid": "s1"},
+	}})
+	if len(run.Errors) != 0 || len(run.Contexts) != 3 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	starts := 0
+	for i, c := range calls {
+		if c.Event == "session-start" {
+			starts++
+		}
+		if c.Event == "user-prompt-submit" && c.N == 2 && starts != 1 {
+			t.Errorf("the second request asked for the brief again (call %d): %+v", i, calls)
+		}
+	}
+	if starts != 2 {
+		t.Errorf("session-start runs at the first request and after the summary only, ran %d times", starts)
+	}
+	for i, c := range run.Contexts[:2] {
+		if slices.Contains(c, "BRIEF-AFTER-THE-SUMMARY") {
+			t.Errorf("model call %d has a brief before the summary asked for one: %q", i+1, c)
+		}
+	}
+	if !slices.Contains(run.Contexts[2], "BRIEF-AFTER-THE-SUMMARY") {
+		t.Errorf("after the summary the brief is there: %q", run.Contexts[2])
+	}
+}
