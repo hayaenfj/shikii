@@ -137,6 +137,10 @@ for (const step of scenario.steps) {
       sessions[step.sid] = { ...(sessions[step.sid] ?? { id: step.sid }), location: { directory: step.dir } }
       broadcast({ type: "session.moved", data: { sessionID: step.sid } })
       await settle()
+    } else if (step.op === "relocate") {
+      // measured on 2.3.0: the session is in the new folder (ctx.session.get answers it) while session.moved has not reached the plugins yet;
+      // the model call right after a move is made in this window
+      sessions[step.sid] = { ...(sessions[step.sid] ?? { id: step.sid }), location: { directory: step.dir } }
     } else if (step.op === "settle") {
       await settle()
     } else if (step.op === "release") {
@@ -1167,10 +1171,11 @@ func TestOpenCodePluginAWokenTurnAfterAMoveInTheMiddleOfATurnHasItsStop(t *testi
 	}
 }
 
-// The rest of a turn that was moved goes on under the new folder's context hook. It gets the brief of the new project (asked for when
-// the session came). The request's own text is not handed over: it was prepared, and counted, in the folder the request was made in, and
-// asking again there would count the person's request twice.
-func TestOpenCodePluginTheRestOfAMovedTurnGetsTheNewFoldersBriefButNotTheRequestsText(t *testing.T) {
+// Measured on 2.3.0: the model call right after a move in the middle of a turn is made before session.moved reaches the plugins, so it
+// has neither the old folder's brief and request text nor the new folder's brief. The calls after session.moved get the brief of the new
+// project (asked for when the session came). The request's own text is never handed over: it was prepared, and counted, in the folder the
+// request was made in, and asking again there would count the person's request twice.
+func TestOpenCodePluginTheModelCallsAfterAMoveGetTheNewFoldersBriefButNotTheRequestsText(t *testing.T) {
 	b := newPluginBox(t)
 	projectA := b.otherProject(t)
 	b.answer(t, "session-start", 0, additionalJSON("BRIEF-OF-THE-SESSION"))
@@ -1181,18 +1186,23 @@ func TestOpenCodePluginTheRestOfAMovedTurnGetsTheNewFoldersBriefButNotTheRequest
 		"steps": []map[string]any{
 			{"op": "prompt", "at": "A", "sid": "s1", "text": "a request in project A"},
 			{"op": "context", "at": "A", "sid": "s1"}, // the first model call, in A
-			{"op": "move", "sid": "s1", "dir": b.project},
-			{"op": "context", "at": "B", "sid": "s1"}, // the next model call of the same turn, in B
+			{"op": "relocate", "sid": "s1", "dir": b.project},
+			{"op": "context", "at": "B", "sid": "s1"}, // the call right after the move: session.moved has not reached the plugins
+			{"op": "event", "type": "session.moved", "sid": "s1"},
+			{"op": "context", "at": "B", "sid": "s1"}, // the next call of the same turn
 		},
 	})
-	if len(run.Contexts) != 2 || !slices.Contains(run.Contexts[0], "TEXT-OF-THE-REQUEST") {
+	if len(run.Contexts) != 3 || !slices.Contains(run.Contexts[0], "TEXT-OF-THE-REQUEST") {
 		t.Fatalf("precondition: the first model call has the request's text: %+v", run.Contexts)
 	}
-	if !slices.Contains(run.Contexts[1], "BRIEF-OF-THE-SESSION") {
-		t.Errorf("the model call after the move has the brief asked for in the new folder: %q", run.Contexts[1])
+	if slices.Contains(run.Contexts[1], "BRIEF-OF-THE-SESSION") || slices.Contains(run.Contexts[1], "TEXT-OF-THE-REQUEST") {
+		t.Errorf("the call right after the move is made before the move is told: it has nothing of the session: %q", run.Contexts[1])
 	}
-	if slices.Contains(run.Contexts[1], "TEXT-OF-THE-REQUEST") {
-		t.Errorf("the request's text is not handed over to the new folder: %q", run.Contexts[1])
+	if !slices.Contains(run.Contexts[2], "BRIEF-OF-THE-SESSION") {
+		t.Errorf("the call after session.moved has the brief asked for in the new folder: %q", run.Contexts[2])
+	}
+	if slices.Contains(run.Contexts[2], "TEXT-OF-THE-REQUEST") {
+		t.Errorf("the request's text is not handed over to the new folder: %q", run.Contexts[2])
 	}
 	if n := countCalls(calls, "user-prompt-submit"); n != 1 {
 		t.Errorf("the person's request is counted once: %d", n)
@@ -1223,5 +1233,94 @@ func TestOpenCodePluginTheTextOfAnInterruptedTurnIsNoLaterTurnsReply(t *testing.
 	}
 	if got := stops[0].Stdin["last_assistant_message"]; got != "" {
 		t.Errorf("the next turn got the interrupted turn's text as its reply: %q", got)
+	}
+}
+
+// Measured on 2.3.0: a turn moved in its middle goes on in the new folder, and a subagent's report that comes while it still runs joins
+// that same execution, which ends once. The new folder took the session over, but the turn is the old folder's: only the old folder runs
+// its stop (the session says a turn runs: time.busy is later than time.idle). A report after the turn ended wakes a turn of the new folder
+// (the test of the woken turn above).
+func TestOpenCodePluginAReportDuringAMovedTurnRunsNoSecondStop(t *testing.T) {
+	b := newPluginBox(t)
+	projectA := b.otherProject(t)
+	_, calls := b.play(t, map[string]any{
+		"locations": map[string]any{"A": projectA, "B": b.project},
+		"sessions": map[string]any{"s1": map[string]any{"id": "s1", "location": map[string]any{"directory": projectA},
+			"time": map[string]any{"busy": 2, "idle": 1}}}, // a turn runs
+		"steps": []map[string]any{
+			{"op": "prompt", "at": "A", "sid": "s1", "text": "a request in project A that starts a subagent"},
+			{"op": "move", "sid": "s1", "dir": b.project}, // delivered at a step boundary while the turn runs
+			{"op": "subagent", "sid": "s1"},               // the report comes while the turn still runs in B: it joins it
+			{"op": "succeeded", "sid": "s1"},              // the one execution ends
+		},
+	})
+	if stops := stopsOf(calls); len(stops) != 1 || stops[0].Pwd != projectA {
+		t.Errorf("one turn ended: one stop, in the folder that began it: %+v", stops)
+	}
+}
+
+// The turn that was the old folder's is over when its execution ends: a report after that wakes a turn of the new folder, with its own stop,
+// also when the session said a turn ran at the move.
+func TestOpenCodePluginAReportAfterAMovedTurnEndedWakesTheNewFolder(t *testing.T) {
+	b := newPluginBox(t)
+	projectA := b.otherProject(t)
+	_, calls := b.play(t, map[string]any{
+		"locations": map[string]any{"A": projectA, "B": b.project},
+		"sessions": map[string]any{"s1": map[string]any{"id": "s1", "location": map[string]any{"directory": projectA},
+			"time": map[string]any{"busy": 2, "idle": 1}}},
+		"steps": []map[string]any{
+			{"op": "prompt", "at": "A", "sid": "s1", "text": "a request in project A that starts a subagent"},
+			{"op": "move", "sid": "s1", "dir": b.project},
+			{"op": "succeeded", "sid": "s1"},
+			{"op": "subagent", "sid": "s1"},
+			{"op": "succeeded", "sid": "s1"},
+		},
+	})
+	if stops := stopsOf(calls); len(stops) != 2 || stops[0].Pwd != projectA || stops[1].Pwd != b.project {
+		t.Errorf("the moved turn ends in A, the woken turn in B: %+v", stops)
+	}
+}
+
+// A session that runs no turn when it moves has nothing to leave to the old folder: a report right after wakes the new folder.
+func TestOpenCodePluginAReportAfterAnIdleSessionMovedWakesTheNewFolder(t *testing.T) {
+	b := newPluginBox(t)
+	projectA := b.otherProject(t)
+	_, calls := b.play(t, map[string]any{
+		"locations": map[string]any{"A": projectA, "B": b.project},
+		"sessions": map[string]any{"s1": map[string]any{"id": "s1", "location": map[string]any{"directory": projectA},
+			"time": map[string]any{"busy": 1, "idle": 2}}},
+		"steps": []map[string]any{
+			{"op": "prompt", "at": "A", "sid": "s1", "text": "a request in project A that starts a subagent"},
+			{"op": "succeeded", "sid": "s1"},
+			{"op": "move", "sid": "s1", "dir": b.project},
+			{"op": "subagent", "sid": "s1"},
+			{"op": "succeeded", "sid": "s1"},
+		},
+	})
+	if stops := stopsOf(calls); len(stops) != 2 || stops[1].Pwd != b.project {
+		t.Errorf("the woken turn ends in B: %+v", stops)
+	}
+}
+
+// The execution ends while the instance still asks where the session is: the turn is over by the time it knows, so nothing is left to the
+// old folder and a later report wakes the new folder.
+func TestOpenCodePluginATurnThatEndsWhileAMoveIsBeingHandledLeavesNothingToTheOldFolder(t *testing.T) {
+	b := newPluginBox(t)
+	projectA := b.otherProject(t)
+	_, calls := b.play(t, map[string]any{
+		"locations": map[string]any{"A": projectA, "B": b.project},
+		"sessions": map[string]any{"s1": map[string]any{"id": "s1", "location": map[string]any{"directory": projectA},
+			"time": map[string]any{"busy": 2, "idle": 1}}},
+		"steps": []map[string]any{
+			{"op": "prompt", "at": "A", "sid": "s1", "text": "a request in project A that starts a subagent"},
+			{"op": "relocate", "sid": "s1", "dir": b.project},
+			{"op": "event", "type": "session.moved", "sid": "s1", "nowait": true},
+			{"op": "event", "type": "session.execution.interrupted", "sid": "s1", "data": map[string]any{"reason": "user"}},
+			{"op": "subagent", "sid": "s1"},
+			{"op": "succeeded", "sid": "s1"},
+		},
+	})
+	if stops := stopsOf(calls); len(stops) != 1 || stops[0].Pwd != b.project {
+		t.Errorf("the report after the turn ended wakes B: %+v", stops)
 	}
 }

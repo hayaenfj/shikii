@@ -59,7 +59,9 @@ export default Plugin.define({
     const generation = new Map<string, number>() // sessionID -> counts the person's requests: a slow stop of an older one is dropped
     const running = new Set<string>() // sessionIDs with a turn this instance saw start and has not stopped yet
     const seen = new Set<string>() // sessionIDs this instance saw a request of
-    const sessions = new Map<string, { child: boolean; dir?: string }>() // what ctx.session.get said; forgotten when the session moves
+    const sessions = new Map<string, { child: boolean; dir?: string; busy: boolean }>() // what ctx.session.get said (busy: a turn runs); forgotten when the session moves
+    const ends = new Map<string, number>() // sessionID -> executions seen ending (any folder's)
+    const inherited = new Set<string>() // sessions moved here while a turn of the old folder ran: that turn ends there, a report joining it wakes nothing here
     // the text of the assistant message a turn ended with, from session.text.ended: a summary in the middle of a turn takes the turn's
     // messages out of ctx.session.context, and stop would get no reply
     const texts = new Map<string, { id: string; byOrdinal: Map<number, string> }>()
@@ -73,7 +75,7 @@ export default Plugin.define({
         let s = sessions.get(sessionID)
         if (!s) {
           const got: any = await ctx.session.get({ sessionID } as any)
-          s = { child: Boolean(got?.parentID), dir: got?.location?.directory }
+          s = { child: Boolean(got?.parentID), dir: got?.location?.directory, busy: (got?.time?.busy ?? 0) > (got?.time?.idle ?? 0) }
           sessions.set(sessionID, s)
         }
         const here = cwd()
@@ -167,7 +169,7 @@ export default Plugin.define({
     // (no prompt hook runs): like Claude Code's notification of a finished task, its stop is not stop_hook_active. The event reaches the
     // plugin of every folder, so only a session this instance saw a request of is woken.
     const woken = async (sessionID: string) => {
-      if (!sessionID || !seen.has(sessionID) || running.has(sessionID) || !(await mine(sessionID)) || running.has(sessionID)) return
+      if (!sessionID || inherited.has(sessionID) || !seen.has(sessionID) || running.has(sessionID) || !(await mine(sessionID)) || running.has(sessionID)) return
       running.add(sessionID)
       continued.set(sessionID, false) // the number of the person's requests is not moved: a stop that runs now still has its answer heard
     }
@@ -184,12 +186,20 @@ export default Plugin.define({
       try {
         const sid: string | undefined = ev?.data?.sessionID
         if (!sid) return
+        if (ev.type === "session.execution.succeeded" || ev.type === "session.execution.failed" || ev.type === "session.execution.interrupted") {
+          ends.set(sid, (ends.get(sid) ?? 0) + 1)
+          inherited.delete(sid) // the execution that was the old folder's turn is over
+        }
         if (ev.type === "session.execution.succeeded") await stop(sid)
         else if (ev.type === "session.execution.failed" || (ev.type === "session.execution.interrupted" && ev.data?.reason !== "superseded")) ended(sid)
         else if (ev.type === "session.inbox.enqueued" && ev.data?.item?.type === "synthetic" && ev.data.item.payload?.metadata?.source === "subagent") await woken(sid)
         else if (ev.type === "session.moved") {
+          const endsBefore = ends.get(sid) ?? 0
           sessions.delete(sid) // ask again where it is now
           if (await mine(sid)) {
+            // a turn that runs as it comes is the old folder's: its stop runs there, and a report that joins it wakes nothing here
+            // (unless that execution ended while this asked)
+            if (sessions.get(sid)?.busy && (ends.get(sid) ?? 0) === endsBefore) inherited.add(sid)
             // it came to this folder: take it over. The rest of a turn that was running goes on under this instance's context hook, so
             // it gets this project's brief now (the request's own text cannot be handed over: the request was counted where it was made)
             seen.add(sid)
