@@ -128,7 +128,7 @@ func unknownEvidenceRef(w *workState, ref string) error {
 		return nil
 	}
 	if ref != "current" && w.Sources[ref] == "" && !strings.HasPrefix(ref, "new") && !heldSource(w, ref) {
-		return fmt.Errorf("unknown reasoning evidence %q; use %sa prepared article, trial or captured source: evidence takes references, not text (what you checked goes in checked or reason; to cite it, add it to observations and name it new1)", ref, currentRef(w))
+		return fmt.Errorf("unknown reasoning evidence %q; use %sa prepared article, a trial or a source this receipt holds (an observation its record saved, or newN of this call; a source captured outside this receipt, for example with wiki capture, is not one): evidence takes references, not text (what you checked goes in checked or reason; to cite it, add it to observations and name it new1)", ref, currentRef(w))
 	}
 	return nil
 }

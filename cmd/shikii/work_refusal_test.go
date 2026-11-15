@@ -458,3 +458,33 @@ func TestARefusalOfWorkWithoutItsFieldsSaysTheyGoInsideWork(t *testing.T) {
 		t.Errorf("a receipt that was sent is not a field left out: %s", text)
 	}
 }
+
+// Found on 2026-11-15 in the same OpenCode runs (twice in two runs): the agent captured evidence.txt with wiki capture, cited the
+// returned source id in result.evidence and was refused with "use a prepared article, trial or captured source", which named the
+// very thing it had sent. The receipt holds only the sources its own record saved (observedN, or newN of the call); a source
+// captured outside it is not one. The refusal now says which sources count and that one captured outside the receipt does not.
+func TestEvidenceCapturedOutsideTheReceiptIsRefusedWithoutContradiction(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	h := newServer(serveOpts{storeDir: root, projectScope: feedbackScope(repo)})
+	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
+	prepared, err := workCall(t, b, "prepare", map[string]any{"session_id": "planning", "turn_id": loadSession(root, "planning").TurnID, "query": "CSV export"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	captured, _ := mcpToolCall(t, h, "shikii_wiki", `{"operation":"capture","observation":{"kind":"test","title":"CSV check","content":"The filters were kept.","reference":"export.csv","version":"1","observed_at":"2026-11-15T00:00:00Z"}}`)
+	id, _ := captured["structuredContent"].(map[string]any)["id"].(string)
+	if id == "" {
+		t.Fatalf("capture returned no source id: %v", captured)
+	}
+	got, err := workCall(t, b, "record", map[string]any{"receipt": prepared["receipt"], "result": map[string]any{"changed": "Kept the filters.", "evidence": []string{id}}})
+	text := fmt.Sprint(got, err)
+	for _, w := range []string{"unknown reasoning evidence", id, "a source this receipt holds", "a source captured outside this receipt", "is not one"} {
+		if !strings.Contains(text, w) {
+			t.Errorf("the refusal lacks %q: %s", w, text)
+		}
+	}
+	if strings.Contains(text, "trial or captured source") {
+		t.Errorf("the refusal tells the agent to use what it sent: %s", text)
+	}
+}
