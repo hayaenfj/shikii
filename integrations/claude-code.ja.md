@@ -6,7 +6,7 @@
 
 ツール呼び出しごと(Bash や Edit の直前)の判定は持たない。そこで走る hook(0.11)は、そのファイル・コマンドを名指しした教訓を届けるか、人が有効にした `forbidden-commands` の検査が言う時だけコマンドを断る。コマンド 1 つ 1 つの分類は AI の考え方ではなく作業の雑音で、1 依頼に何十回も走って依頼まわりの判定を沈める(実測: コマンドの判定 4606 件に対し依頼の判定 84 件)。許可の是非は Claude Code の permission と deny の規則が既に見ている。
 
-**Claude Code と Codex の hook**(両方とも同じ形の hook を持つ。`install` は両方の設定に書く)。OpenCode には `shikii init` で MCP と skill が入るが、考え方を自動で測る口は無い(付けるなら下の「他のエージェントに付けるとき」)。帯(act / ask / discard / abstain)・線(較正)・receipt の言葉は [bands.md](../skills/shikii/references/bands.md)。
+**Claude Code と Codex の hook**(両方とも同じ形の hook を持つ。`install` は両方の設定に書く)。OpenCode 2.x には hook の設定ファイルが無いので、`install` が `~/.config/opencode/plugins/shikii/`(`$XDG_CONFIG_HOME` を設定していれば `$XDG_CONFIG_HOME/opencode/plugins/shikii/`)にプラグインを置き、同じ `shikii hook <event>` を動かす。`user-prompt-submit` と `session-start` は、回の前にモデルへ渡す文へ文を足し、`stop` は回の終わりに動いて、止める時はその理由で回を続けさせる。フォルダが無いか、すでに shikii の物(package.json が名前を示し、index.ts が shikii の行で始まる)の時だけ書き、あなたのフォルダ・ファイル・リンクがあれば触らない。サブエージェント自身のセッションは対象外で、コマンド用の hook(`tool-lesson`、コマンドの前の止める検査)とサブエージェントへの配送は無い。OpenCode 1.x には `shikii init` で MCP と skill が入り、hook は無い。帯(act / ask / discard / abstain)・線(較正)・receipt の言葉は [bands.md](../skills/shikii/references/bands.md)。
 
 測るのは 4 つ(spec は [`claude-code/specs/`](claude-code/specs/))。前の 2 つは見立て、後の 2 つは自己評価:
 

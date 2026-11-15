@@ -263,7 +263,7 @@ ordinary RTK wrappers. Fix actual files or commit bodies before retrying. Run
 publication in a separate tool call after other commands; compound publication
 is refused so the checks inspect the final state. Dry-run/help and standalone
 read-only commands are excluded. Codex retains turn-end checks without this command
-hook. OpenCode uses MCP and skills without automatic hooks. The bounded parser
+hook. OpenCode has no command hook; OpenCode 2.x runs turn-end checks through its plugin, and 1.x uses MCP and skills. The bounded parser
 does not cover opaque shell expansion, heredoc tails or other publication routes.
 
 ### Kinds and scenes of articles

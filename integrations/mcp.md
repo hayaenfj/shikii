@@ -21,7 +21,7 @@ For Claude Code, a project `.mcp.json` can use:
 }
 ```
 
-Use the absolute binary path if it is not on PATH. Initialization also configures OpenCode's project registration. Codex uses the shared `~/.codex/config.toml` registration:
+Use the absolute binary path if it is not on PATH. Initialization also configures OpenCode's project registration. For OpenCode 2.x, `shikii hook install --yes` also adds a plugin that runs the hooks (see [claude-code.md](claude-code.md)); OpenCode 1.x uses the registration and the skill only. Codex uses the shared `~/.codex/config.toml` registration:
 
 ```toml
 [mcp_servers.shikii]

@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.md) · **日本語**
 
+## 未公開 — OpenCode 2.x のhook
+
+### 主な変更
+
+- OpenCode 2.xでも、Claude CodeやCodexと同じようにshikiiのhookが働きます。`shikii hook install --yes`(と、この機械で最初の `shikii --init`)が、小さなプラグインを `~/.config/opencode/plugins/shikii/`(`$XDG_CONFIG_HOME` を設定していれば、その下の `opencode/`)に置きます。依頼の前にshikiiの教訓がモデルに届き、必要な記録が残っていなければ、回の終わりに続きを促します。入れた後はOpenCodeを開き直してください。OpenCode 1.xはこれまでどおりMCPの設定とskillだけを使います。
+- 同じ名前のあなたのフォルダ・ファイル・リンクは、上書きもたどりもしません。`shikii doctor` はプラグインが動かすshikiiの実行ファイルを確かめ、`shikii uninstall` はshikiiのプラグインのファイルだけを外します。
+
 ## 0.33.0 — エージェントが読む量と、MCP の道具の説明を減らす
 
 ### 主な変更

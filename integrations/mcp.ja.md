@@ -21,7 +21,7 @@ Claude Codeのプロジェクトの`.mcp.json`には、次のように登録で�
 }
 ```
 
-PATHに無ければ本体の絶対パスを使います。初期化はOpenCodeのプロジェクト登録も設定します。Codexは共通の`~/.codex/config.toml`を使います。
+PATHに無ければ本体の絶対パスを使います。初期化はOpenCodeのプロジェクト登録も設定します。OpenCode 2.xには、`shikii hook install --yes` がhookを動かすプラグインも足します([claude-code.ja.md](claude-code.ja.md))。OpenCode 1.xは登録とskillだけを使います。Codexは共通の`~/.codex/config.toml`を使います。
 
 ```toml
 [mcp_servers.shikii]
