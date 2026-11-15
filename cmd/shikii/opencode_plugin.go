@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 )
@@ -144,19 +145,22 @@ func opencodePluginStateOf(dir string) opencodePluginState {
 		return opencodePluginForeign
 	}
 	for _, e := range entries {
-		if !opencodeOwnTempName(e.Name()) {
+		if !opencodeOwnTempFile(e) {
 			return opencodePluginForeign // a folder somebody filled: not shikii's
 		}
 	}
 	return opencodePluginAbsent
 }
 
-// opencodeOwnTempName is the name of the temporary file writeAtomic makes next to a file it writes (.write-*.tmp). One that an install
+// opencodeOwnTempFile says whether a directory entry is the temporary file writeAtomic makes next to a file it writes: a regular file
+// named .write-<digits>.tmp (os.CreateTemp fills the * with digits). A folder or a link of that name is not: it is a person's. One that an install
 // left behind when it stopped before the rename is not a person's file: the folder with only that in it counts as empty, so the next
 // install writes the plugin. It is never removed (shikii removes only the two files below).
-func opencodeOwnTempName(name string) bool {
-	return strings.HasPrefix(name, ".write-") && strings.HasSuffix(name, ".tmp")
+func opencodeOwnTempFile(e os.DirEntry) bool {
+	return e.Type().IsRegular() && opencodeTempName.MatchString(e.Name())
 }
+
+var opencodeTempName = regexp.MustCompile(`^\.write-[0-9]+\.tmp$`)
 
 // opencodePluginWritable is the allowed list of places shikii writes or removes for the plugin: the two files in the plugin folder,
 // and nowhere else. Every write and removal goes through it.

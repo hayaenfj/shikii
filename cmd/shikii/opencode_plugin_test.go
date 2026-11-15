@@ -608,3 +608,36 @@ func TestOpenCodePluginFilesAreWrittenWorldReadable(t *testing.T) {
 		t.Errorf("writeAtomic itself still leaves 0600: %v", info.Mode().Perm())
 	}
 }
+
+// Only a regular file named like writeAtomic's temporary file (.write-<digits>.tmp) is shikii's own leftover. A folder or a link of that
+// name is a person's: the folder holding it is not empty, and install leaves it.
+func TestOpenCodePluginAPersonsFolderNamedLikeATemporaryFileIsNotTakenForOne(t *testing.T) {
+	for name, setup := range map[string]func(t *testing.T, dir string){
+		"a folder named .write-old.tmp": func(t *testing.T, dir string) {
+			writeFileT(t, filepath.Join(dir, ".write-old.tmp", "mine.txt"), "mine")
+		},
+		"a link named .write-1.tmp": func(t *testing.T, dir string) {
+			symlinkT(t, filepath.Join(filepath.Dir(dir), "elsewhere"), filepath.Join(dir, ".write-1.tmp"))
+		},
+		"a folder named .write-1.tmp": func(t *testing.T, dir string) {
+			writeFileT(t, filepath.Join(dir, ".write-1.tmp", "mine.txt"), "mine")
+		},
+		"a file whose name has no digits": func(t *testing.T, dir string) {
+			writeFileT(t, filepath.Join(dir, ".write-mine.tmp"), "mine")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			dir := wantPluginDir(home)
+			setup(t, dir)
+			before := snapshotTree(t, dir)
+			got, err := installOpencodePlugin(home, "/x/shikii", true)
+			if err != nil || got != "left" {
+				t.Errorf("install takes the person's folder for one with only shikii's temporary file: %s %v", got, err)
+			}
+			if d := diffTrees(before, snapshotTree(t, dir)); len(d) != 0 {
+				t.Errorf("install wrote into the person's folder: %v", d)
+			}
+		})
+	}
+}
