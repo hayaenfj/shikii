@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -86,7 +87,19 @@ func notAnObject(data []byte, target any) error {
 func jsonReadError(err error, data []byte, target any) error {
 	var wrongType *json.UnmarshalTypeError
 	var syntax *json.SyntaxError
+	var badTime *time.ParseError
 	switch {
+	case errors.As(err, &badTime):
+		// encoding/json returns time's own words ('parsing time "2026-11-15" as "2006-01-02T15:04:05Z07:00": cannot parse "" as
+		// "T"'), which name neither the field nor its form (Codex sent a date alone as observed_at, 2026-11-15)
+		var value any
+		dec := json.NewDecoder(bytes.NewReader(data))
+		dec.UseNumber()
+		field := ""
+		if dec.Decode(&value) == nil {
+			field = timeFieldPath(value, reflect.TypeOf(target), "", badTime.Value, 0)
+		}
+		return &timeValueError{Field: field, Got: badTime.Value}
 	case errors.As(err, &wrongType):
 		return &fieldTypeError{Field: indexedJSONPath(wrongType.Field, reflect.TypeOf(target)), Want: jsonShapeName(wrongType.Type), Got: wrongType.Value}
 	case errors.As(err, &syntax):
@@ -107,6 +120,79 @@ func jsonReadError(err error, data []byte, target any) error {
 		return fmt.Errorf("the JSON has an unknown key: %s", strings.TrimPrefix(err.Error(), "json: unknown field "))
 	}
 	return fmt.Errorf("cannot read the JSON: %v", err)
+}
+
+// timeValueError is a time that is not in the form a time field reads, with the field that held it.
+type timeValueError struct {
+	Field string // the path of the value, e.g. observation.observed_at; "" when the walk could not place it
+	Got   string // what was sent
+}
+
+func (e *timeValueError) Error() string {
+	where := "a time"
+	if e.Field != "" {
+		where = e.Field
+	}
+	return fmt.Sprintf("%s takes a date and time in RFC 3339, for example \"2026-11-15T09:30:00Z\" or \"2026-11-15T09:30:00+09:00\"; %q is not one", where, e.Got)
+}
+
+var timeType = reflect.TypeOf(time.Time{})
+
+// timeFieldPath walks the decoded input along the target's type and returns the path of the first time field that holds want.
+func timeFieldPath(value any, t reflect.Type, path, want string, depth int) string {
+	if t == nil || depth > 32 {
+		return ""
+	}
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t == timeType {
+		if s, ok := value.(string); ok && s == want {
+			return path
+		}
+		return ""
+	}
+	switch t.Kind() {
+	case reflect.Struct:
+		object := jsonObjectType(t)
+		entries, ok := value.(map[string]any)
+		if object == nil || !ok {
+			return ""
+		}
+		fields := jsonFieldsOf(object)
+		keys := make([]string, 0, len(entries))
+		for key := range entries {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			if f, known := jsonFieldNamed(fields, key); known {
+				if found := timeFieldPath(entries[key], f.typ, joinJSONPath(path, key), want, depth+1); found != "" {
+					return found
+				}
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		list, _ := value.([]any)
+		for i, element := range list {
+			if found := timeFieldPath(element, t.Elem(), path+"["+strconv.Itoa(i)+"]", want, depth+1); found != "" {
+				return found
+			}
+		}
+	case reflect.Map:
+		entries, _ := value.(map[string]any)
+		keys := make([]string, 0, len(entries))
+		for key := range entries {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			if found := timeFieldPath(entries[key], t.Elem(), joinJSONPath(path, key), want, depth+1); found != "" {
+				return found
+			}
+		}
+	}
+	return ""
 }
 
 // malformedJSONError is JSON that does not parse, with the place where the reading stopped.
@@ -204,6 +290,15 @@ type unknownFieldError struct {
 	Path    string   // the object that held it: "" is the top level, otherwise e.g. notes[0].edits[0]
 	Allowed []string // the fields that object takes, in declaration order
 	Homes   []string // other objects of the same request that take a field of this name, e.g. work or wiki[]
+	Hint    string   // where the values of that object come from (objectHints); Homes is not looked up when there is one
+}
+
+// objectHints says where the values of an object come from, for the objects an agent fills from a prepare reply. Without it, an
+// unknown key there was answered with the other objects that take a key of that name: Codex sent the page_id of a prepared
+// maintenance task in work.maintenance[], was told page_id is a field of maintenance (the argument of another operation, maintain),
+// and reviewed the page through that operation instead of the task prepare had given it (2026-11-15).
+var objectHints = map[reflect.Type]string{
+	reflect.TypeOf(workMaintenance{}): "ref is the ref of a maintenance task in the prepare reply, such as maintenance1; the page and revision of that task come with it, so send only ref and reason",
 }
 
 func (e *unknownFieldError) Error() string {
@@ -212,6 +307,9 @@ func (e *unknownFieldError) Error() string {
 		where = "in " + e.Path
 	}
 	text := fmt.Sprintf("unknown field %q %s; the fields there: %s", e.Field, where, strings.Join(e.Allowed, ", "))
+	if e.Hint != "" {
+		text += "; " + e.Hint
+	}
 	if len(e.Homes) > 0 {
 		text += fmt.Sprintf("; %q is a field of %s", e.Field, strings.Join(e.Homes, ", "))
 	}
@@ -247,7 +345,7 @@ func explainUnknownField(err error, data []byte, target any) error {
 	}
 	here := indexlessPath(found.Path)
 	for _, home := range fieldHomes(root, field) {
-		if home != here && len(found.Homes) < 3 {
+		if found.Hint == "" && home != here && len(found.Homes) < 3 {
 			found.Homes = append(found.Homes, home)
 		}
 	}
@@ -346,7 +444,7 @@ func unknownFieldIn(value any, t reflect.Type, path, field string, depth int) *u
 				for i, f := range fields {
 					allowed[i] = f.name
 				}
-				return &unknownFieldError{Field: field, Path: path, Allowed: allowed}
+				return &unknownFieldError{Field: field, Path: path, Allowed: allowed, Hint: objectHints[t]}
 			}
 		}
 		keys := make([]string, 0, len(entries))
