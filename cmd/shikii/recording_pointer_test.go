@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,16 +19,27 @@ import (
 // skills/shikii/references/recording.md (667 lines, about 70 KB) ten times, each read putting about 70 KB into the conversation.
 // The one string the hook sent that named the file ended how_to_record with "See the installed skill's recording.md for the full
 // contract." Every string in shikii's own code that names recording.md now names a heading that exists in it and says not to read
-// the whole file. A new string that names the file in another way fails here.
-func TestStringsThatNameRecordingMdPointToOneSection(t *testing.T) {
-	headings := recordingHeadings(t)
-	if problem := recordingPointerProblem("See the installed skill's recording.md for the full contract.", headings); problem == "" {
-		t.Fatal("the check accepts a string that sends an agent to the whole file")
+// the whole file. The check looked only for recording.md, and two replies still ended with a pointer to a whole long reference:
+// reflect query's how_to_submit with "Details: the skill's references/wiki.md." (34 KB) and hook plan query's with "Details: the
+// skill's references/planning.md." (16 KB) (audit of 0.33.0, U-4). So the same holds for every long reference, any reference not
+// in wholeReferences: a string that names one names a heading of it and says not to read the whole file.
+func TestStringsThatNameALongReferencePointToOneSection(t *testing.T) {
+	headings := longReferenceHeadings(t)
+	for _, c := range []struct{ text, why string }{
+		{"See the installed skill's recording.md for the full contract.", "a string that sends an agent to the whole file"},
+		{"Search recording.md for `## No such heading` and read only that section, not the whole file.", "a heading that recording.md does not have"},
+		{"Details: the skill's references/wiki.md.", "a pointer to the whole of wiki.md"},
+		{"Read `## Ingestion contract` in the skill's references/planning.md, not the whole file.", "a heading of wiki.md given for planning.md"},
+		{"Read `## Prepare once; record the result` in recording.md, not the whole file; see also review.md.", "a second long reference named without a heading"},
+	} {
+		if problem := longReferencePointerProblem(c.text, headings); problem == "" {
+			t.Fatalf("the check accepts %s: %q", c.why, c.text)
+		}
 	}
-	if problem := recordingPointerProblem("Search recording.md for `## No such heading` and read only that section, not the whole file.", headings); problem == "" {
-		t.Fatal("the check accepts a heading that recording.md does not have")
+	if problem := longReferencePointerProblem("Review new or revised claims as the skill's references/source-review.md describes.", headings); problem != "" {
+		t.Fatalf("the check refuses a short reference that may be read whole: %s", problem)
 	}
-	found := 0
+	found := map[string]int{}
 	for _, dir := range []string{".", "../../internal"} {
 		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -42,7 +54,7 @@ func TestStringsThatNameRecordingMdPointToOneSection(t *testing.T) {
 			}
 			ast.Inspect(file, func(n ast.Node) bool {
 				lit, ok := n.(*ast.BasicLit)
-				if !ok || lit.Kind != token.STRING || !strings.Contains(lit.Value, "recording.md") {
+				if !ok || lit.Kind != token.STRING || !strings.Contains(lit.Value, ".md") {
 					return true
 				}
 				text, err := strconv.Unquote(lit.Value)
@@ -50,8 +62,14 @@ func TestStringsThatNameRecordingMdPointToOneSection(t *testing.T) {
 					t.Errorf("%s: %v", path, err)
 					return true
 				}
-				found++
-				if problem := recordingPointerProblem(text, headings); problem != "" {
+				named := longReferencesNamed(text, headings)
+				for _, name := range named {
+					found[name]++
+				}
+				if len(named) == 0 {
+					return true
+				}
+				if problem := longReferencePointerProblem(text, headings); problem != "" {
 					t.Errorf("%s: %s: %q", path, problem, text)
 				}
 				return true
@@ -62,35 +80,81 @@ func TestStringsThatNameRecordingMdPointToOneSection(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if found == 0 {
-		t.Fatal("no string in shikii's code names recording.md; how_to_record used to, so the walk is looking in the wrong place")
+	for _, name := range []string{"recording.md", "wiki.md", "planning.md"} {
+		if found[name] == 0 {
+			t.Errorf("no string in shikii's code names %s; how_to_record and the two how_to_submit used to, so the walk is looking in the wrong place", name)
+		}
 	}
 }
 
-func recordingHeadings(t *testing.T) map[string]bool {
-	headings := map[string]bool{}
-	for _, line := range strings.Split(string(mustRead(t, "../../skills/shikii/references/recording.md")), "\n") {
-		if strings.HasPrefix(line, "#") {
-			headings[strings.TrimSpace(line)] = true
+// longReferenceHeadings are the headings ("## ...") of each reference an agent should read by its section.
+func longReferenceHeadings(t *testing.T) map[string]map[string]bool {
+	dir := "../../skills/shikii/references/"
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headings := map[string]map[string]bool{}
+	for _, e := range entries {
+		if wholeReferences[e.Name()] || !strings.HasSuffix(e.Name(), ".md") {
+			continue
 		}
+		headings[e.Name()] = map[string]bool{}
+		for _, line := range strings.Split(string(mustRead(t, dir+e.Name())), "\n") {
+			if strings.HasPrefix(line, "#") {
+				headings[e.Name()][strings.TrimSpace(line)] = true
+			}
+		}
+	}
+	if len(headings) < 3 {
+		t.Fatalf("found only %d long references: %v", len(headings), headings)
 	}
 	return headings
 }
 
-var recordingHeadingInText = regexp.MustCompile("[`\"](#{1,3} [^`\"]+)[`\"]")
+var referenceNameInText = regexp.MustCompile(`\b([a-z-]+\.md)\b`)
 
-func recordingPointerProblem(text string, headings map[string]bool) string {
-	named := recordingHeadingInText.FindAllStringSubmatch(text, -1)
-	if len(named) == 0 {
-		return "names recording.md without a heading to search for"
+func longReferencesNamed(text string, headings map[string]map[string]bool) []string {
+	var named []string
+	for _, m := range referenceNameInText.FindAllStringSubmatch(text, -1) {
+		if headings[m[1]] != nil && !slices.Contains(named, m[1]) {
+			named = append(named, m[1])
+		}
 	}
-	for _, m := range named {
-		if !headings[m[1]] {
-			return "names " + m[1] + ", which is not a heading of recording.md"
+	return named
+}
+
+var headingInText = regexp.MustCompile("[`\"](#{1,3} [^`\"]+)[`\"]")
+
+func longReferencePointerProblem(text string, headings map[string]map[string]bool) string {
+	named := longReferencesNamed(text, headings)
+	if len(named) == 0 {
+		return "" // a short reference may be read whole
+	}
+	given := headingInText.FindAllStringSubmatch(text, -1)
+	if len(given) == 0 {
+		return "names " + strings.Join(named, ", ") + " without a heading to search for"
+	}
+	for _, m := range given {
+		owned := false
+		for _, name := range named {
+			owned = owned || headings[name][m[1]]
+		}
+		if !owned {
+			return "names " + m[1] + ", which is not a heading of " + strings.Join(named, " or ")
+		}
+	}
+	for _, name := range named {
+		has := false
+		for _, m := range given {
+			has = has || headings[name][m[1]]
+		}
+		if !has {
+			return "names " + name + " without one of its headings"
 		}
 	}
 	if !strings.Contains(text, "not the whole file") {
-		return "names recording.md without saying not to read the whole file"
+		return "names " + strings.Join(named, ", ") + " without saying not to read the whole file"
 	}
 	return ""
 }
