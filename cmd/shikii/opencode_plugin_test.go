@@ -437,34 +437,40 @@ func TestOpenCodePluginBodyWrapsEveryHookAndMarksItsOwnTurns(t *testing.T) {
 	if n := strings.Count(body, "ctx.session.hook("); n != 2 {
 		t.Errorf("exactly the prompt and context hooks: %d", n)
 	}
-	if !regexp.MustCompile(`for await \(const ev of ctx\.event\.subscribe\(\{ signal: controller\.signal \}\) as any\) \{\s*try \{`).MatchString(body) || !strings.Contains(body, "await stop(") {
+	if !regexp.MustCompile(`const onEvent = async \(ev: any\) => \{\s*try \{`).MatchString(body) || !strings.Contains(body, "await stop(") {
 		t.Errorf("each event of the subscription is handled inside try")
 	}
+	if !strings.Contains(body, "void onEvent(ev)") || strings.Contains(body, "await onEvent(") {
+		t.Errorf("the events are not handled one by one: a slow stop would hold back the other sessions")
+	}
 	for _, want := range []string{
-		`metadata: { shikii: CONTINUE_KEY }`,          // the continuation is marked
-		`e.metadata?.shikii === CONTINUE_KEY`,         // and the prompt hook recognises it
-		`stop_hook_active: active`,                    // so the next stop is stop_hook_active
-		`continued.set(sessionID, true)`,              //
-		`"session.execution.succeeded"`,               // the end of a turn
-		`CONTINUE_MAX`,                                // a safety net against endless continuation
-		`parentID`,                                    // a subagent's session is not the person's request
-		`hookSpecificOutput?.additionalContext`,       // read as hookOut.json writes it
-		`out?.decision === "block"`,                   //
-		`stdio: ["pipe", "pipe", "ignore"]`,           // no shell
-		`{ session_id: sessionID, cwd: cwd(), prompt`, // the keys hookInput reads
+		`metadata: { shikii: CONTINUE_KEY }`,    // the continuation is marked
+		`e.metadata?.shikii === CONTINUE_KEY`,   // and the prompt hook recognises it
+		`stop_hook_active: active`,              // so the next stop is stop_hook_active
+		`continued.set(sessionID, true)`,        //
+		`"session.execution.succeeded"`,         // the end of a turn
+		`CONTINUE_MAX`,                          // a safety net against endless continuation
+		`parentID`,                              // a subagent's session is not the person's request
+		`hookSpecificOutput?.additionalContext`, // read as hookOut.json writes it
+		`out?.decision === "block"`,             //
+		`stdio: ["pipe", "pipe", "ignore"]`,     // no shell
+		`session_id: sessionID, cwd: cwd()`,     // the keys hookInput reads
+		`{ prompt: e.prompt?.text ?? "" }`,
 		`last_assistant_message: reply`,
+		`"session.inbox.enqueued"`, // a subagent's report wakes the parent
+		`"session.compaction.ended"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the plugin must contain %q", want)
 		}
 	}
-	for _, event := range regexp.MustCompile(`run\("([a-z-]+)"`).FindAllStringSubmatch(body, -1) {
+	for _, event := range regexp.MustCompile(`(?:^|[^.\w])hook\("([a-z-]+)"`).FindAllStringSubmatch(body, -1) {
 		if !shikiiHookEvent(event[1]) {
 			t.Errorf("the plugin runs an event shikii does not have: %s", event[1])
 		}
 	}
 	for _, event := range []string{"user-prompt-submit", "session-start", "stop"} {
-		if !strings.Contains(body, `run("`+event+`"`) {
+		if !strings.Contains(body, `hook("`+event+`"`) {
 			t.Errorf("the plugin must run %s", event)
 		}
 	}

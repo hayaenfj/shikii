@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,79 +20,125 @@ import (
 // in opencode_plugin_test.go; what it does over a conversation (the brief on every request, the folder it runs in, the continuation
 // after a stop block, subagents, failures) can only be seen by running it. Nothing of OpenCode or of a real shikii is started: node
 // runs one script, and the fake shikii is a file in a temporary folder. Without node 24 or newer (it strips the types of a .ts file by
-// itself; CI's Go job installs node 26) these tests are skipped.
+// itself; CI's Go job installs node 26) these tests are skipped on a machine, and fail when the environment variable CI is set: a
+// check that goes away without a sound would leave CI green without it.
 
-// pluginDriver is the stand-in for OpenCode: it loads the plugin, gives it a ctx, and plays the steps of one scenario.
+// pluginDriver is the stand-in for OpenCode: it loads the plugin once per project folder (OpenCode 2.3.0 calls setup per location, runs
+// the prompt and context hooks only in the instance of the session's location, and tells every instance's ctx.event.subscribe the
+// events of every session on the server), gives each instance a ctx, and plays the steps of one scenario. The plugin does not wait for
+// one event before it takes the next, so "settled" is found by looking at the work that is left: a started shikii that has not
+// finished, a call into ctx that has not answered, an event nobody took yet.
 const pluginDriver = `
 import fs from "node:fs"
+import cp from "node:child_process"
+import { syncBuiltinESMExports } from "node:module"
 import { pathToFileURL } from "node:url"
 const [pluginPath, scenarioPath] = process.argv.slice(2)
 const scenario = JSON.parse(fs.readFileSync(scenarioPath, "utf8"))
+
+let active = 0 // started shikii processes that have not finished
+const realSpawn = cp.spawn
+cp.spawn = (...args) => {
+  active++
+  const child = realSpawn(...args)
+  let done = false
+  const finish = () => { if (!done) { done = true; active-- } }
+  child.on("close", finish)
+  child.on("error", finish)
+  return child
+}
+syncBuiltinESMExports()
 const plugin = (await import(pathToFileURL(pluginPath).href)).default
 
-const hooks = {}
+let pending = 0 // calls into ctx that have not answered
+const track = async (fn) => { pending++; try { return await fn() } finally { pending-- } }
+
+const subscribers = []
+function subscribe() {
+  const sub = { queue: [], waiter: null }
+  subscribers.push(sub)
+  return {
+    [Symbol.asyncIterator]() {
+      return {
+        next() {
+          if (sub.queue.length > 0) return Promise.resolve({ value: sub.queue.shift(), done: false })
+          return new Promise((resolve) => { sub.waiter = resolve })
+        },
+      }
+    },
+  }
+}
+function broadcast(ev) {
+  for (const sub of subscribers) {
+    if (sub.waiter) { const w = sub.waiter; sub.waiter = null; w({ value: ev, done: false }) } else sub.queue.push(ev)
+  }
+}
+const idle = () => pending === 0 && active === 0 && subscribers.every((s) => s.queue.length === 0)
+const tick = () => new Promise((resolve) => setImmediate(resolve))
+async function settle() {
+  for (;;) {
+    await tick()
+    if (idle()) { await tick(); if (idle()) return }
+  }
+}
+
 const prompts = []
 const contexts = []
 const errors = []
-const queue = []
-let waiter = null
-let pushed = 0
-let consumed = 0
-let idleWaiter = null
-const events = {
-  [Symbol.asyncIterator]() {
-    return {
-      next() {
-        if (queue.length === 0 && consumed === pushed && idleWaiter) { const r = idleWaiter; idleWaiter = null; r() }
-        if (queue.length > 0) { consumed++; return Promise.resolve({ value: queue.shift(), done: false }) }
-        return new Promise((resolve) => { waiter = resolve })
-      },
-    }
-  },
-}
-function push(ev) {
-  pushed++
-  if (waiter) { const w = waiter; waiter = null; consumed++; w({ value: ev, done: false }) } else queue.push(ev)
-}
-// settled: the plugin has finished every event pushed so far (it asks for the next one only after handling the last)
-function settled() {
-  return new Promise((resolve) => {
-    idleWaiter = resolve
-    if (waiter && consumed === pushed) { const r = idleWaiter; idleWaiter = null; r() }
-  })
-}
-
 const sessions = scenario.sessions ?? {}
-const ctx = {
-  location: scenario.noLocation ? undefined : { directory: scenario.directory },
-  session: {
-    hook(name, fn) { hooks[name] = fn },
-    async get({ sessionID }) { return sessions[sessionID] ?? { id: sessionID } },
-    async context({ sessionID }) { return scenario.messages?.[sessionID] ?? [] },
-    async prompt(arg) {
-      prompts.push(arg)
-      // OpenCode runs the prompt hook for a prompt the plugin sends too
-      await hooks.prompt({ sessionID: arg.sessionID, prompt: { text: arg.text }, metadata: arg.metadata })
+const locations = scenario.locations ?? { main: scenario.directory }
+const instances = {}
+for (const [name, dir] of Object.entries(locations)) {
+  const hooks = {}
+  instances[name] = hooks
+  const ctx = {
+    location: scenario.noLocation ? undefined : { directory: dir },
+    session: {
+      hook(n, fn) { hooks[n] = fn },
+      get: ({ sessionID }) => track(async () => sessions[sessionID] ?? { id: sessionID }),
+      context: ({ sessionID }) => track(async () => scenario.messages?.[sessionID] ?? []),
+      prompt: (arg) => track(async () => {
+        prompts.push(arg)
+        // OpenCode runs the prompt hook for a prompt the plugin sends too
+        await hooks.prompt({ sessionID: arg.sessionID, prompt: { text: arg.text }, metadata: arg.metadata })
+      }),
     },
-  },
-  event: { subscribe() { return events } },
+    event: { subscribe() { return subscribe() } },
+  }
+  await plugin.setup(ctx)
 }
-await plugin.setup(ctx)
+const first = Object.keys(locations)[0]
+const stateDir = scenario.stateDir
 
 for (const step of scenario.steps) {
   try {
+    const hooks = instances[step.at ?? first]
     if (step.op === "prompt") {
       await hooks.prompt({ sessionID: step.sid, prompt: { text: step.text }, metadata: step.metadata })
     } else if (step.op === "context") {
       const e = { sessionID: step.sid, system: [{ type: "text", text: "BASE" }] }
       await hooks.context(e)
       contexts.push(e.system.map((s) => s.text))
-    } else if (step.op === "succeeded") {
-      push({ type: "session.execution.succeeded", data: { sessionID: step.sid } })
-      await settled()
-    } else if (step.op === "compaction") {
-      push({ type: "session.compaction.ended", data: { sessionID: step.sid } })
-      await settled()
+    } else if (step.op === "succeeded" || step.op === "compaction" || step.op === "subagent") {
+      if (step.op === "succeeded") broadcast({ type: "session.execution.succeeded", data: { sessionID: step.sid } })
+      if (step.op === "compaction") broadcast({ type: "session.compaction.ended", data: { sessionID: step.sid } })
+      if (step.op === "subagent") {
+        // measured on 2.3.0: the report of a finished subagent is put into the parent's inbox and wakes the parent; no prompt hook runs
+        broadcast({ type: "session.inbox.enqueued", data: { sessionID: step.sid, inboxID: "inbox", item: { type: "synthetic", delivery: "steer", payload: { text: "<subagent/>", metadata: { source: "subagent", childID: "child", agent: "subagent", state: "completed" } } } } })
+      }
+      if (!step.nowait) await settle()
+    } else if (step.op === "settle") {
+      await settle()
+    } else if (step.op === "release") {
+      fs.writeFileSync(stateDir + "/release-" + step.event + "-" + step.n, "")
+    } else if (step.op === "waitCalls") {
+      // wait until the fake shikii has been started step.count times for step.event (it writes its line when it starts)
+      for (let i = 0; ; i++) {
+        const lines = fs.existsSync(stateDir + "/calls.jsonl") ? fs.readFileSync(stateDir + "/calls.jsonl", "utf8").split("\n").filter((l) => l.includes('"event":"' + step.event + '"')) : []
+        if (lines.length >= step.count) break
+        if (i > 500) throw new Error("the fake shikii was not started " + step.count + " times for " + step.event)
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      }
     }
   } catch (err) {
     errors.push(String(err))
@@ -124,19 +172,41 @@ type pluginBox struct {
 	plugin, driver       string
 }
 
-func newPluginBox(t *testing.T) *pluginBox {
-	t.Helper()
+// pluginNodeProblem says why the plugin cannot be run under node here ("" when it can).
+func pluginNodeProblem() string {
 	node, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("node is not installed: the plugin is not run")
+		return "node is not installed"
 	}
 	out, err := exec.Command(node, "--version").Output()
 	if err != nil {
-		t.Skip("node does not run")
+		return "node does not run"
 	}
 	major, _ := strconv.Atoi(strings.SplitN(strings.TrimPrefix(strings.TrimSpace(string(out)), "v"), ".", 2)[0])
 	if major < 24 {
-		t.Skipf("node %s is older than 24: it does not strip types by itself", strings.TrimSpace(string(out)))
+		return fmt.Sprintf("node %s is older than 24: it does not strip types by itself", strings.TrimSpace(string(out)))
+	}
+	return ""
+}
+
+// pluginTestsUnavailable ends a test that cannot run the plugin: a skip on a machine, a failure when ci (the CI variable) is not empty.
+func pluginTestsUnavailable(t interface {
+	Helper()
+	Fatalf(string, ...any)
+	Skipf(string, ...any)
+}, ci, why string) {
+	t.Helper()
+	if ci != "" {
+		t.Fatalf("CI must run the plugin tests, and they cannot run: %s", why)
+		return // a real Fatalf stops the test; the stand-in used by the test of this function does not
+	}
+	t.Skipf("%s: the plugin is not run", why)
+}
+
+func newPluginBox(t *testing.T) *pluginBox {
+	t.Helper()
+	if why := pluginNodeProblem(); why != "" {
+		pluginTestsUnavailable(t, os.Getenv("CI"), why)
 	}
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -157,6 +227,8 @@ n=$((n+1))
 echo "$n" > "$d/count-$event"
 input=$(cat)
 printf '{"event":"%s","n":%s,"pwd":"%s","args":"%s","stdin":%s}\n' "$event" "$n" "$(pwd -P)" "$*" "${input:-null}" >> "$d/calls.jsonl"
+if [ -f "$d/hold-$event-$n" ]; then i=0; while [ ! -f "$d/release-$event-$n" ] && [ $i -lt 500 ]; do sleep 0.02; i=$((i+1)); done; fi
+if [ -f "$d/fail-$event-$n" ]; then exit 1; fi
 case "$(cat "$d/mode" 2>/dev/null)" in
 exit1) exit 1 ;;
 garbage) echo 'not json {'; exit 0 ;;
@@ -197,6 +269,26 @@ func (b *pluginBox) answer(t *testing.T, event string, n int, out string) {
 	writeFileT(t, filepath.Join(b.dir, "state", name), out)
 }
 
+// hold makes call n of the fake shikii for event wait until the scenario's "release" step (the call is written down when it starts).
+func (b *pluginBox) hold(t *testing.T, event string, n int) {
+	writeFileT(t, filepath.Join(b.dir, "state", fmt.Sprintf("hold-%s-%d", event, n)), "")
+}
+
+// fail makes call n of the fake shikii for event exit with 1.
+func (b *pluginBox) fail(t *testing.T, event string, n int) {
+	writeFileT(t, filepath.Join(b.dir, "state", fmt.Sprintf("fail-%s-%d", event, n)), "")
+}
+
+// otherProject is the folder of a second project: the plugin is loaded for it too (a scenario with "locations").
+func (b *pluginBox) otherProject(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(b.dir, "projectA")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func (b *pluginBox) mode(t *testing.T, mode string) {
 	writeFileT(t, filepath.Join(b.dir, "state", "mode"), mode)
 }
@@ -212,6 +304,7 @@ func (b *pluginBox) play(t *testing.T, scenario map[string]any) (pluginRun, []pl
 	if _, ok := scenario["directory"]; !ok {
 		scenario["directory"] = b.project
 	}
+	scenario["stateDir"] = filepath.Join(b.dir, "state")
 	body, _ := json.Marshal(scenario)
 	scenarioPath := filepath.Join(b.dir, "scenario.json")
 	writeFileT(t, scenarioPath, string(body))
@@ -254,13 +347,14 @@ func countCalls(calls []pluginCall, event string) int {
 	return n
 }
 
-func hasText(texts []string, want string) bool {
-	for _, t := range texts {
-		if t == want {
-			return true
+func stopsOf(calls []pluginCall) []pluginCall {
+	var stops []pluginCall
+	for _, c := range calls {
+		if c.Event == "stop" {
+			stops = append(stops, c)
 		}
 	}
-	return false
+	return stops
 }
 
 // The brief of the session and the text of the request are in the system text of every model call, of the second request too:
@@ -282,11 +376,11 @@ func TestOpenCodePluginGivesTheBriefAndTheRequestTextToEveryTurn(t *testing.T) {
 	}
 	for i, want := range []string{"TEXT-OF-REQUEST-ONE", "TEXT-OF-REQUEST-ONE", "TEXT-OF-REQUEST-TWO"} {
 		got := run.Contexts[i]
-		if !hasText(got, "BASE") || !hasText(got, "BRIEF-OF-THE-SESSION") || !hasText(got, want) {
+		if !slices.Contains(got, "BASE") || !slices.Contains(got, "BRIEF-OF-THE-SESSION") || !slices.Contains(got, want) {
 			t.Errorf("model call %d must carry the brief and %q: %q", i+1, want, got)
 		}
 	}
-	if hasText(run.Contexts[2], "TEXT-OF-REQUEST-ONE") {
+	if slices.Contains(run.Contexts[2], "TEXT-OF-REQUEST-ONE") {
 		t.Errorf("the second request does not carry the first one's text: %q", run.Contexts[2])
 	}
 	if n := countCalls(calls, "session-start"); n != 1 {
@@ -364,10 +458,10 @@ func TestOpenCodePluginAsksForTheBriefAgainAfterASummary(t *testing.T) {
 	if n := countCalls(calls, "session-start"); n != 2 {
 		t.Errorf("session-start runs at the first request and again after the summary, ran %d times", n)
 	}
-	if !hasText(run.Contexts[0], "BRIEF-BEFORE") || hasText(run.Contexts[0], "BRIEF-AFTER-THE-SUMMARY") {
+	if !slices.Contains(run.Contexts[0], "BRIEF-BEFORE") || slices.Contains(run.Contexts[0], "BRIEF-AFTER-THE-SUMMARY") {
 		t.Errorf("before the summary the first brief is used: %q", run.Contexts[0])
 	}
-	if !hasText(run.Contexts[1], "BRIEF-AFTER-THE-SUMMARY") || hasText(run.Contexts[1], "BRIEF-BEFORE") {
+	if !slices.Contains(run.Contexts[1], "BRIEF-AFTER-THE-SUMMARY") || slices.Contains(run.Contexts[1], "BRIEF-BEFORE") {
 		t.Errorf("after the summary the new brief is used: %q", run.Contexts[1])
 	}
 }
@@ -396,12 +490,7 @@ func TestOpenCodePluginContinuesAfterAStopBlockAndMarksTheNextStop(t *testing.T)
 	if len(run.Prompts) != 1 || run.Prompts[0].Text != "CONTINUE-WITH-THIS" || run.Prompts[0].SessionID != "s1" || run.Prompts[0].Metadata["shikii"] != "stop-continue" {
 		t.Fatalf("the block's reason is sent as a prompt marked as the plugin's own: %+v", run.Prompts)
 	}
-	var stops []pluginCall
-	for _, c := range calls {
-		if c.Event == "stop" {
-			stops = append(stops, c)
-		}
-	}
+	stops := stopsOf(calls)
 	if len(stops) != 2 {
 		t.Fatalf("stop runs at the end of each turn: %d", len(stops))
 	}
@@ -414,7 +503,7 @@ func TestOpenCodePluginContinuesAfterAStopBlockAndMarksTheNextStop(t *testing.T)
 	if n := countCalls(calls, "user-prompt-submit"); n != 1 {
 		t.Errorf("the plugin's own continuation is not a new request of the person: %d", n)
 	}
-	if len(run.Contexts) != 1 || !hasText(run.Contexts[0], "BRIEF") || !hasText(run.Contexts[0], "TEXT") {
+	if len(run.Contexts) != 1 || !slices.Contains(run.Contexts[0], "BRIEF") || !slices.Contains(run.Contexts[0], "TEXT") {
 		t.Errorf("the continued turn still carries the brief and the request's text: %q", run.Contexts)
 	}
 }
@@ -428,8 +517,9 @@ func TestOpenCodePluginStopsContinuingAfterEightAndOnAHalt(t *testing.T) {
 		steps = append(steps, map[string]any{"op": "succeeded", "sid": "s1"})
 	}
 	run, calls := b.play(t, map[string]any{"steps": steps})
-	if len(run.Prompts) != 8 || countCalls(calls, "stop") != 12 {
-		t.Errorf("a request is continued 8 times at most: %d continuations, %d stops", len(run.Prompts), countCalls(calls, "stop"))
+	// a request and its 8 continuations are 9 turns: each ends once, and an execution after them is no turn of the plugin's
+	if len(run.Prompts) != 8 || countCalls(calls, "stop") != 9 {
+		t.Errorf("a request is continued 8 times at most: %d continuations, %d stops (want 8 and 9)", len(run.Prompts), countCalls(calls, "stop"))
 	}
 
 	h := newPluginBox(t)
@@ -476,7 +566,7 @@ func TestOpenCodePluginDoesNothingInASubagentsSession(t *testing.T) {
 			t.Errorf("the subagent's session reaches shikii: %+v", c)
 		}
 	}
-	if len(run.Contexts) != 2 || len(run.Contexts[0]) != 1 || !hasText(run.Contexts[1], "TEXT") {
+	if len(run.Contexts) != 2 || len(run.Contexts[0]) != 1 || !slices.Contains(run.Contexts[1], "TEXT") {
 		t.Errorf("the subagent's model call gets nothing, the person's session gets its texts: %q", run.Contexts)
 	}
 }
@@ -530,5 +620,243 @@ func TestOpenCodePluginReallyRunsTheFakeShikii(t *testing.T) {
 	_, calls := b.play(t, map[string]any{"steps": []map[string]any{{"op": "prompt", "sid": "s1", "text": "x"}}})
 	if len(calls) == 0 {
 		t.Fatalf("the plugin did not call the fake shikii")
+	}
+}
+
+// Measured on OpenCode 2.3.0 (a server with two project folders): the plugin is set up once per folder, the prompt and context hooks run
+// only in the instance of the session's folder, and ctx.event.subscribe of every instance sees the events of every session. A turn of
+// project B ends with one shikii hook stop, run in B's folder: the instance of project A only shares the server.
+func TestOpenCodePluginStopRunsOnceInTheSessionsOwnFolder(t *testing.T) {
+	b := newPluginBox(t)
+	projectA := b.otherProject(t)
+	_, calls := b.play(t, map[string]any{
+		"locations": map[string]any{"A": projectA, "B": b.project},
+		"sessions":  map[string]any{"sB": map[string]any{"id": "sB", "location": map[string]any{"directory": b.project}}},
+		"steps": []map[string]any{
+			{"op": "prompt", "at": "B", "sid": "sB", "text": "a request in project B"},
+			{"op": "succeeded", "sid": "sB"},
+		},
+	})
+	stops := stopsOf(calls)
+	for _, s := range stops {
+		if s.Pwd != b.project {
+			t.Errorf("shikii hook stop for project B's session ran in another project's folder %s (cwd %v)", s.Pwd, s.Stdin["cwd"])
+		}
+	}
+	if len(stops) != 1 {
+		t.Errorf("one turn of project B ran shikii hook stop %d times (want 1)", len(stops))
+	}
+}
+
+// The prompt hook only runs for the folder's own sessions on OpenCode, but a session whose folder is not the plugin's is left alone
+// wherever the call comes from.
+func TestOpenCodePluginLeavesASessionOfAnotherFolderAlone(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "stop", 0, `{"decision":"block","reason":"R"}`)
+	run, calls := b.play(t, map[string]any{
+		"sessions": map[string]any{"far": map[string]any{"id": "far", "location": map[string]any{"directory": filepath.Join(b.dir, "elsewhere")}}},
+		"steps": []map[string]any{
+			{"op": "prompt", "sid": "far", "text": "x"},
+			{"op": "succeeded", "sid": "far"},
+		},
+	})
+	if len(calls) != 0 || len(run.Prompts) != 0 || len(run.Errors) != 0 {
+		t.Errorf("nothing runs for another folder's session: %+v %+v", calls, run)
+	}
+}
+
+// A summary in the middle of a turn (the context overflowed, reason auto) is followed by more model calls of the same turn. Claude Code
+// runs SessionStart (source compact) right after the summary: the brief is asked for again at once and the rest of the turn has it.
+func TestOpenCodePluginBriefStaysAfterACompactionInTheMiddleOfATurn(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "session-start", 0, additionalJSON("BRIEF-OF-THE-SESSION"))
+	b.answer(t, "user-prompt-submit", 0, additionalJSON("TEXT-OF-THE-REQUEST"))
+	run, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "a long request"},
+		{"op": "context", "sid": "s1"},
+		{"op": "compaction", "sid": "s1"}, // the context overflowed: OpenCode summarises and the same turn goes on
+		{"op": "context", "sid": "s1"},
+	}})
+	if len(run.Errors) != 0 || len(run.Contexts) != 2 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	if !slices.Contains(run.Contexts[0], "BRIEF-OF-THE-SESSION") {
+		t.Fatalf("precondition: the first model call has the brief: %q", run.Contexts[0])
+	}
+	if !slices.Contains(run.Contexts[1], "BRIEF-OF-THE-SESSION") {
+		t.Errorf("the model call after the compaction, in the same turn, has no brief: %q", run.Contexts[1])
+	}
+	if n := countCalls(calls, "session-start"); n != 2 {
+		t.Errorf("session-start runs at the first request and right after the summary, ran %d times", n)
+	}
+}
+
+// A summary whose session-start does not answer keeps the old brief until one does, and a summary of a session this instance never saw a
+// request of (another folder's) asks for nothing.
+func TestOpenCodePluginKeepsTheOldBriefWhenTheNewOneCannotBeAskedFor(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "session-start", 1, additionalJSON("OLD-BRIEF"))
+	b.fail(t, "session-start", 2)
+	run, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "x"},
+		{"op": "compaction", "sid": "s1"},
+		{"op": "compaction", "sid": "other"},
+		{"op": "context", "sid": "s1"},
+	}})
+	if len(run.Errors) != 0 || len(run.Contexts) != 1 || !slices.Contains(run.Contexts[0], "OLD-BRIEF") {
+		t.Errorf("the old brief is used until a new one is asked for: %+v", run)
+	}
+	if n := countCalls(calls, "session-start"); n != 2 {
+		t.Errorf("one session-start at the request, one after the summary of the session it knew (none for the other): %d", n)
+	}
+}
+
+// A compaction the person asked for ends with the same session.execution.succeeded as a turn does, but no turn of the agent ended
+// (Claude Code runs no Stop for /compact): no stop runs, and the stop after it is not stop_hook_active because of an old continuation.
+func TestOpenCodePluginNoStopForACompactionAlone(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "stop", 1, `{"decision":"block","reason":"SAVE-THE-RECORD"}`)
+	_, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "a request"},
+		{"op": "succeeded", "sid": "s1"}, // stop 1 blocks: the plugin continues the turn
+		{"op": "succeeded", "sid": "s1"}, // stop 2: the end of the continuation (stop_hook_active true, as it should be)
+		{"op": "compaction", "sid": "s1"},
+		{"op": "succeeded", "sid": "s1"}, // the end of the compaction's execution, no turn of the agent
+	}})
+	stops := stopsOf(calls)
+	if len(stops) < 2 {
+		t.Fatalf("precondition: the turn and its continuation ran stop: %+v", stops)
+	}
+	if len(stops) != 2 {
+		t.Errorf("a compaction alone ran shikii hook stop (%d stops, want 2)", len(stops))
+	}
+	// the next real turn is not marked as a continuation
+	_, calls = b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "the next request"},
+		{"op": "succeeded", "sid": "s1"},
+	}})
+	if last := stopsOf(calls); len(last) == 0 || last[len(last)-1].Stdin["stop_hook_active"] != false {
+		t.Errorf("the stop of the next request is not stop_hook_active: %+v", last)
+	}
+}
+
+// OpenCode runs stop after the turn ended, so the person may type the next request before a slow stop answers. A block that comes late
+// belongs to the older request: it is not sent as a continuation after the new request, and the new request's stop is not stop_hook_active.
+func TestOpenCodePluginDropsTheLateBlockOfAnOlderRequest(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "stop", 1, `{"decision":"block","reason":"LATE-CONTINUE-FOR-REQUEST-ONE"}`)
+	b.hold(t, "stop", 1)
+	run, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "request one"},
+		{"op": "succeeded", "sid": "s1", "nowait": true}, // stop 1 starts and waits
+		{"op": "waitCalls", "event": "stop", "count": 1},
+		{"op": "prompt", "sid": "s1", "text": "request two, a new task"},
+		{"op": "release", "event": "stop", "n": 1},
+		{"op": "settle"},
+		{"op": "succeeded", "sid": "s1"}, // the end of request two
+	}})
+	if len(run.Errors) != 0 {
+		t.Fatalf("the steps ran: %v", run.Errors)
+	}
+	if len(run.Prompts) != 0 {
+		t.Errorf("the late block of request one is not sent after request two: %+v", run.Prompts)
+	}
+	stops := stopsOf(calls)
+	if len(stops) != 2 || stops[1].Stdin["stop_hook_active"] != false {
+		t.Errorf("the stop of request two is not stop_hook_active: %+v", stops)
+	}
+}
+
+// One slow stop does not hold back the events of other sessions.
+func TestOpenCodePluginASlowStopDoesNotHoldBackOtherSessions(t *testing.T) {
+	b := newPluginBox(t)
+	b.hold(t, "stop", 1)
+	run, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "one"},
+		{"op": "prompt", "sid": "s2", "text": "two"},
+		{"op": "succeeded", "sid": "s1", "nowait": true}, // stop 1 starts and waits
+		{"op": "succeeded", "sid": "s2", "nowait": true},
+		{"op": "waitCalls", "event": "stop", "count": 2}, // the second session's stop starts while the first waits
+		{"op": "release", "event": "stop", "n": 1},
+		{"op": "settle"},
+	}})
+	if len(run.Errors) != 0 {
+		t.Errorf("the second session's stop was held back by the first: %v", run.Errors)
+	}
+	if n := countCalls(calls, "stop"); n != 2 {
+		t.Errorf("both sessions end their turn: %d stops", n)
+	}
+}
+
+// Measured on 2.3.0: when a subagent finishes, its report goes into the parent's inbox as a synthetic message
+// (metadata.source "subagent") and wakes the parent for a turn the person did not ask for. No prompt hook runs for it. Claude Code's
+// notification of a finished task is a turn too, and its Stop is not stop_hook_active: neither is this one, even right after a
+// continuation. A report that arrives while a turn already runs changes nothing.
+func TestOpenCodePluginASubagentsReportWakesTheParentForATurnOfItsOwn(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "stop", 1, `{"decision":"block","reason":"SAVE-THE-RECORD"}`)
+	run, calls := b.play(t, map[string]any{
+		"sessions": map[string]any{"child": map[string]any{"id": "child", "parentID": "s1"}},
+		"steps": []map[string]any{
+			{"op": "prompt", "sid": "s1", "text": "a request"},
+			{"op": "succeeded", "sid": "s1"}, // stop 1 blocks: the continuation runs
+			{"op": "subagent", "sid": "s1"},  // a report while the continuation runs: nothing changes
+			{"op": "succeeded", "sid": "s1"}, // stop 2 (stop_hook_active true)
+			{"op": "subagent", "sid": "s1"},  // the report that wakes the parent
+			{"op": "succeeded", "sid": "s1"}, // stop 3, for a turn nobody typed
+			{"op": "subagent", "sid": "child"},
+			{"op": "succeeded", "sid": "child"}, // a subagent's own session: nothing
+		}})
+	if len(run.Errors) != 0 {
+		t.Fatalf("the steps ran: %v", run.Errors)
+	}
+	stops := stopsOf(calls)
+	if len(stops) != 3 {
+		t.Fatalf("three turns of the parent ended, got %d stops", len(stops))
+	}
+	for i, want := range []bool{false, true, false} {
+		if stops[i].Stdin["stop_hook_active"] != want {
+			t.Errorf("stop %d: stop_hook_active want %v, got %v", i+1, want, stops[i].Stdin["stop_hook_active"])
+		}
+	}
+	if n := countCalls(calls, "user-prompt-submit"); n != 1 {
+		t.Errorf("a subagent's report is no request of the person: %d", n)
+	}
+}
+
+// A report from another folder's session wakes nothing in this instance.
+func TestOpenCodePluginASubagentsReportInAnotherFoldersSessionWakesNothing(t *testing.T) {
+	b := newPluginBox(t)
+	_, calls := b.play(t, map[string]any{
+		"sessions": map[string]any{"far": map[string]any{"id": "far", "location": map[string]any{"directory": filepath.Join(b.dir, "elsewhere")}}},
+		"steps": []map[string]any{
+			{"op": "subagent", "sid": "far"},
+			{"op": "succeeded", "sid": "far"},
+		}})
+	if len(calls) != 0 {
+		t.Errorf("another folder's session is not this plugin's: %+v", calls)
+	}
+}
+
+// CI must not go green without the plugin's checks: when node is missing the tests fail on CI and are skipped elsewhere.
+type fakeT struct{ fatal, skip bool }
+
+func (f *fakeT) Helper()               {}
+func (f *fakeT) Fatalf(string, ...any) { f.fatal = true }
+func (f *fakeT) Skipf(string, ...any)  { f.skip = true }
+
+func TestPluginTestsFailInsteadOfSkippingOnCI(t *testing.T) {
+	var onCI, onMachine fakeT
+	pluginTestsUnavailable(&onCI, "true", "node is not installed")
+	pluginTestsUnavailable(&onMachine, "", "node is not installed")
+	if !onCI.fatal || onCI.skip {
+		t.Errorf("with CI set the plugin tests fail when they cannot run: %+v", onCI)
+	}
+	if onMachine.fatal || !onMachine.skip {
+		t.Errorf("on a machine without CI they are skipped: %+v", onMachine)
+	}
+	t.Setenv("PATH", t.TempDir())
+	if why := pluginNodeProblem(); !strings.Contains(why, "not installed") {
+		t.Errorf("a PATH without node is a problem the tests name: %q", why)
 	}
 }
