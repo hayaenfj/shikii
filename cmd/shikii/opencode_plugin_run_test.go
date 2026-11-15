@@ -17,8 +17,8 @@ import (
 // shikii (a small shell script that writes down what it was given and answers with prepared JSON). The text of the plugin is checked
 // in opencode_plugin_test.go; what it does over a conversation (the brief on every request, the folder it runs in, the continuation
 // after a stop block, subagents, failures) can only be seen by running it. Nothing of OpenCode or of a real shikii is started: node
-// runs one script, and the fake shikii is a file in a temporary folder. Without node 24 or newer (the version CI's Go job installs;
-// it strips the types of a .ts file by itself) these tests are skipped.
+// runs one script, and the fake shikii is a file in a temporary folder. Without node 24 or newer (it strips the types of a .ts file by
+// itself; CI's Go job installs node 26) these tests are skipped.
 
 // pluginDriver is the stand-in for OpenCode: it loads the plugin, gives it a ctx, and plays the steps of one scenario.
 const pluginDriver = `

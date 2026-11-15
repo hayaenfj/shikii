@@ -22,7 +22,7 @@ var WikiFS embed.FS
 var AgentSpecsFS embed.FS
 
 // WebFS is the answer-checking page (web/ built with Svelte; web/dist built by `make web`). `shikii serve` returns it at "/".
-// dist is committed to the repo, so Node is not needed just to use it (Node 24 and `make web` only when changing the page).
+// dist is committed to the repo, so Node is not needed just to use it (Node 26 and `make web` only when changing the page).
 //
 //go:embed web/dist
 var WebFS embed.FS
