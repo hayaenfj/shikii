@@ -148,7 +148,8 @@ func (b Book) maintenanceTasks(pages []Page) ([]MaintenanceTask, error) {
 		for j := len(all) - 1; j >= 0 && len(task.Missed) < 3; j-- {
 			task.Missed = append(task.Missed, all[j])
 		}
-		task.NextAction = "Read the article and missed evidence; diagnose the recorded case, capture supporting evidence, compare an applicability patch before saving it, or maintain with a reason for no change. Do not reset suppression by changing the revision. Check usefulness in subsequent actual work."
+		// This task also reaches MCP agents, and MCP does not run diagnose, so the text names its CLI command.
+		task.NextAction = "Read the article and missed evidence; run shikii wiki diagnose in the project folder with {\"id\":\"<article id>\",\"case_id\":\"<missed case_id>\"} on standard input (not available over MCP), capture supporting evidence, compare an applicability patch before saving it, or maintain with a reason for no change. Do not reset suppression by changing the revision. Check usefulness in subsequent actual work."
 	}
 	if err := b.addOutcomeReviews(tasks, pages); err != nil {
 		return nil, err

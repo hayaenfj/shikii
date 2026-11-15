@@ -15,6 +15,7 @@
 - The prepared work the request hook delivers now fits within what Claude Code shows whole of a hook's context, with the receipt first. Before, a longer context was often cut, or saved to a file with only its start shown, and the receipt and the later lessons did not reach the agent.
 - A very long request comes with only its start in the prepared work, while shikii keeps the whole request. Codex and OpenCode receive the same bounded context as Claude Code.
 - When a time field holds a date alone, or a maintenance review in a record names a page instead of the ref from the prepare reply, the refusal now says what to send.
+- A review item with a missed delivery now names `shikii wiki diagnose` as the command to run. It said "diagnose", which MCP does not run.
 
 ### Limits
 
