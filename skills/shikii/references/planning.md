@@ -1,6 +1,6 @@
 # Prepare context before work
 
-For ordinary work, use [recording.md](recording.md): read the preparation supplied by the request hook, or call `work prepare` when none was supplied, then record semantic content. This page says how to read the task, whichever entry returned it, and how to search again with its receipt. From [The older entry](#the-older-entry-hook-plan-query) on it describes `hook plan query` and `hook plan submit`, which remain available for existing integrations. Use one entry per request: `hook plan query` replaces the prepared receipt.
+For ordinary work, use [recording.md](recording.md#prepare-once-record-the-result): read the preparation supplied by the request hook, or call `work prepare` when none was supplied, then record semantic content. This page says how to read the task, whichever entry returned it, and how to search again with its receipt. From [The older entry](#the-older-entry-hook-plan-query) on it describes `hook plan query` and `hook plan submit`, which remain available for existing integrations. Use one entry per request: `hook plan query` replaces the prepared receipt.
 
 The agent owns interpretation: identify the current task, find relevant conversation and wiki evidence, and distinguish an unresolved user decision from a delegated task detail. This applies to writing, research, business support and software. The program retrieves records, checks quotes and scope, and measures the resulting decision. Do not ask the person to fill in a context form or add another model.
 

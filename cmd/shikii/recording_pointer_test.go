@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode"
 )
 
 // Measured on 2026-11-15 from the Claude Code session logs on the author's machine: agents read the whole of
@@ -91,4 +92,74 @@ func recordingPointerProblem(text string, headings map[string]bool) string {
 		return "names recording.md without saying not to read the whole file"
 	}
 	return ""
+}
+
+// The same check of 2026-11-15 ran OpenCode 2.3.0 on the fixed binary: before its first prepare, it loaded the skill and read
+// recording.md through the skill's links (53 KB returned), so the pointer in how_to_record never reached it. SKILL.md linked the
+// file without a section in two places and three references did the same. Every link into recording.md from the skill now names
+// a heading that exists in it, and SKILL.md says to read a reference by its section.
+func TestSkillLinksToRecordingMdNameOneSection(t *testing.T) {
+	slugs := map[string]bool{}
+	for heading := range recordingHeadings(t) {
+		slugs[markdownSlug(strings.TrimLeft(heading, "# "))] = true
+	}
+	if problem := recordingLinkProblem("See [recording.md](references/recording.md).", slugs); problem == "" {
+		t.Fatal("the check accepts a link to the whole file")
+	}
+	if problem := recordingLinkProblem("See [the steps](recording.md#no-such-section).", slugs); problem == "" {
+		t.Fatal("the check accepts a section that recording.md does not have")
+	}
+	found := 0
+	err := filepath.WalkDir("../../skills/shikii", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".md") {
+			return err
+		}
+		for i, line := range strings.Split(string(mustRead(t, path)), "\n") {
+			if !recordingLink.MatchString(line) {
+				continue
+			}
+			found++
+			if problem := recordingLinkProblem(line, slugs); problem != "" {
+				t.Errorf("%s:%d: %s", path, i+1, problem)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found == 0 {
+		t.Fatal("no link into recording.md was found; the walk is looking in the wrong place")
+	}
+	if skill := string(mustRead(t, "../../skills/shikii/SKILL.md")); !strings.Contains(skill, "read only the section you need, not the whole file") {
+		t.Error("SKILL.md does not say to read a reference by its section")
+	}
+}
+
+var recordingLink = regexp.MustCompile(`\]\((?:references/)?recording\.md(#[^)]*)?\)`)
+
+func recordingLinkProblem(line string, slugs map[string]bool) string {
+	for _, m := range recordingLink.FindAllStringSubmatch(line, -1) {
+		if m[1] == "" {
+			return "links to recording.md without naming a section"
+		}
+		if !slugs[m[1][1:]] {
+			return "links to " + m[1] + ", which is not a heading of recording.md"
+		}
+	}
+	return ""
+}
+
+// markdownSlug is the anchor GitHub gives a heading: lower case, spaces become hyphens, other punctuation is dropped.
+func markdownSlug(heading string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(heading) {
+		switch {
+		case r == ' ':
+			b.WriteRune('-')
+		case r == '-' || r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
