@@ -405,6 +405,11 @@ func planningQuoteLabel(e planningQuote, i int, agreement bool) string {
 // (and the Japanese one of records made before 0.9.2); a test checks the two match.
 const planningPreface = "AI's organizing (not permission to act, not the person's truth): "
 
+// knowledgeSource says whether a quote's source is a wiki lesson or article rather than the conversation.
+func knowledgeSource(source string) bool {
+	return strings.HasPrefix(source, "lesson:") || strings.HasPrefix(source, "article:")
+}
+
 func renderPlanningFact(f *planningFact, sources map[string]string, agreement bool) (string, error) {
 	if f == nil {
 		return "", errors.New("pass agreed and open. If unknown, set unknown:true")
@@ -432,9 +437,10 @@ func renderPlanningFact(f *planningFact, sources map[string]string, agreement bo
 			return "", fmt.Errorf("the source %q of evidence[%d] is not in this request's original text. Usable sources: %s", e.Source, i, strings.Join(keys, ", "))
 		case strings.TrimSpace(e.Quote) == "" || len(e.Quote) > 240:
 			return "", fmt.Errorf("the quote of %s must be 1 to 240 bytes (%d bytes)", planningQuoteLabel(e, i, agreement), len(e.Quote))
-		case !strings.Contains(text, e.Quote) && e.ref != "":
-			// A work record quotes by ref from the prepare reply, which has no query step: the refusal says what the ref holds and
-			// where the words come from (second confirmation audit of 0.34.0, U-1: it sent the agent to query).
+		case !strings.Contains(text, e.Quote) && e.ref != "" && !knowledgeSource(e.Source):
+			// A work record quotes the conversation by ref from the prepare reply, which has no query step: the refusal says what the
+			// ref holds and where the words come from (second confirmation audit of 0.34.0, U-1: it sent the agent to query). A
+			// knowledge ref holds an article's words, not a message's, and keeps the refusal below (third confirmation audit, A-1).
 			limit := planningQuoteBytes
 			if strings.HasPrefix(e.Source, "history:") {
 				limit = planningHistoryQuoteBytes
@@ -448,7 +454,7 @@ func renderPlanningFact(f *planningFact, sources map[string]string, agreement bo
 		if strings.HasPrefix(e.Source, "history:") {
 			role = "a past exchange in the same session (for reference, not the current agreement) [" + e.Source + "]"
 		}
-		if strings.HasPrefix(e.Source, "lesson:") || strings.HasPrefix(e.Source, "article:") {
+		if knowledgeSource(e.Source) {
 			role = "a wiki lesson (a hypothesis with sources, not the current agreement) [" + e.Source + "]"
 		}
 		parts = append(parts, role+": "+e.Quote)

@@ -82,3 +82,71 @@ func TestARefusedQuoteOfARecordSaysWhereItsWordsComeFrom(t *testing.T) {
 		t.Errorf("the refusal of hook plan submit changed: %v", err)
 	}
 }
+
+// Third confirmation audit of 0.34.0 (A-1): a record may quote a knowledgeN ref in agreed or open (recording.md). The refusal for a
+// conversation ref above was given to every ref, so a knowledge quote that is not verbatim was told to copy from conversation and that
+// it holds the first 4000 bytes of a message; neither is where a knowledge ref's words are. The refusal of a knowledge quote names
+// neither, and a verbatim quote of it is recorded.
+func TestARefusedKnowledgeQuoteOfARecordDoesNotPointToConversation(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
+	interimAddArticle(t, b, "Archive approval", "Production restore requires owner approval before the archive is restored.")
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "Explain archive approval for production restore."})
+	s := loadSession(root, "planning")
+	got, err := workCall(t, b, "prepare", map[string]any{"session_id": "planning", "turn_id": s.TurnID, "query": "archive approval"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, text := "", ""
+	for _, raw := range got["knowledge"].([]any) {
+		k := raw.(map[string]any)
+		r, _ := k["ref"].(string)
+		if strings.HasPrefix(r, "knowledge") {
+			ref = r
+			if v, ok := k["text"].(string); ok {
+				text = v
+			}
+			break
+		}
+	}
+	if ref == "" {
+		t.Fatalf("precondition: the prepare reply has a knowledge ref: %v", got["knowledge"])
+	}
+	if _, ok := got["conversation"].(map[string]any)[ref]; ok {
+		t.Fatalf("precondition: %s is not a conversation ref", ref)
+	}
+	record := func(open map[string]any) string {
+		r, err := workCall(t, b, "record", map[string]any{"receipt": got["receipt"], "agreed": map[string]any{"unknown": true}, "open": open})
+		if err != nil {
+			return err.Error()
+		}
+		errs, _ := r["errors"].([]any)
+		for _, e := range errs {
+			if e, _ := e.(map[string]any); e["kind"] == "plan" {
+				return e["error"].(string)
+			}
+		}
+		return ""
+	}
+	quote := func(words string) map[string]any {
+		return map[string]any{"summary": "Owner approval is open.", "quotes": []any{map[string]any{"ref": ref, "text": words}}}
+	}
+	t.Logf("%s holds %d bytes", ref, len(text))
+	if !strings.Contains(text, "owner approval") {
+		t.Fatalf("precondition: %s holds the article's words: %q", ref, text)
+	}
+	if refusal := record(quote("owner approval")); refusal != "" {
+		t.Fatalf("control: a verbatim quote of %s is refused: %s", ref, refusal)
+	}
+	t.Logf("control: a verbatim quote of %s is recorded", ref)
+	refusal := record(quote("owner consent is not needed"))
+	t.Logf("refusal: %s", refusal)
+	if refusal == "" {
+		t.Fatal("a quote not in the article is recorded")
+	}
+	for _, bad := range []string{"conversation." + ref, "bytes of the message"} {
+		if strings.Contains(refusal, bad) {
+			t.Errorf("the refusal of a knowledge quote says %q, which is not where %s's words are: %s", bad, ref, refusal)
+		}
+	}
+}
