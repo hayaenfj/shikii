@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
@@ -117,6 +119,17 @@ func TestTheRefsOfARecordHoldTheBoundsTheirRefusalsName(t *testing.T) {
 	if !found {
 		t.Fatalf("precondition: the earlier request is a history source: %v", s.Planning.Sources)
 	}
+	// The AI's reply of an earlier turn is held to the same bound (confirmation of the third audit, U-2).
+	now := time.Now()
+	previous := &hookSession{TurnID: "earlier", Scope: "scope", Planning: &planningFrame{TurnID: "earlier", At: now, Sources: map[string]string{"current_user": strings.Repeat("q", 6000)}},
+		Completed: &completedTurn{TurnID: "earlier", Summary: strings.Repeat("a", 6000), At: now}}
+	f := &planningFrame{TurnID: "next", At: now, Sources: map[string]string{"current_user": "Next."}}
+	addPlanningContext("scope", previous, f)
+	for _, key := range []string{"history:earlier:user", "history:earlier:assistant"} {
+		if got := len(f.Sources[key]); got != planningHistoryQuoteBytes {
+			t.Errorf("%s holds %d bytes of a long earlier turn, the refusal says %d", key, got, planningHistoryQuoteBytes)
+		}
+	}
 }
 
 // Third confirmation audit of 0.34.0 (A-1): a record may quote a knowledgeN ref in agreed or open (recording.md). The refusal for a
@@ -184,5 +197,76 @@ func TestARefusedKnowledgeQuoteOfARecordDoesNotPointToConversation(t *testing.T)
 		if strings.Contains(refusal, bad) {
 			t.Errorf("the refusal of a knowledge quote says %q, which is not where %s's words are: %s", bad, ref, refusal)
 		}
+	}
+}
+
+// Confirmation of the third audit of 0.34.0 (U-3, U-1): a knowledge entry given in passages (body_included false, source lesson:) can be
+// quoted only in what the prepare reply gave for it. The refusal said to copy from what query returned, but a quote of the article's text
+// from past the passages was refused again after that; it is taken after a prepare with the receipt and the entry's query gives the text.
+// The refusal names the quote, the entry's query and that route, and following it records.
+func TestARefusedQuoteOfALessonGivenInPassagesSaysHowToGetItsWords(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
+	var body strings.Builder
+	for i := 0; i < 150; i++ {
+		fmt.Fprintf(&body, "Step %d of the archive approval keeps the production restore owner informed. ", i)
+	}
+	page := interimAddArticle(t, b, "Archive approval", body.String())
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "Explain archive approval for production restore."})
+	s := loadSession(root, "planning")
+	got, err := workCall(t, b, "prepare", map[string]any{"session_id": "planning", "turn_id": s.TurnID, "query": "archive approval", "reasoning": map[string]any{"depth": "brief"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entry map[string]any
+	for _, raw := range got["knowledge"].([]any) {
+		if k := raw.(map[string]any); k["id"] == page.ID {
+			entry = k
+		}
+	}
+	const words = "Step 149 of the archive approval keeps the production restore owner informed."
+	if entry == nil || entry["body_included"] != false || strings.Contains(fmt.Sprint(entry), words) {
+		t.Fatalf("precondition: the article is given in passages without the words: %v", entry)
+	}
+	ref, query := entry["ref"].(string), "lesson:"+page.ID+"@"+page.Revision
+	if !strings.HasPrefix(loadSession(root, "planning").Planning.Work.Keys[ref], "lesson:") {
+		t.Fatalf("precondition: %s is a lesson source", ref)
+	}
+	record := func(receipt any) string {
+		r, err := workCall(t, b, "record", map[string]any{"receipt": receipt, "agreed": map[string]any{"unknown": true}, "open": map[string]any{"summary": "Owner informed.", "quotes": []any{map[string]any{"ref": ref, "text": words}}}})
+		if err != nil {
+			return err.Error()
+		}
+		errs, _ := r["errors"].([]any)
+		for _, e := range errs {
+			if e, _ := e.(map[string]any); e["kind"] == "plan" {
+				return e["error"].(string)
+			}
+		}
+		return ""
+	}
+	refusal := record(got["receipt"])
+	t.Logf("refusal: %s", refusal)
+	for _, want := range []string{"open.quotes[0] (ref " + ref + ")", query, "receipt"} {
+		if !strings.Contains(refusal, want) {
+			t.Errorf("the refusal of a quote past the passages of %s lacks %q: %s", ref, want, refusal)
+		}
+	}
+	for _, bad := range []string{"conversation." + ref, "bytes of the message"} {
+		if strings.Contains(refusal, bad) {
+			t.Errorf("the refusal of a knowledge quote says %q: %s", bad, refusal)
+		}
+	}
+	// What the refusal says to do: prepare with the receipt and the entry's query, then record with that reply's receipt.
+	more, err := workCall(t, b, "prepare", map[string]any{"receipt": got["receipt"], "query": query})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := got["receipt"]
+	if more["receipt"] != nil {
+		receipt = more["receipt"]
+	}
+	if refusal := record(receipt); refusal != "" {
+		t.Errorf("following the refusal does not record the quote: %s", refusal)
 	}
 }

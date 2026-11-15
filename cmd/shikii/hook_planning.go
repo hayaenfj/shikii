@@ -410,6 +410,14 @@ func knowledgeSource(source string) bool {
 	return strings.HasPrefix(source, "lesson:") || strings.HasPrefix(source, "article:")
 }
 
+// knowledgeQuery is the query a knowledge entry of the prepare reply names for its source ("lesson:<id>:<revision>" or
+// "article:<id>:<revision>"): lesson:<id>@<revision> for both.
+func knowledgeQuery(source string) string {
+	_, rest, _ := strings.Cut(source, ":")
+	id, revision, _ := strings.Cut(rest, ":")
+	return "lesson:" + id + "@" + revision
+}
+
 func renderPlanningFact(f *planningFact, sources map[string]string, agreement bool) (string, error) {
 	if f == nil {
 		return "", errors.New("pass agreed and open. If unknown, set unknown:true")
@@ -437,10 +445,14 @@ func renderPlanningFact(f *planningFact, sources map[string]string, agreement bo
 			return "", fmt.Errorf("the source %q of evidence[%d] is not in this request's original text. Usable sources: %s", e.Source, i, strings.Join(keys, ", "))
 		case strings.TrimSpace(e.Quote) == "" || len(e.Quote) > 240:
 			return "", fmt.Errorf("the quote of %s must be 1 to 240 bytes (%d bytes)", planningQuoteLabel(e, i, agreement), len(e.Quote))
-		case !strings.Contains(text, e.Quote) && e.ref != "" && !knowledgeSource(e.Source):
+		case !strings.Contains(text, e.Quote) && e.ref != "" && knowledgeSource(e.Source):
+			// A knowledge ref holds what the prepare reply gave of its article, which for an entry given in passages is not the whole
+			// text query returns: the words past them are given by a prepare with the receipt and the entry's query (third confirmation
+			// audit of 0.34.0, A-1 and U-3: it was told to copy from conversation, and before that from what query returned).
+			return "", fmt.Errorf("%s is not found verbatim in what the prepare reply gave for that ref: copy the words exactly from that knowledge entry; to quote words of the article it did not give, run prepare with this receipt and query %q, which gives the entry's text, and send the record with the receipt of that reply", planningQuoteLabel(e, i, agreement), knowledgeQuery(e.Source))
+		case !strings.Contains(text, e.Quote) && e.ref != "":
 			// A work record quotes the conversation by ref from the prepare reply, which has no query step: the refusal says what the
-			// ref holds and where the words come from (second confirmation audit of 0.34.0, U-1: it sent the agent to query). A
-			// knowledge ref holds an article's words, not a message's, and keeps the refusal below (third confirmation audit, A-1).
+			// ref holds and where the words come from (second confirmation audit of 0.34.0, U-1: it sent the agent to query).
 			limit := planningQuoteBytes
 			if strings.HasPrefix(e.Source, "history:") {
 				limit = planningHistoryQuoteBytes

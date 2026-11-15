@@ -18,6 +18,7 @@
 - A review item with a missed delivery now names `shikii wiki diagnose` as the command to run. It said "diagnose", which MCP does not run.
 - When a hook `turn_id` with a few characters changed names a request that is already closed or past the session limit, the refusal says so at once. Before, it first asked for the ids exactly as given, and only the next call said the request was closed.
 - When a record quotes the person's words from past what shikii keeps of a message (its first 4,000 bytes), the refusal names the quote, says how much of the message can be quoted, and asks to copy the words from `conversation` in the prepare reply. It used to point to `query`, which is not part of recording.
+- When a record quotes words of a wiki article that the prepare reply did not include, the refusal names the article's query and says to prepare again with the receipt and that query to get the text. Before, it said to copy the words from a query reply, and the copied quote was refused again.
 
 ### Limits
 
