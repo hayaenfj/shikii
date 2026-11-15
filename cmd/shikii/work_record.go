@@ -12,6 +12,22 @@ import (
 // workAfterWrite is a deterministic failure point for persistence tests.
 var workAfterWrite = func(kind string) error { return nil }
 
+// recordItemsOverLimit names each field of one work record over its fixed number of items, with the number sent and the limit (the
+// refusal said only "exceeds its fixed item limits" before, and an agent sending three notes had to read the code: 2026-11-15).
+func recordItemsOverLimit(req workRequest) []string {
+	var over []string
+	for _, l := range []struct {
+		name   string
+		n, max int
+	}{{"observations", len(req.Observations), 4}, {"notes", len(req.Notes), 2}, {"reviews", len(req.Reviews), 128}, {"memory", len(req.Memory), 256},
+		{"reviewed", len(req.Reviewed), 64}, {"maintenance", len(req.Maintenance), 8}, {"discoveries", len(req.Discoveries), 4}, {"outcomes", len(req.Outcomes), 2}} {
+		if l.n > l.max {
+			over = append(over, l.name+": "+strconv.Itoa(l.n)+" sent, at most "+strconv.Itoa(l.max))
+		}
+	}
+	return over
+}
+
 func validateWorkRecording(req workRequest) error {
 	var beside []string
 	for _, field := range []struct{ name, value string }{{"session_id", req.SessionID}, {"turn_id", req.TurnID}, {"query", req.Query}, {"request", req.Request}, {"proposal", req.Proposal}, {"conditions", req.Conditions}, {"cursor", req.Cursor}} {
@@ -26,8 +42,8 @@ func validateWorkRecording(req workRequest) error {
 		}
 		return errors.New(text + ")")
 	}
-	if len(req.Observations) > 4 || len(req.Notes) > 2 || len(req.Reviews) > 128 || len(req.Memory) > 256 || len(req.Reviewed) > 64 || len(req.Maintenance) > 8 || len(req.Discoveries) > 4 || len(req.Outcomes) > 2 {
-		return errors.New("the recording batch exceeds its fixed item limits")
+	if over := recordItemsOverLimit(req); len(over) > 0 {
+		return errors.New("the recording batch exceeds its fixed item limits (" + strings.Join(over, "; ") + "); send the rest in another work record with the same receipt")
 	}
 	if req.Result == nil && req.Reading == nil && req.Trial == nil && req.Comparison == nil && req.Reasoning == nil && req.Agreed == nil && req.Open == nil && req.ContinuesPrevious == nil && len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) == 0 {
 		return errors.New("record needs content that was judged or observed")

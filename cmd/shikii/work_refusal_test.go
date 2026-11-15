@@ -390,3 +390,27 @@ func TestAResultIsNotItsOwnEvidence(t *testing.T) {
 		t.Errorf("a later result cites the observation the work saved (%s): %s", observed, refused(saved))
 	}
 }
+
+// Found on 2026-11-15 while recording three notes in one call: the refusal said only "the recording batch exceeds its fixed item
+// limits", so the agent had to read the code to learn that a record takes at most two notes. The refusal now names each field over
+// its limit, the number sent and the limit, and says to send the rest in another record with the same receipt.
+func TestARecordOverItsItemLimitsNamesTheLimit(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
+	prepared, err := workCall(t, b, "prepare", map[string]any{"session_id": "planning", "turn_id": loadSession(root, "planning").TurnID, "query": "CSV export"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	note := map[string]any{"title": "CSV filters", "lesson": "Keep the filters.", "applies_to": "CSV export", "kind": "howto", "scene": "exporting CSV", "sources": []string{"new1"}}
+	observation := map[string]any{"kind": "test", "title": "CSV check", "content": "The filters were kept."}
+	_, err = workCall(t, b, "record", map[string]any{"receipt": prepared["receipt"], "notes": []any{note, note, note}, "observations": []any{observation, observation, observation, observation, observation}})
+	if err == nil {
+		t.Fatal("a record with three notes and five observations must be refused")
+	}
+	for _, w := range []string{"the recording batch exceeds its fixed item limits", "notes: 3 sent, at most 2", "observations: 5 sent, at most 4", "send the rest in another work record with the same receipt"} {
+		if !strings.Contains(err.Error(), w) {
+			t.Errorf("the refusal lacks %q: %v", w, err)
+		}
+	}
+}
