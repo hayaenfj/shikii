@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // OpenCode 2.x has no JSON hook settings (Claude Code's settings.json, Codex's hooks.json). It loads plugins from
@@ -190,8 +191,20 @@ func opencodePluginRemovable(home, path string) bool {
 	return opencodePluginWritable(home, path) || filepath.Dir(path) == opencodePluginDir(home) && opencodeTempName.MatchString(filepath.Base(path))
 }
 
-// opencodeTempFiles lists the temporary files an install left in the plugin folder (opencodeOwnTempFile), by path. None when the folder
-// is not a real folder (a link to one is a person's).
+// opencodeTempStale is how old a temporary file must be (by its modification time) to be one a stopped install left. Writing the plugin
+// takes milliseconds, so a newer one belongs to an install that runs now and renames it itself: two installs at once (or an uninstall
+// during an install) must not remove each other's files. A newer leftover goes at a later install or uninstall.
+const opencodeTempStale = time.Minute
+
+// opencodeTempLeft says whether a temporary file last changed at mod was left by a stopped install, at now: at least opencodeTempStale
+// old (or as far in the future, which no running install's file is).
+func opencodeTempLeft(mod, now time.Time) bool {
+	age := now.Sub(mod)
+	return age >= opencodeTempStale || age <= -opencodeTempStale
+}
+
+// opencodeTempFiles lists the temporary files a stopped install left in the plugin folder (opencodeOwnTempFile, opencodeTempLeft), by
+// path. None when the folder is not a real folder (a link to one is a person's).
 func opencodeTempFiles(home string) []string {
 	dir := opencodePluginDir(home)
 	if info, err := os.Lstat(dir); err != nil || !info.IsDir() {
@@ -202,24 +215,28 @@ func opencodeTempFiles(home string) []string {
 		return nil
 	}
 	var paths []string
+	now := time.Now()
 	for _, e := range entries {
-		if opencodeOwnTempFile(e) {
+		if !opencodeOwnTempFile(e) {
+			continue
+		}
+		if info, err := e.Info(); err == nil && opencodeTempLeft(info.ModTime(), now) {
 			paths = append(paths, filepath.Join(dir, e.Name()))
 		}
 	}
 	return paths
 }
 
-// removeOpencodeTempFiles removes the temporary files an install left in the plugin folder and says how many it removed. Each is looked
-// at again right before it is removed, without following a link: only a regular file is removed, so a link or a folder that took the
-// name in between stays (and what a link points at is never touched).
+// removeOpencodeTempFiles removes the temporary files a stopped install left in the plugin folder and says how many it removed. Each is
+// looked at again right before it is removed, without following a link: only a regular file that is still old enough is removed, so a
+// link or a folder that took the name in between stays (and what a link points at is never touched).
 func removeOpencodeTempFiles(home string) (int, error) {
 	n := 0
 	for _, path := range opencodeTempFiles(home) {
 		if !opencodePluginRemovable(home, path) {
 			return n, errors.New(path + " is outside the OpenCode plugin folder")
 		}
-		if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() {
+		if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() || !opencodeTempLeft(info.ModTime(), time.Now()) {
 			continue
 		}
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {

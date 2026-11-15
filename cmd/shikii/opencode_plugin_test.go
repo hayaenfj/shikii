@@ -574,7 +574,7 @@ func TestRemoveOpencodePluginSaysWhatItFound(t *testing.T) {
 func TestHookInstallMendsAnInstallThatDiedBeforeTheRename(t *testing.T) {
 	home := freshMachine(t)
 	dir := wantPluginDir(home)
-	writeFileT(t, filepath.Join(dir, ".write-1234567890.tmp"), opencodePluginPackage[:10])
+	writeLeftTempFileT(t, filepath.Join(dir, ".write-1234567890.tmp"), opencodePluginPackage[:10])
 	out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	if !fileExists(filepath.Join(dir, opencodeIndexFile)) || !fileExists(filepath.Join(dir, opencodeJSONFile)) {
 		t.Errorf("the next install writes the plugin although shikii's own temporary file is in the folder:\n%s", out)
@@ -583,7 +583,7 @@ func TestHookInstallMendsAnInstallThatDiedBeforeTheRename(t *testing.T) {
 		t.Errorf("the temporary file an earlier install left is removed: it is shikii's own")
 	}
 	person := freshMachine(t)
-	writeFileT(t, filepath.Join(wantPluginDir(person), ".write-1.tmp"), "x")
+	writeLeftTempFileT(t, filepath.Join(wantPluginDir(person), ".write-1.tmp"), "x")
 	writeFileT(t, filepath.Join(wantPluginDir(person), "notes.txt"), "mine")
 	if got, _ := installOpencodePlugin(person, "/x/shikii", true); got != "left" {
 		t.Errorf("a person's file beside the temporary file keeps the folder as it is: %s", got)
@@ -731,7 +731,7 @@ func TestOpenCodePluginInstallAndUninstallRemoveTheTemporaryFilesAnInstallLeft(t
 	t.Run("install", func(t *testing.T) {
 		home := freshMachine(t)
 		dir := wantPluginDir(home)
-		writeFileT(t, filepath.Join(dir, ".write-1234567890.tmp"), opencodePluginPackage[:10])
+		writeLeftTempFileT(t, filepath.Join(dir, ".write-1234567890.tmp"), opencodePluginPackage[:10])
 		out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 		if left, _ := os.ReadDir(dir); len(left) != 2 || fileExists(filepath.Join(dir, ".write-1234567890.tmp")) {
 			t.Errorf("install writes the two files and removes the temporary file an earlier install left: %v\n%s", left, out)
@@ -741,7 +741,7 @@ func TestOpenCodePluginInstallAndUninstallRemoveTheTemporaryFilesAnInstallLeft(t
 		home := freshMachine(t)
 		dir := wantPluginDir(home)
 		writePluginT(t, dir, "/x/shikii")
-		writeFileT(t, filepath.Join(dir, ".write-42.tmp"), "half")
+		writeLeftTempFileT(t, filepath.Join(dir, ".write-42.tmp"), "half")
 		out := captureNoFail(func() error { return cmdUninstall([]string{"--yes"}) })
 		if fileExists(dir) {
 			left, _ := os.ReadDir(dir)
@@ -751,7 +751,7 @@ func TestOpenCodePluginInstallAndUninstallRemoveTheTemporaryFilesAnInstallLeft(t
 	t.Run("uninstall of a folder with only the temporary file", func(t *testing.T) {
 		home := freshMachine(t)
 		dir := wantPluginDir(home)
-		writeFileT(t, filepath.Join(dir, ".write-7.tmp"), "half")
+		writeLeftTempFileT(t, filepath.Join(dir, ".write-7.tmp"), "half")
 		preview := capture(t, func() error { return cmdUninstall(nil) })
 		if !fileExists(filepath.Join(dir, ".write-7.tmp")) || !strings.Contains(preview, "temporary file") {
 			t.Errorf("the preview names the temporary file and removes nothing:\n%s", preview)
@@ -760,7 +760,7 @@ func TestOpenCodePluginInstallAndUninstallRemoveTheTemporaryFilesAnInstallLeft(t
 		if fileExists(dir) {
 			t.Errorf("uninstall removes the temporary file and the folder it leaves empty:\n%s", out)
 		}
-		writeFileT(t, filepath.Join(dir, ".write-8.tmp"), "half")
+		writeLeftTempFileT(t, filepath.Join(dir, ".write-8.tmp"), "half")
 		hook := capture(t, func() error { return cmdHook([]string{"uninstall", "--yes"}) })
 		if fileExists(dir) {
 			t.Errorf("hook uninstall removes it too:\n%s", hook)
@@ -776,7 +776,7 @@ func TestOpenCodePluginInstallAndUninstallRemoveTheTemporaryFilesAnInstallLeft(t
 		writeFileT(t, filepath.Join(dir, ".write-2.tmp", "inside.txt"), "mine")
 		writeFileT(t, filepath.Join(dir, ".write-mine.tmp"), "mine")
 		writeFileT(t, filepath.Join(dir, "notes.txt"), "mine")
-		writeFileT(t, filepath.Join(dir, "sub", ".write-3.tmp"), "mine")
+		writeLeftTempFileT(t, filepath.Join(dir, "sub", ".write-3.tmp"), "mine")
 		captureNoFail(func() error { return cmdUninstall([]string{"--yes"}) })
 		for _, kept := range []string{".write-2.tmp/inside.txt", ".write-mine.tmp", "notes.txt", "sub/.write-3.tmp"} {
 			if !fileExists(filepath.Join(dir, kept)) {
@@ -923,5 +923,41 @@ func TestAPersonsOpenCodeFolderKeepsAFileNamedLikeTheTemporaryFile(t *testing.T)
 				t.Errorf("%s removed a file from the person's folder:\n%s", name, out)
 			}
 		})
+	}
+}
+
+// Two installs at once (the audit confirm1): install A has made its temporary file and not renamed it yet when install B removes the
+// temporary files. B must not remove A's: A's rename would fail and A would say the plugin could not be written. The order is forced
+// here (A's file is there when B runs), so the test does not wait for the two to meet. A temporary file an install is writing is new
+// (writing the plugin takes milliseconds); one a stopped install left is older, and that one still goes, by install and by uninstall.
+func TestOpenCodePluginLeavesTheTemporaryFileOfAnInstallStillWriting(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	home := t.TempDir()
+	dir := wantPluginDir(home)
+	if _, err := installOpencodePlugin(home, "/opt/a/shikii", true); err != nil {
+		t.Fatal(err)
+	}
+	writing := filepath.Join(dir, ".write-77.tmp") // A's, made just now
+	writeFileT(t, writing, opencodePluginFiles("/opt/a/shikii")[opencodeIndexFile])
+	left := filepath.Join(dir, ".write-11.tmp") // one a stopped install left an hour ago
+	writeLeftTempFileT(t, left, "half")
+	if _, err := installOpencodePlugin(home, "/opt/b/shikii", true); err != nil { // B
+		t.Fatal(err)
+	}
+	if err := os.Rename(writing, filepath.Join(dir, opencodeIndexFile)); err != nil {
+		t.Errorf("install A cannot finish: install B removed the temporary file A was writing: %v", err)
+	}
+	if fileExists(left) {
+		t.Errorf("the temporary file a stopped install left an hour ago is still there after install")
+	}
+
+	// uninstall in the middle of an install: the running install's file stays (the install renames it), the left one goes
+	writeFileT(t, writing, "being written")
+	writeLeftTempFileT(t, left, "half")
+	if _, err := removeOpencodePlugin(home, true); err != nil {
+		t.Fatal(err)
+	}
+	if !fileExists(writing) || fileExists(left) {
+		t.Errorf("uninstall keeps the running install's temporary file (%v) and removes the left one (%v)", fileExists(writing), !fileExists(left))
 	}
 }
