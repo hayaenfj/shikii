@@ -28,7 +28,11 @@ func markdownMCPFixture() map[string]any {
 func markdownMCPCall(t *testing.T, name string, code int, raw []byte) map[string]any {
 	t.Helper()
 	var in, out bytes.Buffer
-	request := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": name, "arguments": map[string]any{}}}
+	arguments := map[string]any{}
+	if name == "shikii_wiki" {
+		arguments["operation"] = "query" // MCP runs only the operations shikii_wiki lists; the handler below answers any of them the same
+	}
+	request := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": name, "arguments": arguments}}
 	if err := json.NewEncoder(&in).Encode(request); err != nil {
 		t.Fatal(err)
 	}

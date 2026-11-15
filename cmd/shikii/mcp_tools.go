@@ -1,5 +1,11 @@
 package main
 
+import (
+	"slices"
+	"strconv"
+	"strings"
+)
+
 // Keep the complete workflow once in the entry point's description. Some MCP
 // hosts attach initialize.instructions to every tool, so that field carries
 // only discovery and immediate safeguards, including for deferred tool loading.
@@ -132,6 +138,28 @@ var mcpTools = []map[string]any{
 			"scene":         sceneSchema,
 		}, []string{"operation"}...),
 	},
+}
+
+// mcpWikiRefusal is why MCP does not run a shikii_wiki operation, or "" for an operation its definition lists. MCP runs only the
+// operations of the enum: before, it refused only the names in mcpWikiCLIOnly and passed any other on to the handler, so an
+// operation the handler took under another name ran over MCP (audit of 0.33.0, U-3). Any other name is refused with the operations
+// MCP takes, not with the CLI's list, which named operations MCP refuses (U-2).
+func mcpWikiRefusal(operation string) string {
+	var enum []string
+	for _, tool := range mcpTools {
+		if tool["name"] == "shikii_wiki" {
+			enum = tool["inputSchema"].(map[string]any)["properties"].(map[string]any)["operation"].(map[string]any)["enum"].([]string)
+		}
+	}
+	switch {
+	case slices.Contains(enum, operation):
+		return ""
+	case mcpWikiCLIOnly[operation] != "":
+		return mcpWikiCLIOnly[operation]
+	case operation == "":
+		return "shikii_wiki needs operation, one of " + strings.Join(enum, " / ")
+	}
+	return "operation " + strconv.Quote(cut(operation, 64)) + " is not on MCP; shikii_wiki takes " + strings.Join(enum, " / ")
 }
 
 // mcpWikiCLIOnly are the wiki operations shikii_wiki's MCP definition leaves out (mcp_wiki_surface_test.go has the measurements),

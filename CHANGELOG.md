@@ -26,7 +26,7 @@
 ### Highlights
 
 - The skill and the preparation reply point agents to the one section of a long reference they need, and the skill explains how to read only that section. Agents no longer read the whole recording guide at the start of a task.
-- The `shikii_wiki` MCP tool definition is smaller. `organize`, `reconcile` and `diagnose` are no longer offered over MCP; run them with the CLI. Over MCP, check an approach or reuse a procedure by adding `proposal` or `conditions` to a prepared task. Calling a removed operation over MCP returns the way to do it.
+- The `shikii_wiki` MCP tool definition is smaller. `organize`, `reconcile`, `diagnose`, `consult` and `reuse` are no longer offered over MCP; run them with the CLI. Over MCP, check an approach or reuse a procedure by adding `proposal` or `conditions` to the receipt of a prepared task. MCP runs only the operations its tool lists: calling a removed one returns the way to do it, and any other name returns the operations it takes.
 
 ### Fixes
 

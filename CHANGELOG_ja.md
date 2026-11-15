@@ -26,7 +26,7 @@
 ### 主な変更
 
 - 作法と準備の返答が、長い参照のうち必要な節だけを示すようになりました。節だけを読む方法も作法に書き、作業の始めに記録の手引きを丸ごと読まずに済むようにしました。
-- MCP の `shikii_wiki` の道具の説明を小さくしました。`organize`・`reconcile`・`diagnose` は MCP から外し、CLI で使います。MCP で作業案を確かめる時や手順を再利用する時は、準備した作業に `proposal` か `conditions` を付けます。外した操作を MCP で呼ぶと、代わりの使い方を返します。
+- MCP の `shikii_wiki` の道具の説明を小さくしました。`organize`・`reconcile`・`diagnose`・`consult`・`reuse` は MCP から外し、CLI で使います。MCP で作業案を確かめる時や手順を再利用する時は、準備した作業の receipt に `proposal` か `conditions` を付けます。MCP は道具に載せた操作だけを動かし、外した操作を呼ぶと代わりの使い方を、それ以外の名前には使える操作を返します。
 
 ### 修正
 

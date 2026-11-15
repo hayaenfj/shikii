@@ -9,7 +9,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-2093%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2094%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.34.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -174,7 +174,7 @@ hookを入れると、毎回のターンの2つの瞬間が残ります。エー
 
 0.34.0では、`shikii hook install --yes` が OpenCode 2.x 用の小さなプラグインも入れ、OpenCode でも Claude Code や Codex と同じように shikii の hook が働きます。shikii のプラグインはあなたへ文を見せず、コマンドの前の hook も持たないので、止める検査の説明は出ず、コマンドを拒む止める検査も動きません。教訓が届かない場面は[連携の文書](../../integrations/claude-code.ja.md)に書いています。
 
-0.33.0では、作法と準備の返答が長い参照のファイル全体ではなく節を示し、節だけを読む方法を作法に書きます。MCP では `organize`・`reconcile`・`diagnose` を CLI に任せ、作業案の確認と手順の再利用は、準備した作業に `proposal` か `conditions` を付けて行います。外した操作を MCP で呼ぶと、代わりの使い方を返します。
+0.33.0では、作法と準備の返答が長い参照のファイル全体ではなく節を示し、節だけを読む方法を作法に書きます。MCP では `organize`・`reconcile`・`diagnose`・`consult`・`reuse` を CLI に任せ、作業案の確認と手順の再利用は、準備した作業の receipt に `proposal` か `conditions` を付けて行います。MCP は道具に載せた操作だけを動かし、外した操作を呼ぶと代わりの使い方を、それ以外の名前には使える操作を返します。
 
 0.32.0では、依頼hookが文脈と証拠を準備して届けます。エージェントは内容を読み、通常の結果を1回の保存操作で記録できます。記事を編集した場合は、返された保存後の本文と出典を確認し、その確認を記録します。hookがない場合は、従来どおり準備と保存を呼び出します。
 

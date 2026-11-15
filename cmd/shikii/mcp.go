@@ -304,11 +304,13 @@ func handleRPC(req rpcRequest, h http.Handler) map[string]any {
 			return reply(toolError(perr))
 		}
 		if p.Name == "shikii_wiki" {
+			// only the operations the definition lists run; arguments that do not decode name no operation and are refused too
 			var call struct {
 				Operation string `json:"operation"`
 			}
-			if json.Unmarshal(args, &call) == nil && mcpWikiCLIOnly[call.Operation] != "" {
-				return reply(toolError(errors.New(mcpWikiCLIOnly[call.Operation])))
+			_ = json.Unmarshal(args, &call)
+			if refusal := mcpWikiRefusal(call.Operation); refusal != "" {
+				return reply(toolError(errors.New(refusal)))
 			}
 		}
 		rt, ok := h.(*mcpRouter)

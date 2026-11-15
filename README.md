@@ -9,7 +9,7 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-2093%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2094%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.34.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -174,7 +174,7 @@ With the hooks installed, two moments of every turn are kept: the request before
 
 In 0.34.0, `shikii hook install --yes` also installs a small plugin for OpenCode 2.x, so OpenCode gets shikii's hooks as Claude Code and Codex do. shikii's plugin does not show text to you or add a hook before a command, so guard explanations do not appear there and guards that refuse a command do not run. The [integration guide](integrations/claude-code.md) lists the cases where lessons do not arrive.
 
-In 0.33.0, the skill and the preparation reply link to a section of a long reference rather than the whole file, and the skill says how to read one section. Over MCP, `organize`, `reconcile` and `diagnose` are left to the CLI, and checking an approach or reusing a procedure is done by adding `proposal` or `conditions` to a prepared task. Calling a removed operation over MCP returns the way to do it.
+In 0.33.0, the skill and the preparation reply link to a section of a long reference rather than the whole file, and the skill says how to read one section. Over MCP, `organize`, `reconcile`, `diagnose`, `consult` and `reuse` are left to the CLI, and checking an approach or reusing a procedure is done by adding `proposal` or `conditions` to the receipt of a prepared task. MCP runs only the operations its tool lists: calling a removed one returns the way to do it, and any other name returns the operations it takes.
 
 In 0.32.0, the request hook prepares and delivers context and evidence. The agent reads it and can save an ordinary result in one call. After editing an article, it checks the returned saved text and sources, then records that review. Without hooks, the agent still calls preparation and recording explicitly.
 

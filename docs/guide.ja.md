@@ -579,7 +579,7 @@ APIの追加: `wiki query`は`lookup:{id,query,pages:[{id,revision}]}`を返し�
 
 保存前に、修正案を最大8件の過去の場面で試せます。当時の依頼、記事の版、検索に使われた文脈を固定し、候補の変化と、別の記事が候補から外れるなどの影響も表示します。比較では保存しません。候補に入ることは実際の配信や有用性を意味せず、セッション内の抑制、過去の評価、判定モデルは再実行しません。利用者が例題を準備したり、比較結果を採点したりする必要はありません。
 
-CLIは標準入力のJSONで操作します。`wiki patch`は`{id,revision,sources,change_reason,edits:[{field,before,after}]}`、`wiki diagnose`は`{id,case_id}`（両方省略可）、`wiki compare`は`{patch,cases}`（cases省略可、重複なしの記録IDを最大8件）です。MCPでは同名のoperationを使い、patchは`patch`欄に入れます。他の操作は同じ欄を使います。部分編集は完全一致の文章置換で、1回最大16箇所です。詳しくは[エージェントの手順](../skills/shikii/references/wiki.md#precise-edits-delivery-diagnosis-and-comparison)を参照してください。診断記録はプロジェクト内に最大32件・4MiBを保持し、不完全な記録や読めない過去は比較できないと明示します。これらは0.17.0で利用できます。
+CLIは標準入力のJSONで操作します。`wiki patch`は`{id,revision,sources,change_reason,edits:[{field,before,after}]}`、`wiki diagnose`は`{id,case_id}`（両方省略可）、`wiki compare`は`{patch,cases}`（cases省略可、重複なしの記録IDを最大8件）です。MCPにはpatchとcompareが同名のoperationであり(diagnoseはCLIとHTTPだけで使います)、patchは`patch`欄に入れます。compareは同じ欄を使います。部分編集は完全一致の文章置換で、1回最大16箇所です。詳しくは[エージェントの手順](../skills/shikii/references/wiki.md#precise-edits-delivery-diagnosis-and-comparison)を参照してください。診断記録はプロジェクト内に最大32件・4MiBを保持し、不完全な記録や読めない過去は比較できないと明示します。これらは0.17.0で利用できます。
 
 部分編集は、記事ファイルの一度の置換で確定します。入力検査や版の競合では記事を変えません。確定後に索引・ログ・出典の処理済み登録が失敗した場合は、保存済みの記事と復旧の警告を返します。古い部分編集を再送せず、その版を読み直して警告の手順に従ってください。手動検索で役立ったという評価は記事の版に結び付くため、比較する修正案には引き継ぎません。
 
@@ -587,7 +587,7 @@ CLIは標準入力のJSONで操作します。`wiki patch`は`{id,revision,sourc
 
 作業準備の`collective`に、すでに供給した記事の変更、条件と出典を保った見立ての対照、今回確かめられそうなwikiの問いを返します。変更前後の版を読み、確認だけを`reviewed:["changeN"]`で記録します。判断への実利用は別に記録します。初回の`knowledgeN`を確認すると、同じセッションの次の依頼で選ばれた記事に限って比較基準を引き継げます。同じ出典を共有していることを示し、異なる出典IDだけで独立の裏付けとはしません。検証結果は条件と出典を添えて同じ問いへ戻します。
 
-追加情報全体で4KiB、変更2件・対照1組・検証機会1件までです。省略した内容には版付きの取得先を残し、既存の学びは重ねず参照します。CLI・MCP・HTTPで同じ操作を使えます。ただし、reconcile・organize・diagnoseはMCPには無く、CLIとHTTPで使います。`wiki reconcile`へ`{"patch":{...}}`を渡すと、元/現在/提案を保存せず比較し、保存できる案だけに現在版を条件とするpatchを返します。同じ箇所や構造化した情報の競合は明示して残します。案を確認して通常のpatchで保存し、さらに版が変わっていれば拒否します。知識画面でも古い版への保存に失敗した後、入力を残して仲間の変更と比較できます。詳細は[エージェントの手順](../skills/shikii/references/learning.md#work-together-on-the-same-knowledge)にあります。
+追加情報全体で4KiB、変更2件・対照1組・検証機会1件までです。省略した内容には版付きの取得先を残し、既存の学びは重ねず参照します。CLI・MCP・HTTPで同じ操作を使えます。ただし、reconcile・organize・diagnose・consult・reuseはMCPには無く、CLIとHTTPで使います(MCPでのconsult・reuseは、準備したreceiptに`proposal`・`conditions`を付けて行います)。`wiki reconcile`へ`{"patch":{...}}`を渡すと、元/現在/提案を保存せず比較し、保存できる案だけに現在版を条件とするpatchを返します。同じ箇所や構造化した情報の競合は明示して残します。案を確認して通常のpatchで保存し、さらに版が変わっていれば拒否します。知識画面でも古い版への保存に失敗した後、入力を残して仲間の変更と比較できます。詳細は[エージェントの手順](../skills/shikii/references/learning.md#work-together-on-the-same-knowledge)にあります。
 
 0.22.0からの更新ではプロジェクトのデータを保持します。新しい作業contextを使う前に、同じ記録を書く全プロセスを0.23.0へ揃え、セッション・画面・MCPを再起動してください。旧版の書き手は新しいcontextを保持できません。旧版へ戻す可能性がある場合は、更新前の`.shikii/`を控え、本体とデータを一緒に戻せるようにしてください。
 

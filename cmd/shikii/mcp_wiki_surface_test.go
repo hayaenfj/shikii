@@ -3,11 +3,10 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"go/ast"
-	"go/parser"
-	"go/token"
+	"net/http"
+	"regexp"
+	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -99,24 +98,16 @@ func mcpToolDefinitionSize(t *testing.T, name string) int {
 	return 0
 }
 
-// Every operation runNotebook handles is either in shikii_wiki's MCP enum or in mcpWikiCLIOnly, never both: an operation added to
-// runNotebook later fails here until it is placed. A call of a CLI-only operation through MCP is refused with the way to do it, and
-// the same operation still runs through HTTP (and so the CLI).
+// The five operations MCP leaves to the CLI: a call of one through MCP is refused with the way to do it, and the same operation still
+// runs through HTTP (and so the CLI). That MCP runs nothing outside its definition is TestMCPRunsOnlyTheWikiOperationsItsDefinitionLists.
 func TestMCPLeavesRarelyUsedWikiOperationsToTheCLI(t *testing.T) {
-	handled := runNotebookOperations(t)
 	enum := mcpWikiOperations(t)
-	if problem := wikiSurfaceProblem(append(handled, "newly_added"), enum, mcpWikiCLIOnly); !strings.Contains(problem, "newly_added") {
-		t.Fatalf("the check accepts an operation that is neither on MCP nor CLI-only: %q", problem)
-	}
-	if problem := wikiSurfaceProblem(handled, append(enum, "organize"), map[string]string{"organize": "x"}); !strings.Contains(problem, "organize") {
-		t.Fatalf("the check accepts an operation that is both on MCP and CLI-only: %q", problem)
-	}
-	if problem := wikiSurfaceProblem(handled, enum, mcpWikiCLIOnly); problem != "" {
-		t.Fatal(problem)
-	}
 	for _, op := range []string{"organize", "reconcile", "consult", "reuse", "diagnose"} {
 		if mcpWikiCLIOnly[op] == "" {
 			t.Errorf("%s is not left to the CLI", op)
+		}
+		if slices.Contains(enum, op) {
+			t.Errorf("%s is both in the MCP definition and left to the CLI", op)
 		}
 	}
 
@@ -145,64 +136,86 @@ func TestMCPLeavesRarelyUsedWikiOperationsToTheCLI(t *testing.T) {
 			}
 		}
 	}
-	// HTTP keeps the operation: organize without its object fails with organize's own error, not the MCP refusal.
+	// HTTP keeps each of them: it answers with the operation's own reply or error, not with the line for an unknown operation.
 	h := newServer(serveOpts{storeDir: t.TempDir()})
-	_, body, err := callTool(h, "shikii_wiki", json.RawMessage(`{"operation":"organize"}`))
-	if err != nil || !strings.Contains(string(body), "wiki organize needs an organization object") {
-		t.Fatalf("HTTP no longer runs organize: %v %s", err, body)
+	for op := range mcpWikiCLIOnly {
+		_, body, err := callTool(h, "shikii_wiki", json.RawMessage(`{"operation":"`+op+`"}`))
+		if err != nil || strings.Contains(string(body), "usage: wiki") {
+			t.Errorf("HTTP no longer runs %s: %v %s", op, err, body)
+		}
 	}
 }
 
-func wikiSurfaceProblem(handled, enum []string, cliOnly map[string]string) string {
-	onMCP := map[string]bool{}
+// MCP runs only the wiki operations shikii_wiki's definition lists (its enum), and refuses every other one before a handler reads it.
+// Before, the server refused only the names in mcpWikiCLIOnly and passed anything else on: an operation runNotebook handled under a
+// constant ran over MCP, while the test that read runNotebook's string cases passed (audit of 0.33.0, U-3). The handler below runs
+// every name it is sent, as runNotebook would with such a case: the listed operations reach it and nothing else does. The refusal of
+// an operation that is not CLI-only names the operations MCP takes and none it refuses (U-2: it listed consult, organize and
+// diagnose as if MCP took them).
+func TestMCPRunsOnlyTheWikiOperationsItsDefinitionLists(t *testing.T) {
+	var ran []string
+	everything := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Operation string `json:"operation"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		ran = append(ran, body.Operation)
+		writeJSON(w, http.StatusOK, map[string]any{"ran": body.Operation})
+	})
+	call := func(h http.Handler, arguments string) (refused bool, text string) {
+		t.Helper()
+		params, _ := json.Marshal(map[string]any{"name": "shikii_wiki", "arguments": json.RawMessage(arguments)})
+		reply := handleRPC(rpcRequest{JSONRPC: "2.0", ID: json.RawMessage("1"), Method: "tools/call", Params: params}, h)
+		result, _ := reply["result"].(map[string]any)
+		if result == nil {
+			t.Fatalf("%s: no tool result: %v", arguments, reply)
+		}
+		var body struct {
+			Error string `json:"error"`
+		}
+		text = result["content"].([]map[string]any)[0]["text"].(string)
+		if json.Unmarshal([]byte(text), &body) == nil && body.Error != "" {
+			text = body.Error
+		}
+		return result["isError"] == true, text
+	}
+
+	enum := mcpWikiOperations(t)
 	for _, op := range enum {
-		onMCP[op] = true
-	}
-	var problems []string
-	for _, op := range handled {
-		_, cli := cliOnly[op]
-		switch {
-		case onMCP[op] && cli:
-			problems = append(problems, op+" is both on MCP and CLI-only")
-		case !onMCP[op] && !cli:
-			problems = append(problems, op+" is handled by runNotebook but neither on MCP nor CLI-only")
+		ran = nil
+		if refused, text := call(everything, `{"operation":"`+op+`"}`); refused || !slices.Equal(ran, []string{op}) {
+			t.Errorf("MCP does not run %s, which its definition lists: ran %v, %s", op, ran, text)
 		}
 	}
-	sort.Strings(problems)
-	return strings.Join(problems, "; ")
-}
+	outside := []string{`{"operation":"zz_hidden"}`, `{"operation":""}`, `{}`, `{"operation":5}`, `{"operation":"Query"}`, `{"operation":"query "}`,
+		`{"OPERATION":"organize"}`, `{"operation":"query","operation":"organize"}`}
+	for op := range mcpWikiCLIOnly {
+		outside = append(outside, `{"operation":"`+op+`"}`)
+	}
+	for _, arguments := range outside {
+		ran = nil
+		if refused, text := call(everything, arguments); !refused || len(ran) > 0 {
+			t.Errorf("MCP ran %s, which its definition does not list: ran %v, %s", arguments, ran, text)
+		}
+	}
 
-// runNotebookOperations reads the case labels of runNotebook's switch from notebook.go.
-func runNotebookOperations(t *testing.T) []string {
-	t.Helper()
-	file, err := parser.ParseFile(token.NewFileSet(), "notebook.go", nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var ops []string
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Name.Name != "runNotebook" {
-			continue
+	refusedWord := func(text, op string) bool { return regexp.MustCompile(`\b` + op + `\b`).MatchString(text) }
+	for _, h := range []http.Handler{everything, newServer(serveOpts{storeDir: t.TempDir()})} {
+		refused, text := call(h, `{"operation":"nosuch"}`)
+		if !refused || !strings.Contains(text, `"nosuch"`) {
+			t.Errorf("an unknown operation is refused by name: %s", text)
 		}
-		ast.Inspect(fn.Body, func(n ast.Node) bool {
-			clause, ok := n.(*ast.CaseClause)
-			if !ok {
-				return true
+		for _, op := range enum {
+			if !strings.Contains(text, op) {
+				t.Errorf("the refusal of an unknown operation does not name %s, which MCP takes: %s", op, text)
 			}
-			for _, e := range clause.List {
-				if lit, ok := e.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-					op, _ := strconv.Unquote(lit.Value)
-					ops = append(ops, op)
-				}
+		}
+		for op := range mcpWikiCLIOnly {
+			if refusedWord(text, op) {
+				t.Errorf("the refusal of an unknown operation names %s, which MCP refuses: %s", op, text)
 			}
-			return true
-		})
+		}
 	}
-	if len(ops) < 10 {
-		t.Fatalf("read only %d operations from runNotebook: %v", len(ops), ops)
-	}
-	return ops
 }
 
 func mcpWikiOperations(t *testing.T) []string {

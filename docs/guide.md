@@ -614,7 +614,7 @@ The agent can also inspect why an article did not arrive: it did not match the r
 
 Before saving, the agent can try the proposed edit against up to eight recorded situations. The comparison keeps the old requests, article revisions and search context fixed, and shows which retrieval candidates change, including other articles displaced by the edit. It writes nothing. Becoming a candidate does not establish actual delivery or usefulness; session suppression, feedback and the decision model are not rerun. You do not need to prepare examples or score these comparisons.
 
-The CLI operations read JSON from stdin. `wiki patch` accepts `{id,revision,sources,change_reason,edits:[{field,before,after}]}`; `wiki diagnose` accepts `{id,case_id}` (both optional); `wiki compare` accepts `{patch,cases}` (cases optional, at most eight distinct recorded ids). MCP uses the same operations: patch is nested under `patch`, and the others keep their fields. Changes are exact text replacements, at most 16 per patch. See the [agent procedure](../skills/shikii/references/wiki.md#precise-edits-delivery-diagnosis-and-comparison) for limits and results. Diagnostic history is local, bounded to 32 attempts / 4 MiB; incomplete or missing history is explicitly unavailable for comparison. These features are available in 0.17.0.
+The CLI operations read JSON from stdin. `wiki patch` accepts `{id,revision,sources,change_reason,edits:[{field,before,after}]}`; `wiki diagnose` accepts `{id,case_id}` (both optional); `wiki compare` accepts `{patch,cases}` (cases optional, at most eight distinct recorded ids). MCP has patch and compare under the same names (diagnose runs only in the CLI and HTTP): patch is nested under `patch`, and compare keeps its fields. Changes are exact text replacements, at most 16 per patch. See the [agent procedure](../skills/shikii/references/wiki.md#precise-edits-delivery-diagnosis-and-comparison) for limits and results. Diagnostic history is local, bounded to 32 attempts / 4 MiB; incomplete or missing history is explicitly unavailable for comparison. These features are available in 0.17.0.
 
 A partial edit has one article publication point. Validation or revision conflicts leave it unchanged. If a later index, log or source-review update fails, the reply includes the saved article and recovery warnings; reread that revision and follow the warnings instead of retrying the old patch. Discovery evidence belongs to an exact revision, so the comparison does not transfer its endorsement to a new draft.
 
@@ -632,7 +632,8 @@ Probe results return to the same question with their conditions and sources.
 The added context shares 4 KiB, with at most two changes, one contrast and one
 investigation. Omitted content retains exact queries; existing learning is
 referenced rather than repeated. CLI, MCP and HTTP use the same operations, except that MCP leaves
-reconcile, organize and diagnose to the CLI and HTTP.
+reconcile, organize, diagnose, consult and reuse to the CLI and HTTP (over MCP, consult and reuse are
+`proposal` and `conditions` on a prepared receipt).
 `wiki reconcile` takes `{"patch":{...}}`, compares base/current/proposed without
 saving, and returns a guarded patch only for a ready proposal. Conflicting text
 or structured metadata remains explicit. Inspect and save through ordinary patch;
