@@ -37,8 +37,11 @@ func hookEnv(t *testing.T, model *httptest.Server, roots ...string) (agent strin
 		hookLocalURL = model.URL
 	}
 	hookPageURL = "http://127.0.0.1:1"
+	oldGit := hookGitTimeout
+	hookGitTimeout = time.Minute // a loaded machine (make test runs eight groups at once) must not turn the changed files into unknown
 	t.Cleanup(func() {
 		hookLocalURL, hookPageURL, hookCalibrate, hookTune, hookSpawn, openBrowser = oldLocal, oldPage, oldCal, oldTune, oldSpawn, oldOpen // without restoring these, tests that check TestMain's replacements depend on test order (re-audit GH)
+		hookGitTimeout = oldGit
 	})
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	spawned = nil // what install started is not counted
@@ -594,4 +597,18 @@ func readHookCommands(t *testing.T, settings string) map[string]bool {
 		}
 	}
 	return got
+}
+
+// Found on 2026-11-15: under make test (eight groups of cmd/shikii tests at the same time) TestTheNoticeAndTheStopBlockAskForOneFlow
+// once took 22 seconds, and its Stop block had no line for the plan: reading the working tree took longer than hookGitTimeout, so
+// the hook counted the changed files as unknown. Setting that timeout to a nanosecond gave the same block. hookEnv gives hook tests
+// a minute, so a loaded machine does not change what they see; real hooks keep three seconds.
+func TestHookTestsDoNotDependOnGitFinishingInTime(t *testing.T) {
+	old := hookGitTimeout
+	if old != 3*time.Second {
+		t.Fatalf("real hooks wait %v for git; this test expects the three seconds the hooks have", old)
+	}
+	hookGitTimeout = time.Nanosecond
+	t.Cleanup(func() { hookGitTimeout = old })
+	TestTheNoticeAndTheStopBlockAskForOneFlow(t)
 }
