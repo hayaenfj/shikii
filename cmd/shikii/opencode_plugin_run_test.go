@@ -1046,6 +1046,30 @@ func TestOpenCodePluginGivesStopTheReplyWhenASummaryTookItOutOfTheContext(t *tes
 	}
 }
 
+// Text from outside a turn of this instance (an execution nobody here started, such as a summary you asked for, or a session this
+// instance has not seen a request of yet) is not kept: a later turn whose reply cannot be read gets no reply rather than that text.
+func TestOpenCodePluginKeepsNoTextFromOutsideATurn(t *testing.T) {
+	b := newPluginBox(t)
+	stale := map[string]any{"op": "event", "type": "session.text.ended", "sid": "s1", "data": map[string]any{"assistantMessageID": "m0", "ordinal": 0, "text": "TEXT-FROM-OUTSIDE-A-TURN"}}
+	_, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		stale, // before this instance saw a request of s1
+		{"op": "prompt", "sid": "s1", "text": "a request"},
+		{"op": "succeeded", "sid": "s1"},
+		stale, // after the turn ended, before the next request
+		{"op": "prompt", "sid": "s1", "text": "the next request"},
+		{"op": "succeeded", "sid": "s1"}, // the fake ctx answers an empty context and no text came during either turn
+	}})
+	stops := stopsOf(calls)
+	if len(stops) != 2 {
+		t.Fatalf("two turns ended: %+v", stops)
+	}
+	for i, s := range stops {
+		if got := s.Stdin["last_assistant_message"]; got != "" {
+			t.Errorf("stop %d got text from outside its turn: %q", i+1, got)
+		}
+	}
+}
+
 // The context comes first: when it still holds the reply, the kept text is not used.
 func TestOpenCodePluginPrefersTheContextsReplyToTheKeptText(t *testing.T) {
 	b := newPluginBox(t)

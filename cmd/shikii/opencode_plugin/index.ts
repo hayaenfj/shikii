@@ -169,8 +169,8 @@ export default Plugin.define({
     // so it is no longer running: a summary asked for afterwards runs no stop. A turn superseded by the person's next message is left
     // alone, the prompt hook of that message may already have marked the new turn.
     const ended = (sessionID: string) => {
-      running.delete(sessionID)
-      texts.delete(sessionID) // continued is read at the next stop only: the next request and a woken turn set it again
+      running.delete(sessionID) // continued is read at the next stop only: the next request and a woken turn set it again
+      texts.delete(sessionID) // the reply of a turn that did not succeed is no turn's reply
     }
 
     const onEvent = async (ev: any) => {
