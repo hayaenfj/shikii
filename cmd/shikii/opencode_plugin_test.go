@@ -159,18 +159,12 @@ func TestHookInstallLeavesAPersonsPluginFolderAndLinks(t *testing.T) {
 			home := freshMachine(t)
 			dir := wantPluginDir(home)
 			setup(t, home, dir)
-			before := snapshotTree(t, home)
-			delete(before, filepath.Join(home, ".config")) // directories made by the install of the hooks themselves are not what is compared
+			// everything of the person's the install could touch: the plugin place itself and what the links point at. It must stay as it
+			// was, with nothing gone, changed or added (the rest of ~/.config is made by the other hooks' install and is not compared).
+			before := snapshotTree(t, dir, filepath.Join(home, "dotfiles"))
 			out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-			after := snapshotTree(t, filepath.Join(home, ".config"), filepath.Join(home, "dotfiles"))
-			for p, v := range after {
-				b, ok := before[p]
-				if ok && b != v {
-					t.Errorf("%s changed: %q -> %q", p, b, v)
-				}
-				if !ok && strings.HasPrefix(p, dir) {
-					t.Errorf("install added %s inside what is the person's", p)
-				}
+			if d := diffTrees(before, snapshotTree(t, dir, filepath.Join(home, "dotfiles"))); len(d) != 0 {
+				t.Errorf("install changed what is the person's: %v", d)
 			}
 			if !strings.Contains(out, "plugins/shikii") || !strings.Contains(out, "left as it is") {
 				t.Errorf("install says the plugin folder was left as it is:\n%s", out)
@@ -569,5 +563,48 @@ func TestRemoveOpencodePluginSaysWhatItFound(t *testing.T) {
 	writeFileT(t, filepath.Join(wantPluginDir(home), "index.ts"), "mine")
 	if state, _ := removeOpencodePlugin(home, true); state != opencodePluginForeign || !fileExists(filepath.Join(wantPluginDir(home), "index.ts")) {
 		t.Errorf("a person's folder stays: %v", state)
+	}
+}
+
+// An install that stopped between creating its temporary file and the rename leaves .write-*.tmp alone in a new folder. That is not a
+// person's file: the next install writes the plugin, and uninstall does not take the temporary file for something to remove or to keep
+// the folder for. A temporary file next to a person's own file does not make the folder shikii's.
+func TestHookInstallMendsAnInstallThatDiedBeforeTheRename(t *testing.T) {
+	home := freshMachine(t)
+	dir := wantPluginDir(home)
+	writeFileT(t, filepath.Join(dir, ".write-1234567890.tmp"), opencodePluginPackage[:10])
+	out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+	if !fileExists(filepath.Join(dir, opencodeIndexFile)) || !fileExists(filepath.Join(dir, opencodeJSONFile)) {
+		t.Errorf("the next install writes the plugin although shikii's own temporary file is in the folder:\n%s", out)
+	}
+	if !fileExists(filepath.Join(dir, ".write-1234567890.tmp")) {
+		t.Errorf("the temporary file is not removed: shikii removes only the two files it wrote")
+	}
+	person := freshMachine(t)
+	writeFileT(t, filepath.Join(wantPluginDir(person), ".write-1.tmp"), "x")
+	writeFileT(t, filepath.Join(wantPluginDir(person), "notes.txt"), "mine")
+	if got, _ := installOpencodePlugin(person, "/x/shikii", true); got != "left" {
+		t.Errorf("a person's file beside the temporary file keeps the folder as it is: %s", got)
+	}
+}
+
+// The plugin's two files are written with the permission bits they had before (0644, as any file in a config folder), not the 0600 of the
+// temporary file they are written through; the other users of writeAtomic keep their 0600.
+func TestOpenCodePluginFilesAreWrittenWorldReadable(t *testing.T) {
+	home := t.TempDir()
+	if got, err := installOpencodePlugin(home, "/x/shikii", true); err != nil || got != "added" {
+		t.Fatalf("install: %v %v", got, err)
+	}
+	for _, name := range []string{opencodeIndexFile, opencodeJSONFile} {
+		if info, err := os.Stat(filepath.Join(wantPluginDir(home), name)); err != nil || info.Mode().Perm() != 0o644 {
+			t.Errorf("%s is written 0644: %v %v", name, info, err)
+		}
+	}
+	other := filepath.Join(home, "other")
+	if err := writeAtomic(other, []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if info, _ := os.Stat(other); info.Mode().Perm() != 0o600 {
+		t.Errorf("writeAtomic itself still leaves 0600: %v", info.Mode().Perm())
 	}
 }

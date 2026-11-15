@@ -164,7 +164,11 @@ func saveSession(agent, id string, s *hookSession) error {
 // writeSessionRecord writes a session record (a seam: tests make it fail).
 var writeSessionRecord = writeAtomic
 
-func writeAtomic(p string, b []byte) error {
+func writeAtomic(p string, b []byte) error { return writeAtomicMode(p, b, 0) }
+
+// writeAtomicMode is writeAtomic with the permission bits of the new file set, on the temporary file before the rename (mode 0 leaves
+// the temporary file's own 0600). It is set on the open file, so no link is followed.
+func writeAtomicMode(p string, b []byte, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
@@ -176,6 +180,9 @@ func writeAtomic(p string, b []byte) error {
 	}
 	tmp := f.Name()
 	_, err = f.Write(b)
+	if err == nil && mode != 0 {
+		err = f.Chmod(mode)
+	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}

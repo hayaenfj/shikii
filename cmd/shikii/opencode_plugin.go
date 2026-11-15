@@ -139,10 +139,23 @@ func opencodePluginStateOf(dir string) opencodePluginState {
 	if own > 0 {
 		return opencodePluginShikii
 	}
-	if entries, err := os.ReadDir(dir); err != nil || len(entries) > 0 {
-		return opencodePluginForeign // a folder somebody filled: not shikii's
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return opencodePluginForeign
+	}
+	for _, e := range entries {
+		if !opencodeOwnTempName(e.Name()) {
+			return opencodePluginForeign // a folder somebody filled: not shikii's
+		}
 	}
 	return opencodePluginAbsent
+}
+
+// opencodeOwnTempName is the name of the temporary file writeAtomic makes next to a file it writes (.write-*.tmp). One that an install
+// left behind when it stopped before the rename is not a person's file: the folder with only that in it counts as empty, so the next
+// install writes the plugin. It is never removed (shikii removes only the two files below).
+func opencodeOwnTempName(name string) bool {
+	return strings.HasPrefix(name, ".write-") && strings.HasSuffix(name, ".tmp")
 }
 
 // opencodePluginWritable is the allowed list of places shikii writes or removes for the plugin: the two files in the plugin folder,
@@ -192,7 +205,7 @@ func writeOpencodePluginFile(home, path string, content []byte) error {
 	if !opencodePluginWritable(home, path) {
 		return fmt.Errorf("%s is outside the OpenCode plugin folder, so shikii does not write it", path)
 	}
-	return writeAtomic(path, content)
+	return writeAtomicMode(path, content, 0o644)
 }
 
 // removeOpencodePlugin removes shikii's plugin: its two files, then the folder when nothing else is in it. It returns what is at the
