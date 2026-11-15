@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // OpenCode 2.x has no JSON hook settings (Claude Code's settings.json, Codex's hooks.json). It loads plugins from
@@ -16,8 +18,9 @@ import (
 // folder is per user (every project reads it); a project that was never initialized is skipped by the hooks themselves. OpenCode 1.x
 // does not read the folder and keeps using only the MCP server.
 //
-// The folder is shikii's only when package.json names it and index.ts starts with the mark below. A folder or a file a person made
-// under the same name is never written over, and a link is never followed: install says so and goes on, and uninstall leaves it.
+// The folder is shikii's when package.json names it or index.ts starts with the mark below, and neither of the two files is anything
+// else (so an install that stopped halfway is mended by the next one). A folder or a file a person made under the same name is never
+// written over, and a link is never followed: install says so and goes on, and uninstall leaves it.
 
 //go:embed opencode_plugin/index.ts
 var opencodePluginIndex string
@@ -33,6 +36,10 @@ const (
 	opencodeIndexFile    = "index.ts"                           // the two files shikii writes in the folder, and nothing else
 	opencodeJSONFile     = "package.json"
 	opencodePluginFolder = "shikii"
+
+	// what the lines shikii prints call a plugin folder that is not shikii's (install, preview, uninstall, doctor)
+	opencodeNotShikiis = "a folder, file or link of yours"
+	opencodeMaxFile    = 1 << 20 // a file larger than this is not read: it is not shikii's two small files
 )
 
 // opencodePluginState says what is at the plugin folder.
@@ -44,8 +51,10 @@ const (
 	opencodePluginForeign                            // a person's folder, file or link: shikii leaves it as it is
 )
 
-// opencodeConfigDir is OpenCode's config folder: $XDG_CONFIG_HOME/opencode, or ~/.config/opencode (a relative XDG_CONFIG_HOME is not
-// a path the XDG rules allow, so it is not used).
+// opencodeConfigDir is OpenCode's config folder: $XDG_CONFIG_HOME/opencode, or ~/.config/opencode. A relative XDG_CONFIG_HOME is not a
+// path the XDG rules allow, and OpenCode 2.3.0 reads it relative to the folder it was started in (`opencode debug paths` with
+// XDG_CONFIG_HOME=relative/dir prints config relative/dir/opencode; an empty value is the default place). That folder differs per
+// launch and shikii cannot know it, so shikii does not follow a relative value: it uses the default place, as for an empty one.
 func opencodeConfigDir(home string) string {
 	if x := os.Getenv("XDG_CONFIG_HOME"); filepath.IsAbs(x) {
 		return filepath.Join(x, "opencode")
@@ -67,17 +76,28 @@ func opencodePluginFiles(exe string) map[string]string {
 	}
 }
 
-// opencodeFileState looks at one of the two files without following a link: absent, shikii's, or not shikii's (a link, a folder, other content).
+// opencodeFileState looks at one of the two files without following a link: absent, shikii's, or not shikii's (a link, a folder, other
+// content, a file too large to be one of shikii's). It is opened with O_NOFOLLOW and checked to be the file that was looked at, so a
+// link put there in between is not followed either.
 func opencodeFileState(path, name string) (opencodePluginState, []byte) {
-	info, err := os.Lstat(path)
+	before, err := os.Lstat(path)
 	if os.IsNotExist(err) {
 		return opencodePluginAbsent, nil
 	}
-	if err != nil || !info.Mode().IsRegular() {
+	if err != nil || !before.Mode().IsRegular() || before.Size() > opencodeMaxFile {
 		return opencodePluginForeign, nil
 	}
-	b, err := os.ReadFile(path)
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
+		return opencodePluginForeign, nil
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() || !os.SameFile(before, info) {
+		return opencodePluginForeign, nil
+	}
+	b, err := io.ReadAll(io.LimitReader(f, opencodeMaxFile+1))
+	if err != nil || len(b) > opencodeMaxFile {
 		return opencodePluginForeign, nil
 	}
 	switch name {
@@ -165,26 +185,24 @@ func installOpencodePlugin(home, exe string, write bool) (string, error) {
 	return result, nil
 }
 
-// writeOpencodePluginFile is the one way the plugin's files are written: only the two places opencodePluginWritable allows.
+// writeOpencodePluginFile is the one way the plugin's files are written: only the two places opencodePluginWritable allows. The file
+// is written to a new temporary file next to it and renamed over it, so a link that appeared at the place is replaced, never written
+// through (writePersonFile is for files of the person's, where a link is followed on purpose).
 func writeOpencodePluginFile(home, path string, content []byte) error {
 	if !opencodePluginWritable(home, path) {
 		return fmt.Errorf("%s is outside the OpenCode plugin folder, so shikii does not write it", path)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return writePersonFile(path, content, 0o644)
+	return writeAtomic(path, content)
 }
 
-// removeOpencodePlugin removes shikii's plugin: its two files, then the folder when nothing else is in it. A person's folder is not
-// shikii's and stays (found false). With write false it only says whether it would remove something.
-func removeOpencodePlugin(home string, write bool) (found bool, err error) {
+// removeOpencodePlugin removes shikii's plugin: its two files, then the folder when nothing else is in it. It returns what is at the
+// plugin folder; only shikii's own (opencodePluginShikii) is removed, a person's folder stays. With write false it only says what it
+// would find.
+func removeOpencodePlugin(home string, write bool) (opencodePluginState, error) {
 	dir := opencodePluginDir(home)
-	if opencodePluginStateOf(dir) != opencodePluginShikii {
-		return false, nil
-	}
-	if !write {
-		return true, nil
+	state := opencodePluginStateOf(dir)
+	if state != opencodePluginShikii || !write {
+		return state, nil
 	}
 	for _, name := range []string{opencodeIndexFile, opencodeJSONFile} {
 		path := filepath.Join(dir, name)
@@ -192,18 +210,19 @@ func removeOpencodePlugin(home string, write bool) (found bool, err error) {
 			continue
 		}
 		if !opencodePluginWritable(home, path) {
-			return true, errors.New(path + " is outside the OpenCode plugin folder")
+			return state, errors.New(path + " is outside the OpenCode plugin folder")
 		}
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			return true, err
+			return state, err
 		}
 	}
 	_ = os.Remove(dir) // only when nothing else is in it
-	return true, nil
+	return state, nil
 }
 
 // opencodePluginBinary is the binary shikii's plugin runs, read back from index.ts (for doctor). ok is false when there is no
-// shikii plugin or its path cannot be read.
+// shikii plugin or its path cannot be read. The path is a JSON string literal and is read as one, so a path with any characters
+// (a space and slashes, quotes) is read back as it was written.
 func opencodePluginBinary(home string) (string, bool) {
 	dir := opencodePluginDir(home)
 	if opencodePluginStateOf(dir) != opencodePluginShikii {
@@ -213,19 +232,10 @@ func opencodePluginBinary(home string) (string, bool) {
 	for _, line := range strings.Split(string(b), "\n") {
 		if rest, ok := strings.CutPrefix(line, opencodeBinDeclStart); ok {
 			var bin string
-			if json.Unmarshal([]byte(strings.TrimSpace(strings.SplitN(rest, " //", 2)[0])), &bin) == nil && bin != "" && filepath.IsAbs(bin) {
+			if json.NewDecoder(strings.NewReader(rest)).Decode(&bin) == nil && bin != "" && filepath.IsAbs(bin) {
 				return bin, true
 			}
 		}
 	}
 	return "", false
-}
-
-// opencodePluginShown is the plugin folder with the home folder as ~ (for the lines shikii prints).
-func opencodePluginShown(home string) string {
-	dir := opencodePluginDir(home)
-	if rel, err := filepath.Rel(home, dir); err == nil && !strings.HasPrefix(rel, "..") {
-		return "~/" + filepath.ToSlash(rel)
-	}
-	return dir
 }

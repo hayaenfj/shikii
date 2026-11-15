@@ -530,32 +530,40 @@ func editHooksTo(path string, install bool, hookEvents []hookEvent, write bool) 
 // pct is a probability as a whole percent, as the page shows the AI's confidence.
 func pct(p float64) int { return int(math.Round(p * 100)) }
 
-// opencodePluginPreview is the line the preview prints for OpenCode's plugin (opencode_plugin.go).
+// opencodePluginPreview is the line the preview prints for OpenCode's plugin (opencode_plugin.go). For an install it asks
+// installOpencodePlugin what it would do (without writing), so the preview says what the install will do: add, update, or change nothing.
 func opencodePluginPreview(home, exe string, install bool) string {
-	shown := opencodePluginShown(home)
-	state := opencodePluginStateOf(opencodePluginDir(home))
-	switch {
-	case install && state == opencodePluginForeign:
-		return fmt.Sprintf("%s: a folder, file or link of yours is there, so the OpenCode plugin is left as it is (not written)", shown)
-	case install:
+	shown := displayUnder(home)(opencodePluginDir(home))
+	if install {
+		res, _ := installOpencodePlugin(home, exe, false)
+		switch res {
+		case "left":
+			return fmt.Sprintf("%s: %s is there, so the OpenCode plugin is left as it is (not written)", shown, opencodeNotShikiis)
+		case "same":
+			return fmt.Sprintf("%s: shikii's OpenCode plugin is already there as this install would write it, so nothing changes", shown)
+		case "updated":
+			return fmt.Sprintf("%s: update shikii's OpenCode plugin (package.json and index.ts) to the one that runs `%s hook <event>`; anything else in the folder stays", shown, exe)
+		}
 		return fmt.Sprintf("%s: add the OpenCode plugin (package.json and index.ts) that runs `%s hook <event>` for OpenCode 2.x (user-prompt-submit and session-start before a turn, stop after it); OpenCode 1.x does not read it and keeps using only the MCP server. A folder of yours with that name is never overwritten; a second install changes nothing", shown, exe)
-	case state == opencodePluginShikii:
+	}
+	switch state, _ := removeOpencodePlugin(home, false); state {
+	case opencodePluginShikii:
 		return fmt.Sprintf("%s: remove shikii's OpenCode plugin (its two files; anything else in the folder and your other plugins stay)", shown)
-	case state == opencodePluginForeign:
-		return fmt.Sprintf("%s: not shikii's plugin (a folder, file or link of yours), so it stays", shown)
+	case opencodePluginForeign:
+		return fmt.Sprintf("%s: not shikii's plugin (%s), so it stays", shown, opencodeNotShikiis)
 	}
 	return fmt.Sprintf("%s: no shikii OpenCode plugin found, nothing to remove", shown)
 }
 
 // hookInstallOpencodePlugin puts OpenCode's plugin in place (install) or takes it out (uninstall) and says what happened.
 func hookInstallOpencodePlugin(home string, install bool) error {
-	shown := opencodePluginShown(home)
+	shown := displayUnder(home)(opencodePluginDir(home))
 	if !install {
-		found, err := removeOpencodePlugin(home, true)
+		state, err := removeOpencodePlugin(home, true)
 		switch {
 		case err != nil:
 			return err
-		case found:
+		case state == opencodePluginShikii:
 			fmt.Fprintf(stdout, "%s: OpenCode plugin removed. Reopen OpenCode for it to take effect\n", shown)
 		default:
 			fmt.Fprintf(stdout, "%s: no shikii OpenCode plugin found, nothing changed\n", shown)
@@ -574,7 +582,7 @@ func hookInstallOpencodePlugin(home string, install bool) error {
 	case "same":
 		fmt.Fprintf(stdout, "%s: OpenCode plugin was already there, nothing changed (OpenCode 2.x)\n", shown)
 	default:
-		fmt.Fprintf(stdout, "%s: a folder, file or link that is not shikii's is there, so the OpenCode plugin is left as it is. Move it away and run shikii hook install --yes again to get lessons in OpenCode 2.x\n", shown)
+		fmt.Fprintf(stdout, "%s: %s is there, so the OpenCode plugin is left as it is. Move it away and run shikii hook install --yes again to get lessons in OpenCode 2.x\n", shown, opencodeNotShikiis)
 	}
 	return nil
 }

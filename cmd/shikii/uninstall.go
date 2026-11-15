@@ -93,14 +93,14 @@ func cmdUninstall(args []string) error {
 	}
 	// 1b) OpenCode's plugin folder (opencode_plugin.go): shikii's two files only. A folder, file or link of the person's with that name stays
 	pluginDir := opencodePluginDir(home)
-	switch found, _ := removeOpencodePlugin(home, false); {
-	case found:
+	switch state, _ := removeOpencodePlugin(home, false); state {
+	case opencodePluginShikii:
 		steps = append(steps, uninstallStep{fmt.Sprintf("%s: shikii's OpenCode plugin (its two files; any other file in the folder, and your other plugins, stay)", tilde(pluginDir)), func() error {
 			_, err := removeOpencodePlugin(home, true)
 			return err
 		}})
-	case opencodePluginStateOf(pluginDir) == opencodePluginForeign:
-		left = append(left, fmt.Sprintf("%s is not shikii's OpenCode plugin (a folder, file or link of yours), so it is left as it is; remove it by hand if it is shikii's", tilde(pluginDir)))
+	case opencodePluginForeign:
+		left = append(left, fmt.Sprintf("%s is not shikii's OpenCode plugin (%s), so it is left as it is; remove it by hand if it is shikii's", tilde(pluginDir), opencodeNotShikiis))
 	}
 	// 2) Codex's MCP server
 	codex := filepath.Join(home, ".codex", "config.toml")

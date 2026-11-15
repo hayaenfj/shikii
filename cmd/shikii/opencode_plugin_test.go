@@ -9,15 +9,33 @@ import (
 	"testing"
 )
 
-// opencodeFiles lists every file and link under dir (relative, with its content or the link target), for before/after comparisons.
-func opencodeFiles(t *testing.T, dir string) map[string]string {
+// wantPluginDir is where OpenCode reads shikii's plugin under home, written out here and not taken from the product code.
+func wantPluginDir(home string) string {
+	return filepath.Join(home, ".config", "opencode", "plugins", "shikii")
+}
+
+// writePluginT puts the two files shikii would write for the binary exe into dir.
+func writePluginT(t *testing.T, dir, exe string) {
 	t.Helper()
-	return snapshotTree(t, dir)
+	for name, body := range opencodePluginFiles(exe) {
+		writeFileT(t, filepath.Join(dir, name), body)
+	}
+}
+
+// symlinkT makes link point at target, with the folders above link in place.
+func symlinkT(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func installedPlugin(t *testing.T, home string) (index, pkg string) {
 	t.Helper()
-	dir := filepath.Join(home, ".config", "opencode", "plugins", "shikii")
+	dir := wantPluginDir(home)
 	i, err := os.ReadFile(filepath.Join(dir, "index.ts"))
 	if err != nil {
 		t.Fatalf("hook install must write the OpenCode plugin: %v", err)
@@ -45,10 +63,10 @@ func TestHookInstallPutsOpenCodePluginWithTheAbsolutePath(t *testing.T) {
 		t.Errorf("install says where the OpenCode plugin went:\n%s", out)
 	}
 	// a second install changes nothing and does not double anything
-	first := opencodeFiles(t, filepath.Join(home, ".config", "opencode"))
+	first := snapshotTree(t, filepath.Join(home, ".config", "opencode"))
 	out2 := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if got := opencodeFiles(t, filepath.Join(home, ".config", "opencode")); !equalMaps(first, got) {
-		t.Errorf("a second install changed the plugin:\n%v\n%v", first, got)
+	if d := diffTrees(first, snapshotTree(t, filepath.Join(home, ".config", "opencode"))); len(d) != 0 {
+		t.Errorf("a second install changed the plugin: %v", d)
 	}
 	if n := strings.Count(installedIndex(t, home), "const SHIKII"); n != 1 {
 		t.Errorf("the plugin must hold the binary once, got %d", n)
@@ -61,18 +79,6 @@ func TestHookInstallPutsOpenCodePluginWithTheAbsolutePath(t *testing.T) {
 func installedIndex(t *testing.T, home string) string {
 	i, _ := installedPlugin(t, home)
 	return i
-}
-
-func equalMaps(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if b[k] != v {
-			return false
-		}
-	}
-	return true
 }
 
 func TestHookInstallPutsOpenCodePluginUnderXDGConfigHome(t *testing.T) {
@@ -88,7 +94,7 @@ func TestHookInstallPutsOpenCodePluginUnderXDGConfigHome(t *testing.T) {
 	}
 	// a relative XDG_CONFIG_HOME is not a path the XDG rules allow: the default place is used
 	t.Setenv("XDG_CONFIG_HOME", "relative/dir")
-	if got := opencodePluginDir(home); got != filepath.Join(home, ".config", "opencode", "plugins", "shikii") {
+	if got := opencodePluginDir(home); got != wantPluginDir(home) {
 		t.Errorf("a relative XDG_CONFIG_HOME is ignored: %s", got)
 	}
 }
@@ -106,11 +112,8 @@ func TestHookInstallPreviewWritesNoOpenCodePlugin(t *testing.T) {
 
 func TestHookInstallRewritesShikiisOwnPluginForAnotherBinary(t *testing.T) {
 	home := freshMachine(t)
-	dir := filepath.Join(home, ".config", "opencode", "plugins", "shikii")
-	old := opencodePluginFiles("/old/place/shikii")
-	for name, body := range old {
-		writeFileT(t, filepath.Join(dir, name), body)
-	}
+	dir := wantPluginDir(home)
+	writePluginT(t, dir, "/old/place/shikii")
 	out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	if index := installedIndex(t, home); strings.Contains(index, "/old/place") || !strings.Contains(index, shikiiBinaryPath()) {
 		t.Errorf("shikii's own plugin is pointed at the running binary:\n%s", index)
@@ -137,12 +140,7 @@ func TestHookInstallLeavesAPersonsPluginFolderAndLinks(t *testing.T) {
 		"a link to a folder": func(t *testing.T, home, dir string) {
 			target := filepath.Join(home, "dotfiles", "shikii-plugin")
 			writeFileT(t, filepath.Join(target, "index.ts"), "export default {} // mine\n")
-			if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.Symlink(target, dir); err != nil {
-				t.Fatal(err)
-			}
+			symlinkT(t, target, dir)
 		},
 		"index.ts is a link to a file with shikii's content": func(t *testing.T, home, dir string) {
 			linkedPluginFile(t, home, dir, opencodeIndexFile, opencodePluginFiles("/old/shikii")[opencodeIndexFile])
@@ -152,33 +150,25 @@ func TestHookInstallLeavesAPersonsPluginFolderAndLinks(t *testing.T) {
 		},
 		"a link to shikii's own plugin elsewhere": func(t *testing.T, home, dir string) {
 			target := filepath.Join(home, "dotfiles", "shikii-plugin")
-			for name, body := range opencodePluginFiles("/old/shikii") {
-				writeFileT(t, filepath.Join(target, name), body)
-			}
-			if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.Symlink(target, dir); err != nil {
-				t.Fatal(err)
-			}
+			writePluginT(t, target, "/old/shikii")
+			symlinkT(t, target, dir)
 		},
 	}
 	for name, setup := range cases {
 		t.Run(name, func(t *testing.T) {
 			home := freshMachine(t)
-			dir := filepath.Join(home, ".config", "opencode", "plugins", "shikii")
+			dir := wantPluginDir(home)
 			setup(t, home, dir)
 			before := snapshotTree(t, home)
 			delete(before, filepath.Join(home, ".config")) // directories made by the install of the hooks themselves are not what is compared
 			out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 			after := snapshotTree(t, filepath.Join(home, ".config"), filepath.Join(home, "dotfiles"))
-			for p, v := range snapshotTree(t, filepath.Join(home, ".config"), filepath.Join(home, "dotfiles")) {
-				if b, ok := before[p]; ok && b != v {
+			for p, v := range after {
+				b, ok := before[p]
+				if ok && b != v {
 					t.Errorf("%s changed: %q -> %q", p, b, v)
 				}
-			}
-			for p := range after {
-				if _, ok := before[p]; !ok && strings.HasPrefix(p, dir) {
+				if !ok && strings.HasPrefix(p, dir) {
 					t.Errorf("install added %s inside what is the person's", p)
 				}
 			}
@@ -254,12 +244,7 @@ func linkedPluginFile(t *testing.T, home, dir, linked, body string) {
 	t.Helper()
 	target := filepath.Join(home, "dotfiles", linked)
 	writeFileT(t, target, body)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(target, filepath.Join(dir, linked)); err != nil {
-		t.Fatal(err)
-	}
+	symlinkT(t, target, filepath.Join(dir, linked))
 	for name, content := range opencodePluginFiles("/old/shikii") {
 		if name != linked {
 			writeFileT(t, filepath.Join(dir, name), content)
@@ -273,13 +258,13 @@ func TestUninstallLeavesALinkedFileInsideThePluginFolder(t *testing.T) {
 	for _, linked := range []string{opencodeIndexFile, opencodeJSONFile} {
 		t.Run(linked, func(t *testing.T) {
 			home := freshMachine(t)
-			dir := filepath.Join(home, ".config", "opencode", "plugins", "shikii")
+			dir := wantPluginDir(home)
 			body := opencodePluginFiles("/old/shikii")[linked]
 			linkedPluginFile(t, home, dir, linked, body)
 			before := snapshotTree(t, filepath.Join(home, ".config"), filepath.Join(home, "dotfiles"))
 			out := captureNoFail(func() error { return cmdUninstall([]string{"--yes"}) })
-			if after := snapshotTree(t, filepath.Join(home, ".config"), filepath.Join(home, "dotfiles")); !equalMaps(before, after) {
-				t.Errorf("uninstall changed the folder with a linked file or its target:\n%v\n%v\n%s", before, after, out)
+			if d := diffTrees(before, snapshotTree(t, filepath.Join(home, ".config"), filepath.Join(home, "dotfiles"))); len(d) != 0 {
+				t.Errorf("uninstall changed the folder with a linked file or its target: %v\n%s", d, out)
 			}
 			if !strings.Contains(out, "left alone") {
 				t.Errorf("uninstall says it left the folder:\n%s", out)
@@ -290,7 +275,7 @@ func TestUninstallLeavesALinkedFileInsideThePluginFolder(t *testing.T) {
 
 func TestUninstallKeepsAPersonsFileInsideShikiisPluginFolder(t *testing.T) {
 	b := newUninstallBox(t)
-	dir := filepath.Join(b.home, ".config", "opencode", "plugins", "shikii")
+	dir := wantPluginDir(b.home)
 	writeFileT(t, filepath.Join(dir, "notes.txt"), "mine")
 	capture(t, func() error { return cmdUninstall([]string{"--yes"}) })
 	if fileExists(filepath.Join(dir, "index.ts")) || fileExists(filepath.Join(dir, "package.json")) {
@@ -303,7 +288,7 @@ func TestUninstallKeepsAPersonsFileInsideShikiisPluginFolder(t *testing.T) {
 
 func TestUninstallLeavesAPersonsPluginFolderNamedShikii(t *testing.T) {
 	home := freshMachine(t)
-	dir := filepath.Join(home, ".config", "opencode", "plugins", "shikii")
+	dir := wantPluginDir(home)
 	writeFileT(t, filepath.Join(dir, "index.ts"), "export default {} // mine\n")
 	writeFileT(t, filepath.Join(dir, "package.json"), `{"name":"mine"}`)
 	out := captureNoFail(func() error { return cmdUninstall([]string{"--yes"}) })
@@ -317,10 +302,10 @@ func TestUninstallLeavesAPersonsPluginFolderNamedShikii(t *testing.T) {
 
 func TestUninstallWithoutYesListsTheOpenCodePluginAndRemovesNothing(t *testing.T) {
 	b := newUninstallBox(t)
-	dir := filepath.Join(b.home, ".config", "opencode", "plugins", "shikii")
-	before := opencodeFiles(t, dir)
+	dir := wantPluginDir(b.home)
+	before := snapshotTree(t, dir)
 	out := capture(t, func() error { return cmdUninstall(nil) })
-	if !strings.Contains(out, "plugins/shikii") || !equalMaps(before, opencodeFiles(t, dir)) {
+	if !strings.Contains(out, "plugins/shikii") || len(diffTrees(before, snapshotTree(t, dir))) != 0 {
 		t.Errorf("the preview lists the plugin and changes nothing:\n%s", out)
 	}
 }
@@ -343,7 +328,7 @@ func TestHookUninstallRemovesTheOpenCodePlugin(t *testing.T) {
 	home := freshMachine(t)
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	capture(t, func() error { return cmdHook([]string{"uninstall", "--yes"}) })
-	if fileExists(filepath.Join(home, ".config", "opencode", "plugins", "shikii")) {
+	if fileExists(wantPluginDir(home)) {
 		t.Errorf("hook uninstall removes what hook install put in OpenCode")
 	}
 }
@@ -360,15 +345,13 @@ func TestAgentsWithShikiiHookCountsOpenCodeWhenItsPluginIsThere(t *testing.T) {
 	}
 	// only OpenCode: no hook file of the other two
 	home2 := freshMachine(t)
-	for name, body := range opencodePluginFiles("/x/shikii") {
-		writeFileT(t, filepath.Join(home2, ".config", "opencode", "plugins", "shikii", name), body)
-	}
+	writePluginT(t, wantPluginDir(home2), "/x/shikii")
 	if got := agentsWithShikiiHook(home2); strings.Join(got, ",") != "OpenCode" {
 		t.Errorf("a machine with only the plugin has OpenCode's hook: %v", got)
 	}
 	// a person's folder of that name is not a shikii hook
 	home3 := freshMachine(t)
-	writeFileT(t, filepath.Join(home3, ".config", "opencode", "plugins", "shikii", "index.ts"), "mine")
+	writeFileT(t, filepath.Join(wantPluginDir(home3), "index.ts"), "mine")
 	if got := agentsWithShikiiHook(home3); len(got) != 0 {
 		t.Errorf("a person's folder is not shikii's hook: %v", got)
 	}
@@ -395,12 +378,8 @@ func TestDoctorChecksTheBinaryTheOpenCodePluginRuns(t *testing.T) {
 	if err := os.Chmod(exe, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(home, ".config", "opencode", "plugins", "shikii")
-	put := func(bin string) {
-		for name, body := range opencodePluginFiles(bin) {
-			writeFileT(t, filepath.Join(dir, name), body)
-		}
-	}
+	dir := wantPluginDir(home)
+	put := func(bin string) { writePluginT(t, dir, bin) }
 	put(exe)
 	joined := strings.Join(registeredBinaryLines(home, exe), "\n")
 	if !strings.Contains(joined, "ok   OpenCode plugin") || !strings.Contains(joined, exe) {
@@ -413,7 +392,7 @@ func TestDoctorChecksTheBinaryTheOpenCodePluginRuns(t *testing.T) {
 	}
 	// a person's folder is named, not checked
 	other := t.TempDir()
-	writeFileT(t, filepath.Join(other, ".config", "opencode", "plugins", "shikii", "index.ts"), "mine")
+	writeFileT(t, filepath.Join(wantPluginDir(other), "index.ts"), "mine")
 	joined = strings.Join(registeredBinaryLines(other, exe), "\n")
 	if strings.Contains(joined, "MISSING") || !strings.Contains(joined, "not shikii's") {
 		t.Errorf("doctor does not check a folder that is not shikii's:\n%s", joined)
@@ -481,5 +460,114 @@ func TestOpenCodePluginBodyWrapsEveryHookAndMarksItsOwnTurns(t *testing.T) {
 	}
 	if !strings.HasPrefix(body, opencodePluginMark) {
 		t.Errorf("the plugin starts with the mark shikii recognises its own file by")
+	}
+}
+
+// The preview says what the install will do, as the install itself decides it (it asks installOpencodePlugin without writing): a
+// second install changes nothing, and an older plugin is updated, not "added".
+func TestHookInstallPreviewSaysWhatTheInstallWillDo(t *testing.T) {
+	home := freshMachine(t)
+	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+	same := capture(t, func() error { return cmdHook([]string{"install"}) })
+	if !strings.Contains(same, "already there as this install would write it, so nothing changes") || strings.Contains(same, "add the OpenCode plugin") {
+		t.Errorf("with shikii's plugin in place the preview says nothing changes:\n%s", same)
+	}
+	writePluginT(t, wantPluginDir(home), "/old/place/shikii")
+	older := capture(t, func() error { return cmdHook([]string{"install"}) })
+	if !strings.Contains(older, "update shikii's OpenCode plugin") || strings.Contains(older, "add the OpenCode plugin") {
+		t.Errorf("with an older plugin in place the preview says it updates it:\n%s", older)
+	}
+}
+
+// A folder under the home folder whose name starts with two dots (~/..x) is under the home folder, and shown with ~.
+func TestOpenCodePluginFolderIsShownWithTildeUnderTheHomeFolder(t *testing.T) {
+	home := freshMachine(t)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "..x"))
+	out := capture(t, func() error { return cmdHook([]string{"install"}) })
+	if !strings.Contains(out, "~/..x/opencode/plugins/shikii") {
+		t.Errorf("the plugin folder under the home folder is shown with ~:\n%s", out)
+	}
+}
+
+// The binary the plugin runs is read back as the JSON string it was written as, whatever the path holds (a space and slashes included).
+func TestOpenCodePluginBinaryIsReadBackWhateverItsPathHolds(t *testing.T) {
+	for _, exe := range []string{"/Applications/my tools // shikii/shikii", `/x/with "quote"/shikii`, "/plain/shikii"} {
+		home := t.TempDir()
+		writePluginT(t, wantPluginDir(home), exe)
+		if got, ok := opencodePluginBinary(home); !ok || got != exe {
+			t.Errorf("the plugin's binary %q is read back as %q (ok %v)", exe, got, ok)
+		}
+	}
+}
+
+// An install that stopped halfway (shikii's package.json and no index.ts) is mended by the next one; a folder in which one of the two
+// files is a person's is left, whichever file it is.
+func TestHookInstallMendsAnInstallThatStoppedHalfway(t *testing.T) {
+	home := freshMachine(t)
+	dir := wantPluginDir(home)
+	writeFileT(t, filepath.Join(dir, "package.json"), opencodePluginPackage)
+	out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+	if !fileExists(filepath.Join(dir, "index.ts")) || !strings.Contains(out, "updated") {
+		t.Errorf("the missing index.ts is written next to shikii's package.json:\n%s", out)
+	}
+	mine := freshMachine(t)
+	writeFileT(t, filepath.Join(wantPluginDir(mine), "package.json"), opencodePluginPackage)
+	writeFileT(t, filepath.Join(wantPluginDir(mine), "index.ts"), "export default {} // mine\n")
+	if got, _ := installOpencodePlugin(mine, "/x/shikii", true); got != "left" {
+		t.Errorf("an index.ts of the person's keeps the folder as it is: %s", got)
+	}
+}
+
+// What shikii wrote is written to a new file renamed into place: a link at the place is replaced and what it pointed at is not written.
+func TestOpenCodePluginWriteNeverWritesThroughALink(t *testing.T) {
+	home := t.TempDir()
+	dir := wantPluginDir(home)
+	target := filepath.Join(home, "dotfiles", "index.ts")
+	writeFileT(t, target, "mine")
+	symlinkT(t, target, filepath.Join(dir, "index.ts"))
+	if err := writeOpencodePluginFile(home, filepath.Join(dir, "index.ts"), []byte("shikii's")); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(target); string(got) != "mine" {
+		t.Errorf("the file the link pointed at is untouched: %q", got)
+	}
+	if info, err := os.Lstat(filepath.Join(dir, "index.ts")); err != nil || !info.Mode().IsRegular() {
+		t.Errorf("the link was replaced by the file: %v %v", info, err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, ".write-*")); len(left) != 0 {
+		t.Errorf("no temporary file is left: %v", left)
+	}
+}
+
+// A file far larger than shikii's two small files is not read; it is not shikii's.
+
+// removeOpencodePlugin says what it found, and removes only shikii's own.
+
+// A file far larger than shikii's two small files is not read; it is not shikii's.
+func TestOpenCodePluginFileTooLargeToBeShikiisIsLeft(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "index.ts")
+	writeFileT(t, path, opencodePluginMark+strings.Repeat("x", opencodeMaxFile+1))
+	if state, _ := opencodeFileState(path, opencodeIndexFile); state != opencodePluginForeign {
+		t.Errorf("a large file is not shikii's: %v", state)
+	}
+}
+
+// removeOpencodePlugin says what it found, and removes only shikii's own.
+func TestRemoveOpencodePluginSaysWhatItFound(t *testing.T) {
+	home := t.TempDir()
+	if state, err := removeOpencodePlugin(home, true); err != nil || state != opencodePluginAbsent {
+		t.Errorf("nothing there: %v %v", state, err)
+	}
+	writePluginT(t, wantPluginDir(home), "/x/shikii")
+	if state, _ := removeOpencodePlugin(home, false); state != opencodePluginShikii || !fileExists(filepath.Join(wantPluginDir(home), "index.ts")) {
+		t.Errorf("a look removes nothing: %v", state)
+	}
+	if state, err := removeOpencodePlugin(home, true); err != nil || state != opencodePluginShikii || fileExists(wantPluginDir(home)) {
+		t.Errorf("shikii's own is removed: %v %v", state, err)
+	}
+	writeFileT(t, filepath.Join(wantPluginDir(home), "index.ts"), "mine")
+	if state, _ := removeOpencodePlugin(home, true); state != opencodePluginForeign || !fileExists(filepath.Join(wantPluginDir(home), "index.ts")) {
+		t.Errorf("a person's folder stays: %v", state)
 	}
 }

@@ -199,7 +199,7 @@ func completeProjectInit(root, scope string, version int, home string, firstProj
 		for _, target := range hookTargets {
 			files = append(files, "~/"+filepath.ToSlash(target.rel))
 		}
-		files = append(files, opencodePluginShown(home)+"/")
+		files = append(files, displayUnder(home)(opencodePluginDir(home))+"/")
 		fmt.Fprintf(stdout, "Hooks: not installed (no shikii hook in %s), so requests in this project are not recorded and the page does not start. This machine already has shikii projects, so init leaves the hooks as they are: see what they add with %s hook install, then install them with %s hook install --yes. OpenCode 1.x has no plugin hooks and uses the MCP server and the skill set up above.\n", strings.Join(files, " or "), exe, exe)
 		fmt.Fprintln(stdout, "Next: after the hooks are installed, make requests in this project as usual. New MCP settings take effect from the next session.")
 	} else {

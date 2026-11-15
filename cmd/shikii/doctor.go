@@ -107,9 +107,9 @@ func cmdDoctor(args []string) error {
 	return nil
 }
 
-// registeredBinaryLines says, for the hooks (hookTargets) and Codex's MCP registration (~/.codex/config.toml), which shikii binary they
-// run, and when that binary is gone (a Go version manager removed its per-version folder, or the binary was moved), how to point them
-// at one that exists: hook install --yes rewrites the hooks, and the Codex block shikii wrote, to the binary that runs it.
+// registeredBinaryLines says, for the hooks (hookTargets), OpenCode's plugin (the binary written into its index.ts, when the plugin folder
+// is shikii's) and Codex's MCP registration (~/.codex/config.toml), which shikii binary they run, and when that binary is gone (a Go version manager removed its per-version folder, or the binary was moved), how to point them
+// at one that exists: hook install --yes rewrites the hooks, the plugin and the Codex block shikii wrote, to the binary that runs it.
 // Only the hooks in a form shikii writes are checked (hookBinary: nothing is read as a shell would). A folder or a file without
 // permission to run is not ok, and a settings file that cannot be read is named, not skipped. A shikii hook a person wrote another way
 // (handWrittenShikiiHook) gets one note with its command: doctor did not check it, and hook install leaves it next to shikii's own.
@@ -187,7 +187,7 @@ func registeredBinaryLines(home, exe string) []string {
 		}
 	}
 	// OpenCode's plugin runs the binary written into its index.ts (opencode_plugin.go)
-	pluginWhere := "OpenCode plugin in " + opencodePluginShown(home)
+	pluginWhere := "OpenCode plugin in " + displayUnder(home)(opencodePluginDir(home))
 	switch dir := opencodePluginDir(home); opencodePluginStateOf(dir) {
 	case opencodePluginShikii:
 		if bin, ok := opencodePluginBinary(home); ok {
@@ -196,7 +196,7 @@ func registeredBinaryLines(home, exe string) []string {
 			lines = append(lines, fmt.Sprintf("WARN %s: cannot read which shikii it runs → run %s hook install --yes to write it again", pluginWhere, shellQuote(exe)))
 		}
 	case opencodePluginForeign:
-		lines = append(lines, fmt.Sprintf("note %s: it is not shikii's plugin (a folder, file or link of yours), so doctor did not check it and hook install --yes leaves it as it is", pluginWhere))
+		lines = append(lines, fmt.Sprintf("note %s: it is not shikii's plugin (%s), so doctor did not check it and hook install --yes leaves it as it is", pluginWhere, opencodeNotShikiis))
 	}
 	codex := "Codex's MCP server in ~/.codex/config.toml"
 	b, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
