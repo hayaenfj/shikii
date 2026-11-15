@@ -251,3 +251,44 @@ func TestDocsTellHowToLinkShikiisPluginUnderOPENCODE_CONFIG_DIR(t *testing.T) {
 		}
 	}
 }
+
+// The documents say what shikii update does with the hooks as finishUpdate does it (TestUpdateRewritesTheOpenCodePluginOnAMachineWithOnlyThePlugin):
+// when one hook of the three agents (or shikii's OpenCode plugin) runs the binary it replaced, update runs hook install --yes itself, and
+// that rewrites the hooks of all three agents, also one the person removed by hand. The steps to type are update alone. (The audit
+// confirm1: the English README told you to run hook install --yes yourself after update.)
+func TestDocsSayUpdateRewritesTheHooksOfAllThreeAgents(t *testing.T) {
+	for _, d := range []struct {
+		file, start string
+		says        []string
+	}{
+		{"README.md", "`shikii update` fetches", []string{"runs `shikii hook install --yes` itself", "all three agents", "removed by hand"}},
+		{"docs/readme/README_ja.md", "`shikii update` \u306f", []string{"`shikii hook install --yes` \u3092\u81ea\u5206\u3067\u5b9f\u884c", "3\u3064\u306e\u30a8\u30fc\u30b8\u30a7\u30f3\u30c8\u5168\u90e8", "\u624b\u3067\u5916\u3057\u305f"}},
+		{"skills/shikii/SKILL.md", "- `shikii update` ", []string{"all three agents", "removed by hand"}},
+	} {
+		body := readDocT(t, d.file)
+		var paragraph string
+		for _, l := range strings.Split(body, "\n") {
+			if strings.HasPrefix(l, d.start) {
+				paragraph = l
+			}
+		}
+		if paragraph == "" {
+			t.Errorf("%s has no paragraph on shikii update starting %q", d.file, d.start)
+			continue
+		}
+		for _, want := range d.says {
+			if !strings.Contains(paragraph, want) {
+				t.Errorf("%s: the paragraph on shikii update does not say %q:\n%s", d.file, want, paragraph)
+			}
+		}
+		if strings.Contains(paragraph, "after it") {
+			t.Errorf("%s: the paragraph on shikii update tells you to run hook install after it, which update does itself:\n%s", d.file, paragraph)
+		}
+		if d.file != "skills/shikii/SKILL.md" {
+			_, rest, _ := strings.Cut(body, "```sh\nshikii update\n")
+			if next, _, _ := strings.Cut(rest, "```"); strings.Contains(next, "hook install") {
+				t.Errorf("%s: the steps of an update list hook install --yes, which update runs itself", d.file)
+			}
+		}
+	}
+}
