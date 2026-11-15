@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
@@ -71,5 +72,51 @@ func TestAHookTurnIDCopiedWithACharacterChangedIsNotCalledAnEarlierRequest(t *te
 	}
 	if r, err := record(s.TurnID); err != nil || r["complete"] != true {
 		t.Fatalf("the ids as the hook gave them still record after the refusals: %v %v", r, err)
+	}
+}
+
+// Confirmation audit of 0.34.0 (U-C, U-F): a turn_id a few characters from the ongoing request's is refused by the request it names.
+// One the session keeps as an earlier request (in Recent or Earlier) is that request's, not a copy, so it keeps the refusal of an
+// earlier request (U-C: no test failed when that condition was taken out, as random ids are never that close). A copy of an ongoing
+// request that is closed or past the session limit gets that request's refusal at once (U-F: it first said "send it exactly", and the
+// exact id was then refused as closed, one more round trip).
+func TestATurnIDNearTheOngoingOneIsRefusedByTheRequestItNames(t *testing.T) {
+	const current, near, scope = "0123456789abcdef", "0123456789abcdee", "/p"
+	session := func(change func(*hookSession)) *hookSession {
+		s := &hookSession{Scope: scope, TurnID: current, Planning: &planningFrame{TurnID: current, At: time.Now()}}
+		change(s)
+		return s
+	}
+	refusal := func(s *hookSession, turn string) string {
+		if err := currentPlanningFrame(s, turn, scope); err != nil {
+			return err.Error()
+		}
+		return ""
+	}
+	if got := refusal(session(func(*hookSession) {}), near); !strings.Contains(got, "changed while copying") {
+		t.Fatalf("precondition: a near id of an open request is a copy: %q", got)
+	}
+	for name, keep := range map[string]func(*hookSession){
+		"Recent":  func(s *hookSession) { s.Planning.Recent = []planningTurn{{ID: near}} },
+		"Earlier": func(s *hookSession) { s.Planning.Earlier = []planningTurn{{ID: near}} },
+	} {
+		if got := refusal(session(keep), near); !strings.Contains(got, "a newer request has started") || strings.Contains(got, "changed while copying") {
+			t.Errorf("an earlier request the session keeps in %s is refused as a copy: %q", name, got)
+		}
+	}
+	for name, c := range map[string]struct {
+		change func(*hookSession)
+		says   string
+	}{
+		"closed":  {func(s *hookSession) { s.Judged, s.Planning.Result = true, &planningReceipt{} }, "was closed at the end of its turn"},
+		"expired": {func(s *hookSession) { s.Planning.At = time.Now().Add(-hookSessionTTL - time.Hour) }, "older than the session limit"},
+	} {
+		exact, copied := refusal(session(c.change), current), refusal(session(c.change), near)
+		if !strings.Contains(exact, c.says) {
+			t.Fatalf("precondition: the exact id of a %s request is refused with %q: %q", name, c.says, exact)
+		}
+		if copied != exact {
+			t.Errorf("a copy of the id of the %s request is not refused as that request at once: %q (the exact id: %q)", name, copied, exact)
+		}
 	}
 }

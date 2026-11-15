@@ -475,16 +475,16 @@ func currentPlanningFrame(s *hookSession, turnID, scope string) error {
 	// The refusal names which of its reasons applies and the next call (before, an agent holding the receipt of an earlier request
 	// only learned that something about the request was not current).
 	const refusal = "only the context of the ongoing request in the same project can be handled: "
+	// A turn id is 16 random hex characters: one a few characters from the ongoing request's is that id changed while copying, not
+	// an earlier request's. Before, it was refused as an earlier request's, and preparing again replaced the hook's preparation
+	// (audit of 0.33.0, U-8; a receipt with its work current is loadWorkState's case). An id far from every one the session keeps
+	// cannot be told from one of a request it no longer keeps, and keeps the refusal of an earlier request. A copy names the ongoing
+	// request, so a closed or expired one gets that refusal at once rather than after the exact id is sent (confirmation audit, U-F).
+	copied := s.TurnID != turnID && s.Planning != nil && s.Planning.TurnID == s.TurnID && copiedTurnID(turnID, s.TurnID) && !earlierTurnID(s.Planning, turnID)
 	switch {
 	case s.Scope != scope:
 		return errors.New(refusal + "this session's request was made in another project folder; run the command in that project")
-	case s.TurnID != turnID && s.Planning != nil && s.Planning.TurnID == s.TurnID && copiedTurnID(turnID, s.TurnID) && !earlierTurnID(s.Planning, turnID):
-		// A turn id is 16 random hex characters: one a few characters from the ongoing request's is that id changed while copying,
-		// not an earlier request's. Before, it was refused as an earlier request's, and preparing again replaced the hook's
-		// preparation (audit of 0.33.0, U-8; a receipt with its work current is loadWorkState's case). An id far from every one the
-		// session keeps cannot be told from one of a request it no longer keeps, and keeps the refusal below.
-		return errors.New(refusal + "this turn_id is the ongoing request's with a few characters changed while copying, so no newer request has started; send session_id and turn_id exactly as the hook notice gave them")
-	case s.TurnID != turnID || s.Planning == nil || s.Planning.TurnID != turnID:
+	case !copied && (s.TurnID != turnID || s.Planning == nil || s.Planning.TurnID != turnID):
 		text := refusal + "a newer request has started in this session, so these ids or this receipt belong to an earlier one; prepare again with the ids of the latest hook notice"
 		if s.Planning != nil && s.Planning.Handover != nil {
 			text += " (that preparation takes over the pages this work read and the sources it saved, under the same references)"
@@ -494,6 +494,8 @@ func currentPlanningFrame(s *hookSession, turnID, scope string) error {
 		return errors.New(refusal + "this request was closed at the end of its turn with its organizing saved; continue from the next request's hook notice")
 	case time.Since(s.Planning.At) > hookSessionTTL:
 		return errors.New(refusal + "this request is older than the session limit; prepare again from a new request")
+	case copied:
+		return errors.New(refusal + "this turn_id is the ongoing request's with a few characters changed while copying, so no newer request has started; send session_id and turn_id exactly as the hook notice gave them")
 	}
 	return nil
 }
