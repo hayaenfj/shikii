@@ -108,7 +108,8 @@ export default Plugin.define({
         const sessionID: string = e.sessionID
         if (!sessionID || !(await mine(sessionID))) return
         seen.add(sessionID)
-        running.add(sessionID)
+        // a message the person sends while a turn that moved here still runs joins that execution: the old folder runs its one stop
+        if (!inherited.has(sessionID)) running.add(sessionID)
         if (e.metadata?.shikii === CONTINUE_KEY) {
           continued.set(sessionID, true) // the turn goes on after a stop block: nothing new from the person
           return

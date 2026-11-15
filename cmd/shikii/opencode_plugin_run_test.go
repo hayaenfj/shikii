@@ -1260,6 +1260,41 @@ func TestOpenCodePluginAReportDuringAMovedTurnRunsNoSecondStop(t *testing.T) {
 }
 
 // The turn that was the old folder's is over when its execution ends: a report after that wakes a turn of the new folder, with its own stop,
+// The other way into a moved turn that still runs: the person sends a message in the new folder while it runs. On 2.3.0 the message joins
+// the same execution (steer and queue alike) and its prompt hook runs in the new folder's instance. The request is prepared there
+// (user-prompt-submit in the new folder), and the one execution still ends with one stop, in the folder the turn began in.
+func TestOpenCodePluginAPersonsMessageDuringAMovedTurnRunsNoSecondStop(t *testing.T) {
+	b := newPluginBox(t)
+	projectA := b.otherProject(t)
+	_, calls := b.play(t, map[string]any{
+		"locations": map[string]any{"A": projectA, "B": b.project},
+		"sessions": map[string]any{"s1": map[string]any{"id": "s1", "location": map[string]any{"directory": projectA},
+			"time": map[string]any{"busy": 2, "idle": 1}}}, // a turn runs
+		"steps": []map[string]any{
+			{"op": "prompt", "at": "A", "sid": "s1", "text": "a request in project A"},
+			{"op": "move", "sid": "s1", "dir": b.project},
+			{"op": "prompt", "at": "B", "sid": "s1", "text": "the person adds a word while it runs"},
+			{"op": "succeeded", "sid": "s1"}, // the one execution ends
+		},
+	})
+	stops := stopsOf(calls)
+	if len(stops) != 1 {
+		t.Fatalf("one execution ended, and it ran %d stops: %+v", len(stops), stops)
+	}
+	if stops[0].Pwd != projectA {
+		t.Errorf("the stop runs in the folder the turn began in, ran in %s", stops[0].Pwd)
+	}
+	prepared := false
+	for _, c := range calls {
+		if c.Event == "user-prompt-submit" && c.Pwd == b.project {
+			prepared = true
+		}
+	}
+	if !prepared {
+		t.Errorf("the message sent in the new folder is prepared there: %+v", calls)
+	}
+}
+
 // also when the session said a turn ran at the move.
 func TestOpenCodePluginAReportAfterAMovedTurnEndedWakesTheNewFolder(t *testing.T) {
 	b := newPluginBox(t)
