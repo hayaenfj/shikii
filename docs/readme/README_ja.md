@@ -136,7 +136,7 @@ Goを上げた後や実行ファイルを動かした後にhookが働かなく�
 
 エージェントが `shikii --init` を実行します（自分で実行しても同じ）。初期化したプロジェクトだけで動きます。答え合わせの画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こしてブラウザで開きます（URL は `shikii page`）。この機械で最初のプロジェクトなら、hook が 1 つも入っていない時は `shikii --init` が hook も入れます（`shikii hook install --yes` と同じ。TypeSafeの鍵が無く `llama-server` が入っている機械では、手元のモデルを裏で起動します）。すでにプロジェクトがあって hook が無い機械では、hook は入れずに、入れるコマンドを表示します。既製の問い・wiki・止める検査の置き場・作業記録の置き場・MCPの設定（プロジェクトに `.mcp.json`・`opencode.json` が足されます。`AGENTS.md` と `CLAUDE.md` には書きません。Gitの除外に入るのは `.shikii/` だけです。MCPを共通の `~/.codex/config.toml` からしか読まないCodexには、プロジェクトを書かない共通の登録を1つ書き、道具を呼ぶたびにエージェントの作業フォルダを `project` で渡します。この登録には `default_tools_approval_mode = "approve"` を書くので、Codexはshikiiの道具を、呼ぶたびに確認せずに実行します。確認してほしい時は、そこを `"prompt"` と書くか、行を消します。shikiiが足し直すことはありません）・エージェントの作法が用意されます。`shikii doctor` で状態を確かめます。
 
-**OpenCodeについて。** OpenCode 2.xにはhookの設定ファイルが無いので、`shikii hook install --yes`(と、この機械で最初の `shikii --init`)が、小さなプラグインを `~/.config/opencode/plugins/shikii/` に置きます(`$XDG_CONFIG_HOME` が絶対パスの時は、その下の `opencode/` です)。Claude CodeやCodexと同じhookを動かすので、依頼の前にshikiiの教訓がモデルに届き、必要な記録が残っていなければ、回の終わりに続きを促します。同じ名前のあなたのフォルダは上書きせず、リンクもたどらず、その旨を表示して残します。`OPENCODE_CONFIG_DIR` を設定して起こしたOpenCodeは、そのフォルダの `plugins/` からだけプラグインを読むので、shikiiのプラグインを読みません。shikiiはそこへは書かず、`shikii doctor` がそう知らせます。OpenCode 1.xはこのフォルダを読まず、これまでどおりMCPの設定とskillだけを使います。プラグインにはコマンドの前のhookが無いので、コマンドを拒む止める検査はOpenCodeでは動きません(終了時の確認は動きます)。OpenCode 2.xにはプラグインがあなたへ文を見せる場所が無いので、Claude CodeやCodexで表示するshikiiの文(止める検査の説明、答えを待つ数、自動の続きを止めた知らせ)は、OpenCodeには出ません。入れた後はOpenCodeを開き直してください。
+**OpenCodeについて。** OpenCode 2.xにはhookの設定ファイルが無いので、`shikii hook install --yes`(と、この機械で最初の `shikii --init`)が、小さなプラグインを `~/.config/opencode/plugins/shikii/` に置きます(`$XDG_CONFIG_HOME` が絶対パスの時は、その下の `opencode/` です)。Claude CodeやCodexと同じhookを動かすので、依頼の前にshikiiの教訓がモデルに届き、必要な記録が残っていなければ、回の終わりに続きを促します。同じ名前のあなたのフォルダは上書きせず、リンクもたどらず、その旨を表示して残します。`OPENCODE_CONFIG_DIR` を設定して起こしたOpenCodeは、そのフォルダの `plugins/` からだけプラグインを読むので、shikiiのプラグインを読みません。shikiiはそこへは書かず、`shikii doctor` がそう知らせます。OpenCode 1.xはこのフォルダを読まず、これまでどおりMCPの設定とskillだけを使います。shikiiのプラグインはコマンドの前のhookを持たないので、コマンドを拒む止める検査はOpenCodeでは動きません(終了時の確認は動きます)。shikiiのプラグインはあなたへ文も見せないので、Claude CodeやCodexで表示するshikiiの文(止める検査の説明、答えを待つ数、自動の続きを止めた知らせ)は、OpenCodeには出ません。入れた後はOpenCodeを開き直してください。
 
 ### 更新
 
@@ -172,7 +172,7 @@ shikiiがエージェントに入れた物を外します。`~/.claude/settings.
 
 hookを入れると、毎回のターンの2つの瞬間が残ります。エージェントが始める前の依頼と、終えた後の返答と変わったファイルです。次の人の発言が一組を閉じます。前の依頼の続きだけの発言(「ok」「続けて」「それでいこう」など)は、前の依頼にまとめます。続きかどうかはエージェントが着手前の整理で決め、決まった相づちの一覧は予備です。エージェントはそこから出典付きの教訓を書き、shikiiは似た仕事の前に関係する教訓を届けます。エージェントは振り返りで、届いた教訓が役立ったかを報告します。保存した評価から、同じ入り口で繰り返し使われなかった教訓や判断を妨げた教訓を、判断と証拠付きで優先して見直しに回します。エージェントが出典を確認してから編集し、変更不要という判断も保存できます。不明な評価や古い版の評価を、悪い評価として扱いません。
 
-0.34.0では、`shikii hook install --yes` が OpenCode 2.x 用の小さなプラグインも入れ、OpenCode でも Claude Code や Codex と同じように shikii の hook が働きます。OpenCode にはプラグインからあなたへ文を見せる場所とコマンドの前の hook が無いので、止める検査の説明は出ず、コマンドを拒む止める検査も動きません。教訓が届かない場面は[連携の文書](../../integrations/claude-code.ja.md)に書いています。
+0.34.0では、`shikii hook install --yes` が OpenCode 2.x 用の小さなプラグインも入れ、OpenCode でも Claude Code や Codex と同じように shikii の hook が働きます。shikii のプラグインはあなたへ文を見せず、コマンドの前の hook も持たないので、止める検査の説明は出ず、コマンドを拒む止める検査も動きません。教訓が届かない場面は[連携の文書](../../integrations/claude-code.ja.md)に書いています。
 
 0.33.0では、作法と準備の返答が長い参照のファイル全体ではなく節を示し、節だけを読む方法を作法に書きます。MCP では `organize`・`reconcile`・`diagnose` を CLI に任せ、作業案の確認と手順の再利用は、準備した作業に `proposal` か `conditions` を付けて行います。外した操作を MCP で呼ぶと、代わりの使い方を返します。
 

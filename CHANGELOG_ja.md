@@ -12,7 +12,7 @@
 
 ### 制限
 
-- OpenCode にはプラグインからあなたへ文を見せる場所が無いので、止める検査の説明など、Claude Code と Codex で表示する文は出ません。プラグインにはコマンドの前の hook が無いので、コマンドを拒む止める検査も動きません。
+- shikii のプラグインはあなたへ文を見せないので、止める検査の説明など、Claude Code と Codex で表示する文は OpenCode には出ません。shikii のプラグインはコマンドの前の hook も持たないので、コマンドを拒む止める検査も動きません。
 - `OPENCODE_CONFIG_DIR` を設定して起こした OpenCode は、そのフォルダからだけプラグインを読むので、shikii のプラグインを読みません。`shikii doctor` がそう知らせます。
 - OpenCode 1.x は、これまでどおり MCP の設定と skill だけを使います。
 

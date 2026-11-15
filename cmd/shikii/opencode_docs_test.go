@@ -124,3 +124,65 @@ func TestDocsSayXDGConfigHomeCountsOnlyWhenAbsolute(t *testing.T) {
 		}
 	}
 }
+
+// opencodeLimitSentences lists the sentences, in the paragraphs of text that name OpenCode, that say text is not shown to the person or
+// that there is no hook before a command, without making shikii's plugin their subject. OpenCode 2.3.0 has both for plugins
+// (session.synthetic shows text, ctx.tool.hook("execute.before") runs before a command); shikii's plugin uses neither. So a limit is
+// said only of shikii's plugin (an allow-list of subjects), never of OpenCode or of plugins in general.
+func opencodeLimitSentences(text string) []string {
+	topics := []string{"show text", "show you", "shows you", "before a command", "\u898b\u305b", "\u30b3\u30de\u30f3\u30c9\u306e\u524d"}
+	subjects := []string{"shikii's plugin", "The plugin ", "the plugin ", "shikii \u306e\u30d7\u30e9\u30b0\u30a4\u30f3", "shikii\u306e\u30d7\u30e9\u30b0\u30a4\u30f3"}
+	var bad []string
+	for _, paragraph := range strings.Split(text, "\n") {
+		if !strings.Contains(paragraph, "OpenCode") {
+			continue
+		}
+		for _, sentence := range splitSentencesT(paragraph) {
+			topic, subject := false, false
+			for _, w := range topics {
+				topic = topic || strings.Contains(sentence, w)
+			}
+			for _, w := range subjects {
+				subject = subject || strings.Contains(sentence, w)
+			}
+			if topic && !subject {
+				bad = append(bad, sentence)
+			}
+		}
+	}
+	return bad
+}
+
+// splitSentencesT cuts a paragraph after ". " and after the Japanese full stop.
+func splitSentencesT(paragraph string) []string {
+	var out []string
+	for _, part := range strings.SplitAfter(paragraph, "\u3002") {
+		for _, sentence := range strings.SplitAfter(part, ". ") {
+			if strings.TrimSpace(sentence) != "" {
+				out = append(out, sentence)
+			}
+		}
+	}
+	return out
+}
+
+func TestDocsSayOnlyShikiisPluginLacksShownTextAndACommandHook(t *testing.T) {
+	// the check itself: a limit said of OpenCode is caught, the same limit said of shikii's plugin passes
+	if bad := opencodeLimitSentences("OpenCode 2.x: it works. OpenCode gives plugins no place to show text to you. Next."); len(bad) != 1 {
+		t.Fatalf("a limit said of OpenCode must be caught: %q", bad)
+	}
+	if bad := opencodeLimitSentences("OpenCode 2.x: it works. shikii's plugin does not show text to you or add a hook before a command. Next."); len(bad) != 0 {
+		t.Fatalf("a limit said of shikii's plugin passes: %q", bad)
+	}
+	docs := map[string]string{}
+	for _, f := range []string{"README.md", "docs/readme/README_ja.md", "integrations/claude-code.md", "integrations/claude-code.ja.md", "skills/shikii/SKILL.md"} {
+		docs[f] = readDocT(t, f)
+	}
+	docs["CHANGELOG.md 0.34.0"] = changelogSectionT(t, readDocT(t, "CHANGELOG.md"), "0.34.0")
+	docs["CHANGELOG_ja.md 0.34.0"] = changelogSectionT(t, readDocT(t, "CHANGELOG_ja.md"), "0.34.0")
+	for name, text := range docs {
+		for _, sentence := range opencodeLimitSentences(text) {
+			t.Errorf("%s: %q says OpenCode (or any plugin) cannot show text or has no hook before a command; OpenCode 2.3.0 has both, so say it of shikii's plugin", name, sentence)
+		}
+	}
+}
