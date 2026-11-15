@@ -29,7 +29,7 @@ func prepareHookWork(root string, in *hookInput, out *hookOut) {
 	// and notices before it, is bounded by what the agent is shown: what does not fit is left out by limitWorkPreparation, which
 	// names it in output with the way back to it.
 	render := func(v any) hookOut {
-		b, _ := orderedReply(v)
+		b, _ := orderedText(v)
 		next := *out
 		next.Context = joinLines(base, "shikii prepared work:\n"+string(b))
 		return next
@@ -37,6 +37,13 @@ func prepareHookWork(root string, in *hookInput, out *hookOut) {
 	req := workRequest{SessionID: in.SessionID, TurnID: in.workTurn, Query: cut(strings.TrimSpace(in.Prompt), requestMax), fromHook: true, MaxBytes: hookContextMax}
 	req.responseSize = func(v any) int { return hookContextLength(render(v).Context) }
 	v, err := prepareWork(root, s.Scope, req)
+	if err != nil && strings.Contains(err.Error(), "exceed max_bytes") {
+		// The request itself does not fit what the agent is shown with the rest (about 7,000 characters of English): the copy of it
+		// in task is cut to its head, and task_context says that the whole request is the person's message. The hook keeps the
+		// request uncut, and a refused preparation saves nothing, as in the CLI's widening.
+		req.taskMax = hookContextMax / 3
+		v, err = prepareWork(root, s.Scope, req)
+	}
 	if err != nil {
 		hookLog("work prepare: " + err.Error())
 		return

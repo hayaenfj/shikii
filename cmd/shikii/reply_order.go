@@ -23,6 +23,16 @@ var replyHead = []string{"receipt", "complete", "errors", "next_action", "output
 // orderedReply encodes a reply compactly with its members in reading order. The values and the number of bytes are exactly those
 // of json.Marshal (the response budget counts them); only the order of the members of objects differs.
 func orderedReply(v any) ([]byte, error) {
+	return orderedJSON(v, true)
+}
+
+// orderedText is orderedReply for JSON an agent reads as text inside another text (the context of a hook): <, > and & stay as they
+// are, where json.Marshal writes each as six characters (\u003c), so pasted HTML or code took six times its length in the bound.
+func orderedText(v any) ([]byte, error) {
+	return orderedJSON(v, false)
+}
+
+func orderedJSON(v any, escapeHTML bool) ([]byte, error) {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return nil, err
@@ -33,10 +43,10 @@ func orderedReply(v any) ([]byte, error) {
 	if err := dec.Decode(&tree); err != nil {
 		return nil, err
 	}
-	return orderReplyValue(tree, true)
+	return orderReplyValue(tree, true, escapeHTML)
 }
 
-func orderReplyValue(value any, top bool) ([]byte, error) {
+func orderReplyValue(value any, top, escapeHTML bool) ([]byte, error) {
 	switch value := value.(type) {
 	case map[string]any:
 		type member struct {
@@ -46,7 +56,7 @@ func orderReplyValue(value any, top bool) ([]byte, error) {
 		}
 		members := make([]member, 0, len(value))
 		for key, child := range value {
-			raw, err := orderReplyValue(child, false)
+			raw, err := orderReplyValue(child, false, escapeHTML)
 			if err != nil {
 				return nil, err
 			}
@@ -74,7 +84,7 @@ func orderReplyValue(value any, top bool) ([]byte, error) {
 			if i > 0 {
 				out.WriteByte(',')
 			}
-			key, err := json.Marshal(m.key)
+			key, err := marshalLeaf(m.key, escapeHTML)
 			if err != nil {
 				return nil, err
 			}
@@ -91,7 +101,7 @@ func orderReplyValue(value any, top bool) ([]byte, error) {
 			if i > 0 {
 				out.WriteByte(',')
 			}
-			raw, err := orderReplyValue(element, false)
+			raw, err := orderReplyValue(element, false, escapeHTML)
 			if err != nil {
 				return nil, err
 			}
@@ -100,7 +110,20 @@ func orderReplyValue(value any, top bool) ([]byte, error) {
 		out.WriteByte(']')
 		return out.Bytes(), nil
 	}
-	return json.Marshal(value)
+	return marshalLeaf(value, escapeHTML)
+}
+
+func marshalLeaf(value any, escapeHTML bool) ([]byte, error) {
+	if escapeHTML {
+		return json.Marshal(value)
+	}
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(value); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
 }
 
 // writeReply writes a reply an agent reads as one compact line, in reading order.

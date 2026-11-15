@@ -103,6 +103,7 @@ type workCompletionRef struct {
 type workRequest struct {
 	fromHook          bool                   // Internal preparation whose complete reply is delivered by the prompt hook.
 	responseSize      func(any) int          // Host transport sizing; never supplied by the caller.
+	taskMax           int                    // The hook's bound on task with task_context, after JSON encoding; 0 is none.
 	MaxBytes          int                    `json:"max_bytes,omitempty"`
 	Result            *workCompletion        `json:"result,omitempty"`
 	Reading           *workReadingFeedback   `json:"reading,omitempty"`
