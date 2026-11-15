@@ -1434,3 +1434,44 @@ func TestOpenCodePluginAsksForTheBriefAndTheRequestsTextAtOnce(t *testing.T) {
 		t.Errorf("each is asked once: %+v", calls)
 	}
 }
+
+// The plugin keeps a few things per session for as long as the server runs. Measured in OpenCode 2.3.0's own code: deleting a session
+// sends session.deleted ({sessionID}) to every plugin. The plugin then forgets the session: nothing is added to its model calls any more,
+// its execution ends with no stop, a subagent's report wakes nothing, and other sessions keep what they have.
+func TestOpenCodePluginForgetsADeletedSession(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "session-start", 0, additionalJSON("BRIEF-OF-THE-SESSION"))
+	b.answer(t, "user-prompt-submit", 0, additionalJSON("TEXT-OF-THE-REQUEST"))
+	run, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "a request in the session that is deleted"},
+		{"op": "prompt", "sid": "s2", "text": "a request in another session"},
+		{"op": "context", "sid": "s1"},
+		{"op": "event", "type": "session.deleted", "sid": "s1"},
+		{"op": "context", "sid": "s1"},
+		{"op": "context", "sid": "s2"},
+		{"op": "succeeded", "sid": "s1"},
+		{"op": "subagent", "sid": "s1"},
+		{"op": "succeeded", "sid": "s1"},
+		{"op": "succeeded", "sid": "s2"},
+	}})
+	if len(run.Errors) != 0 || len(run.Contexts) != 3 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	if !slices.Contains(run.Contexts[0], "TEXT-OF-THE-REQUEST") {
+		t.Fatalf("precondition: before the deletion the session has its texts: %q", run.Contexts[0])
+	}
+	if len(run.Contexts[1]) != 1 {
+		t.Errorf("a deleted session gets nothing added: %q", run.Contexts[1])
+	}
+	if !slices.Contains(run.Contexts[2], "BRIEF-OF-THE-SESSION") || !slices.Contains(run.Contexts[2], "TEXT-OF-THE-REQUEST") {
+		t.Errorf("another session keeps its texts: %q", run.Contexts[2])
+	}
+	for _, c := range stopsOf(calls) {
+		if c.Stdin["session_id"] == "s1" {
+			t.Errorf("a deleted session runs no stop: %v", c.Stdin)
+		}
+	}
+	if n := len(stopsOf(calls)); n != 1 {
+		t.Errorf("only the other session's turn ends with a stop: %d stops", n)
+	}
+}

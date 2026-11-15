@@ -67,6 +67,7 @@ export default Plugin.define({
     // the text of the assistant message a turn ended with, from session.text.ended: a summary in the middle of a turn takes the turn's
     // messages out of ctx.session.context, and stop would get no reply
     const texts = new Map<string, { id: string; byOrdinal: Map<number, string> }>()
+    // Everything above is per session and forgotten when the session is deleted (session.deleted, sent to every instance).
     // Known limit: a turn is only in this instance's memory. When OpenCode reloads the plugins (a file under plugins/ changed) the turns
     // that were running get no stop. Keeping them in ctx.storage is not done: whether it is per project has not been checked.
 
@@ -189,10 +190,17 @@ export default Plugin.define({
       texts.delete(sessionID) // the reply of a turn that did not succeed is no turn's reply
     }
 
+    // a deleted session is gone for good: nothing of it is kept, so the tables do not grow with every session the server ever had
+    const forget = (sessionID: string) => {
+      for (const table of [brief, turn, continued, chain, generation, sessions, ends, texts]) table.delete(sessionID)
+      for (const set of [running, seen, inherited]) set.delete(sessionID)
+    }
+
     const onEvent = async (ev: any) => {
       try {
         const sid: string | undefined = ev?.data?.sessionID
         if (!sid) return
+        if (ev.type === "session.deleted") return forget(sid)
         if (ev.type === "session.execution.succeeded" || ev.type === "session.execution.failed" || ev.type === "session.execution.interrupted") {
           ends.set(sid, (ends.get(sid) ?? 0) + 1)
           inherited.delete(sid) // the execution that was the old folder's turn is over
