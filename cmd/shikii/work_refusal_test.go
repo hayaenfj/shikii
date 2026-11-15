@@ -409,9 +409,82 @@ func TestARecordOverItsItemLimitsNamesTheLimit(t *testing.T) {
 	if err == nil {
 		t.Fatal("a record with three notes and five observations must be refused")
 	}
-	for _, w := range []string{"the recording batch exceeds its fixed item limits", "notes: 3 sent, at most 2", "observations: 5 sent, at most 4", "send the rest in another work record with the same receipt"} {
+	for _, w := range []string{"the recording batch exceeds its fixed item limits", "notes: 3 sent, at most 2", "observations: 5 sent, at most 4",
+		"nothing of this record was saved", "send it again with each field within its limit", "send the rest in another work record with the same receipt"} {
 		if !strings.Contains(err.Error(), w) {
 			t.Errorf("the refusal lacks %q: %v", w, err)
+		}
+	}
+}
+
+// Audit of 0.33.0 (A-1): a record over its item limits is refused whole before anything is saved, but the refusal said only "send
+// the rest in another work record with the same receipt". An agent that followed it sent only the items over the limit, and the
+// items within the limit, never saved, were lost. The refusal now says that nothing of the record was saved and that the record goes
+// again within the limits, with the rest in a later record. Following it as written keeps every note.
+func TestARefusedOverLimitRecordSaysNothingWasSaved(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	t.Chdir(repo)
+	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
+	prepared, err := workCall(t, b, "prepare", map[string]any{"query": "CSV export", "request": "Check the CSV export."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation := func(title string) map[string]any {
+		return map[string]any{"kind": "test", "title": "Check " + title, "content": "Checked " + title + "."}
+	}
+	note := func(title, source string) map[string]any {
+		return map[string]any{"target": "new", "title": "CSV " + title, "lesson": "Check the " + title + " of the CSV export.", "applies_to": "CSV export " + title,
+			"body": "Checked the " + title + ".", "kind": "rule", "scene": "when exporting CSV", "sources": []any{source}}
+	}
+	saved := func() map[string]bool {
+		t.Helper()
+		live, err := b.LiveWhere(func(p notebook.Page) bool { return strings.HasPrefix(p.Title, "CSV ") })
+		if err != nil {
+			t.Fatal(err)
+		}
+		titles := map[string]bool{}
+		for _, p := range live {
+			titles[p.Title] = true
+		}
+		return titles
+	}
+	_, err = workCall(t, b, "record", map[string]any{"receipt": prepared["receipt"],
+		"observations": []any{observation("filters"), observation("totals"), observation("headers")},
+		"notes":        []any{note("filters", "new1"), note("totals", "new2"), note("headers", "new3")}})
+	if err == nil {
+		t.Fatal("a record with three notes must be refused")
+	}
+	if titles := saved(); len(titles) != 0 {
+		t.Fatalf("precondition: the refused record saved nothing, so the refusal must not say only the rest is missing: %v", titles)
+	}
+	for _, w := range []string{"notes: 3 sent, at most 2", "nothing of this record was saved", "send it again with each field within its limit", "send the rest in another work record with the same receipt"} {
+		if !strings.Contains(err.Error(), w) {
+			t.Errorf("the refusal of a record over its limits lacks %q: %v", w, err)
+		}
+	}
+
+	// Follow the refusal as written: the record again within its limits, then the rest with the same receipt. A note close to an
+	// earlier one waits for its placement, which the reply's next_action settles with target new.
+	var record func(call map[string]any)
+	record = func(call map[string]any) {
+		t.Helper()
+		r, err := workCall(t, b, "record", call)
+		if errs, _ := r["errors"].([]any); err != nil || len(errs) > 0 {
+			t.Fatalf("a record within the limits is saved: %v %v", r["errors"], err)
+		}
+		pending, _ := r["pending"].([]any)
+		for _, raw := range pending {
+			if ref, _ := raw.(map[string]any)["ref"].(string); strings.HasPrefix(ref, "note") {
+				record(map[string]any{"receipt": prepared["receipt"], "notes": []any{map[string]any{"ref": ref, "target": "new"}}})
+			}
+		}
+	}
+	record(map[string]any{"receipt": prepared["receipt"], "observations": []any{observation("filters"), observation("totals")}, "notes": []any{note("filters", "new1"), note("totals", "new2")}})
+	record(map[string]any{"receipt": prepared["receipt"], "observations": []any{observation("headers")}, "notes": []any{note("headers", "new1")}})
+	titles := saved()
+	for _, title := range []string{"CSV filters", "CSV totals", "CSV headers"} {
+		if !titles[title] {
+			t.Errorf("following the refusal lost %q: %v", title, titles)
 		}
 	}
 }

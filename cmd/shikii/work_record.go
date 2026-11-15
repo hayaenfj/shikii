@@ -47,7 +47,9 @@ func validateWorkRecording(req workRequest) error {
 		return errors.New(text + ")")
 	}
 	if over := recordItemsOverLimit(req); len(over) > 0 {
-		return errors.New("the recording batch exceeds its fixed item limits (" + strings.Join(over, "; ") + "); send the rest in another work record with the same receipt")
+		// The check runs before anything is saved, so the whole record is refused: "send the rest" alone made an agent send only
+		// the items over the limit and lose the others (audit of 0.33.0, A-1).
+		return errors.New("the recording batch exceeds its fixed item limits (" + strings.Join(over, "; ") + "); nothing of this record was saved: send it again with each field within its limit, and send the rest in another work record with the same receipt or hook ids")
 	}
 	if req.Result == nil && req.Reading == nil && req.Trial == nil && req.Comparison == nil && req.Reasoning == nil && req.Agreed == nil && req.Open == nil && req.ContinuesPrevious == nil && len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) == 0 {
 		return errNoRecordContent
