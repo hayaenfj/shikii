@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 // wantPluginDir is where OpenCode reads shikii's plugin under home, written out here and not taken from the product code.
@@ -864,5 +865,63 @@ func TestDoctorSaysWhenOpenCodeReadsPluginsFromAnotherConfigFolder(t *testing.T)
 		if strings.Contains(line, "OPENCODE_CONFIG_DIR is set") {
 			t.Errorf("without shikii's plugin there is nothing to warn about: %q", line)
 		}
+	}
+}
+
+// writeLeftTempFileT writes a file named like the plugin's temporary file and dates it an hour back: one an install left when it stopped
+// before the rename, not one an install is writing now.
+func writeLeftTempFileT(t *testing.T, path, body string) {
+	t.Helper()
+	writeFileT(t, path, body)
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// P4 for the temporary files (from the audit confirm1): the preview of hook install (no --yes) removes nothing, also not a temporary
+// file an earlier install left, and it says that the install will remove it.
+func TestHookInstallPreviewKeepsATemporaryFileAnEarlierInstallLeft(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	home := freshMachine(t)
+	for name, put := range map[string]func(dir string){
+		"only the temporary file":                func(dir string) {},
+		"shikii's plugin and the temporary file": func(dir string) { writePluginT(t, dir, shikiiBinaryPath()) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := wantPluginDir(home)
+			_ = os.RemoveAll(dir)
+			put(dir)
+			writeLeftTempFileT(t, filepath.Join(dir, ".write-99.tmp"), "half")
+			out := capture(t, func() error { return cmdHook([]string{"install"}) })
+			if !fileExists(filepath.Join(dir, ".write-99.tmp")) {
+				t.Errorf("the preview removed the temporary file:\n%s", out)
+			}
+			if !strings.Contains(out, "temporary file") {
+				t.Errorf("the preview says it will remove the temporary file:\n%s", out)
+			}
+		})
+	}
+}
+
+// P2 for the temporary files (from the audit confirm1): in a person's folder (a file of the person's beside a file named like shikii's
+// temporary file), install, uninstall and hook uninstall remove nothing, also not the file named like the temporary file.
+func TestAPersonsOpenCodeFolderKeepsAFileNamedLikeTheTemporaryFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	for name, run := range map[string]func() error{
+		"hook install --yes":   func() error { return cmdHook([]string{"install", "--yes"}) },
+		"uninstall --yes":      func() error { return cmdUninstall([]string{"--yes"}) },
+		"hook uninstall --yes": func() error { return cmdHook([]string{"uninstall", "--yes"}) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := freshMachine(t)
+			dir := wantPluginDir(home)
+			writeFileT(t, filepath.Join(dir, "notes.txt"), "mine")
+			writeLeftTempFileT(t, filepath.Join(dir, ".write-5.tmp"), "mine too")
+			out := captureNoFail(run)
+			if !fileExists(filepath.Join(dir, ".write-5.tmp")) || !fileExists(filepath.Join(dir, "notes.txt")) {
+				t.Errorf("%s removed a file from the person's folder:\n%s", name, out)
+			}
+		})
 	}
 }
