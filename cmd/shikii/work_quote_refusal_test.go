@@ -81,6 +81,42 @@ func TestARefusedQuoteOfARecordSaysWhereItsWordsComeFrom(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "evidence[0]") || !strings.Contains(err.Error(), "query returned") {
 		t.Errorf("the refusal of hook plan submit changed: %v", err)
 	}
+	// A quote over 240 bytes is refused by the same name (third confirmation audit, U-3), and hook plan submit keeps evidence[i].
+	long := strings.Repeat("w", 241)
+	_, err = renderPlanningFact(&planningFact{Summary: "s", Evidence: []planningQuote{{Source: "current_user", Quote: long, ref: "current"}}}, map[string]string{"current_user": long}, true)
+	if err == nil || !strings.Contains(err.Error(), "agreed.quotes[0] (ref current)") || !strings.Contains(err.Error(), "1 to 240 bytes") {
+		t.Errorf("the refusal of a record quote over 240 bytes: %v", err)
+	}
+	_, err = renderPlanningFact(&planningFact{Summary: "s", Evidence: []planningQuote{{Source: "current_user", Quote: long}}}, map[string]string{"current_user": long}, true)
+	if err == nil || !strings.Contains(err.Error(), "the quote of evidence[0] must be 1 to 240 bytes") {
+		t.Errorf("the refusal of hook plan submit for a quote over 240 bytes changed: %v", err)
+	}
+}
+
+// Third confirmation audit of 0.34.0 (U-2): what a ref holds is the bound its refusal and limit_bytes name. current holds the first
+// planningQuoteBytes of the message, and a history ref the first planningHistoryQuoteBytes of the earlier request.
+func TestTheRefsOfARecordHoldTheBoundsTheirRefusalsName(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	first := "First request. " + strings.Repeat("y", 6000)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": first})
+	s := loadSession(root, "planning")
+	if got := len(s.Planning.Sources["current_user"]); got != planningQuoteBytes {
+		t.Errorf("current holds %d bytes of a long message, the refusal says %d", got, planningQuoteBytes)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "Second request."})
+	s = loadSession(root, "planning")
+	found := false
+	for key, text := range s.Planning.Sources {
+		if strings.HasPrefix(key, "history:") && strings.HasSuffix(key, ":user") && strings.HasPrefix(text, "First request.") {
+			found = true
+			if len(text) != planningHistoryQuoteBytes {
+				t.Errorf("%s holds %d bytes of the earlier request, the refusal says %d", key, len(text), planningHistoryQuoteBytes)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("precondition: the earlier request is a history source: %v", s.Planning.Sources)
+	}
 }
 
 // Third confirmation audit of 0.34.0 (A-1): a record may quote a knowledgeN ref in agreed or open (recording.md). The refusal for a

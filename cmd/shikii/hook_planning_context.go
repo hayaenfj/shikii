@@ -68,9 +68,9 @@ func addPlanningContext(scope string, previous *hookSession, f *planningFrame) {
 		if time.Since(turn.At) < 0 || time.Since(turn.At) > hookSessionTTL {
 			continue
 		}
-		f.Sources["history:"+turn.ID+":user"] = cut(turn.Request, 1200)
+		f.Sources["history:"+turn.ID+":user"] = cut(turn.Request, planningHistoryQuoteBytes)
 		if turn.Summary != "" {
-			f.Sources["history:"+turn.ID+":assistant"] = cut(turn.Summary, 1200)
+			f.Sources["history:"+turn.ID+":assistant"] = cut(turn.Summary, planningHistoryQuoteBytes)
 		}
 	}
 }

@@ -96,6 +96,13 @@ func TestDocsSayStopRunsInsideTheTurnInOpenCodeAndWhenItCannot(t *testing.T) {
 		if strings.HasPrefix(name, "integrations/") {
 			want = append(want, "`experimental.idle`")
 		}
+		// Third confirmation audit of 0.34.0 (U-4): an interrupt while stop runs does not continue the turn (99676a67).
+		switch name {
+		case "integrations/claude-code.md":
+			want = append(want, "If you interrupt while `stop` runs, its block does not continue the turn.")
+		case "integrations/claude-code.ja.md":
+			want = append(want, "`stop` \u304c\u52d5\u3044\u3066\u3044\u308b\u9593\u306b\u3042\u306a\u305f\u304c\u4e2d\u65ad\u3057\u305f\u6642\u306f\u3001\u305d\u306e block \u3067\u56de\u3092\u7d9a\u3051\u306a\u3044\u3002")
+		}
 		for _, w := range want {
 			if !strings.Contains(text, w) {
 				t.Errorf("%s does not say where the plugin's end-of-turn check runs and when it cannot (%s)", name, w)
