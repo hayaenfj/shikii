@@ -169,6 +169,10 @@ for (const step of scenario.steps) {
         if (step.exit) { exited = true; break }
       }
       await settle()
+    } else if (step.op === "idleStart") {
+      // the idle hook starts and the next steps run while it works: measured on 2.3.0, OpenCode waits for the hook in a part of the
+      // execution a person's interrupt can cut, so the execution ends as interrupted while the plugin's hook goes on (settle waits for it)
+      if (hooks["experimental.idle"]) void track(() => hooks["experimental.idle"]({ sessionID: step.sid, background: [] }))
     } else if (step.op === "event") {
       // any other event of OpenCode's, with the session and what the event adds (an interrupted turn's reason, a failure's error)
       broadcast({ type: step.type, data: { sessionID: step.sid, ...(step.data ?? {}) } })
@@ -1740,6 +1744,72 @@ func TestOpenCodePluginStopsContinuingInsideTheExecutionAfterEightAndOnAHalt(t *
 	run, calls = h.play(t, map[string]any{"steps": []map[string]any{{"op": "prompt", "sid": "s1", "text": "x"}, {"op": "idle", "sid": "s1", "exit": true}}})
 	if len(run.Prompts) != 0 || countCalls(calls, "stop") != 1 || !run.Exited {
 		t.Errorf("a halt ends the execution: %+v, %d stops", run.Prompts, countCalls(calls, "stop"))
+	}
+}
+
+var idleStopMessages = map[string]any{"s1": []map[string]any{
+	{"type": "user", "content": []map[string]any{{"type": "text", "text": "a request"}}},
+	{"type": "assistant", "content": []map[string]any{{"type": "text", "text": "THE-REPLY"}}},
+}}
+
+// The person interrupts while the turn's stop runs in the idle hook (OpenCode shows the session busy for the whole stop, up to its 20
+// seconds). OpenCode ends the execution as interrupted, and opencode run exits with 1. The turn the person stopped is not continued:
+// the plugin's rule for a turn that ended without succeeding, and Claude Code continues no turn the person stopped. Without the
+// interrupt (the control) the same block continues the turn.
+func TestOpenCodePluginDoesNotContinueATurnInterruptedWhileItsStopRuns(t *testing.T) {
+	for _, interrupt := range []bool{false, true} {
+		b := newPluginBox(t)
+		b.answer(t, "stop", 1, `{"decision":"block","reason":"SAVE-THE-RECORD"}`)
+		b.hold(t, "stop", 1)
+		steps := []map[string]any{
+			{"op": "prompt", "sid": "s1", "text": "a request"},
+			{"op": "idleStart", "sid": "s1"},
+			{"op": "waitCalls", "event": "stop", "count": 1},
+		}
+		if interrupt {
+			steps = append(steps, map[string]any{"op": "event", "type": "session.execution.interrupted", "sid": "s1", "data": map[string]any{"reason": "user"}, "nowait": true})
+		}
+		steps = append(steps, map[string]any{"op": "release", "event": "stop", "n": 1}, map[string]any{"op": "settle"})
+		run, calls := b.play(t, map[string]any{"messages": idleStopMessages, "steps": steps})
+		if len(run.Errors) != 0 {
+			t.Fatalf("no hook throws: %v", run.Errors)
+		}
+		if n := countCalls(calls, "stop"); n != 1 {
+			t.Fatalf("interrupt %v: one stop runs: %d", interrupt, n)
+		}
+		switch {
+		case !interrupt && len(run.Prompts) != 1:
+			t.Errorf("without an interrupt the block continues the turn: %+v", run.Prompts)
+		case interrupt && len(run.Prompts) != 0:
+			t.Errorf("the person interrupted while stop ran, and the plugin still sent the continuation: %+v", run.Prompts)
+		}
+	}
+}
+
+// The person's next request while the turn's stop runs in the idle hook: the old stop's block is for the old turn and is dropped, and
+// the new turn gets its own stop, not stop_hook_active.
+func TestOpenCodePluginDropsTheIdleStopsBlockWhenTheNextRequestComes(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "stop", 1, `{"decision":"block","reason":"SAVE-THE-RECORD"}`)
+	b.hold(t, "stop", 1)
+	run, calls := b.play(t, map[string]any{"messages": idleStopMessages, "steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "a request"},
+		{"op": "idleStart", "sid": "s1"},
+		{"op": "waitCalls", "event": "stop", "count": 1},
+		{"op": "prompt", "sid": "s1", "text": "the next request"},
+		{"op": "release", "event": "stop", "n": 1},
+		{"op": "settle"},
+		{"op": "idle", "sid": "s1"},
+	}})
+	if len(run.Errors) != 0 {
+		t.Fatalf("no hook throws: %v", run.Errors)
+	}
+	stops := stopsOf(calls)
+	if len(stops) != 2 || len(run.Prompts) != 0 {
+		t.Fatalf("two stops and no continuation: %d stops, %+v", len(stops), run.Prompts)
+	}
+	if stops[1].Stdin["stop_hook_active"] != false {
+		t.Errorf("the new request's stop is not stop_hook_active: %v", stops[1].Stdin)
 	}
 }
 

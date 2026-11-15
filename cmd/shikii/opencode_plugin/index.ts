@@ -9,7 +9,8 @@
 //     started (--standalone, or no background service running) with it, before a stop started from session.execution.succeeded can run
 // A turn is what this plugin saw start: the person's request, a continuation it sent itself, or a subagent's report that wakes the
 // session. An execution that no turn of those started (a summary the person asked for) runs no stop, and neither does a turn that was
-// interrupted or failed (Claude Code runs no Stop for those). One OpenCode server runs a plugin
+// interrupted or failed (Claude Code runs no Stop for those); a turn the person interrupts while its stop runs is not continued. One
+// OpenCode server runs a plugin
 // instance per project folder, and every instance is told every session's events: an instance acts only on sessions of its own folder.
 // What the hooks give is not kept in the conversation, so the plugin adds it to every model call again, at the same place: the session's
 // brief on the first message the model gets, each request's text on that request's own message (as Claude Code keeps it in the
@@ -65,7 +66,9 @@ export default Plugin.define({
     const current = new Map<string, string>()
     const continued = new Map<string, boolean>() // sessionID -> the running turn was started by this plugin (stop_hook_active)
     const chain = new Map<string, number>() // sessionID -> continuations this plugin started since the person's last request
-    const generation = new Map<string, number>() // sessionID -> counts the person's requests: a slow stop of an older one is dropped
+    // sessionID -> counts the person's requests and the turns that ended without succeeding: a stop that was running when the number
+    // moved drops its answer (it is for a turn that is over)
+    const generation = new Map<string, number>()
     const running = new Set<string>() // sessionIDs with a turn this instance saw start and has not stopped yet
     const seen = new Set<string>() // sessionIDs this instance saw a request of
     const sessions = new Map<string, { child: boolean; dir?: string; busy: boolean }>() // what ctx.session.get said (busy: a turn runs); forgotten when the session moves
@@ -204,7 +207,9 @@ export default Plugin.define({
         const active = continued.get(sessionID) === true
         continued.set(sessionID, false) // read once: a continuation this stop sends sets it again when its prompt arrives
         const out = await hook("stop", sessionID, { last_assistant_message: reply, stop_hook_active: active })
-        if (turnNumber(sessionID) !== started) return // the person's next request came while stop ran: its answer is not for that one
+        // the person's next request came while stop ran, or the person interrupted the execution waiting on stop in the idle hook (OpenCode
+        // stops waiting for the hook and ends the execution as interrupted): its answer does not continue a turn that is over
+        if (turnNumber(sessionID) !== started) return
         const count = chain.get(sessionID) ?? 0
         if (out?.decision === "block" && typeof out.reason === "string" && out.reason && out.continue !== false && count < CONTINUE_MAX) {
           chain.set(sessionID, count + 1)
@@ -247,6 +252,7 @@ export default Plugin.define({
     const ended = (sessionID: string) => {
       running.delete(sessionID) // continued is read at the next stop only: the next request and a woken turn set it again
       texts.delete(sessionID) // the reply of a turn that did not succeed is no turn's reply
+      bump(sessionID) // a stop still running in the idle hook does not continue the turn the person stopped
     }
 
     // a deleted session is gone for good: nothing of it is kept, so the tables do not grow with every session the server ever had
