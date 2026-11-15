@@ -207,6 +207,13 @@ func finishUpdate(ctx context.Context, exe string) error {
 			}
 		}
 	}
+	// OpenCode's plugin is a hook too (opencode_plugin.go): a machine with only shikii's plugin, no Claude Code or Codex hook, gets it
+	// rewritten as well, or a later version's plugin would never reach it
+	if bin, ok := opencodePluginBinary(home); ok {
+		if actual, _ := filepath.EvalSymlinks(bin); actual == exe {
+			installed = true
+		}
+	}
 	if installed {
 		cmd := exec.CommandContext(ctx, exe, "hook", "install", "--yes")
 		cmd.Stdout, cmd.Stderr = stdout, stdout // pass the new binary's deletion targets and failure reasons through to the update output (audit R2: they used to be discarded)

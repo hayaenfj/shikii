@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -675,5 +676,47 @@ func TestHookInstallGoesOnWhenTheOpenCodePluginCannotBeWritten(t *testing.T) {
 	}
 	if fileExists(filepath.Join(config, "opencode")) {
 		t.Errorf("nothing is written under the folder that cannot be written")
+	}
+}
+
+// shikii update rewrites the hooks of an agent whose hook runs the binary it replaced (finishUpdate runs the new binary's hook install
+// --yes). OpenCode's plugin is such a hook: on a machine with only the plugin (no Claude Code or Codex hook), the update must rewrite it
+// too, or a later version's plugin never reaches it. A plugin that runs another binary, or a folder of the person's, does not count.
+func TestUpdateRewritesTheOpenCodePluginOnAMachineWithOnlyThePlugin(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	bin, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ran := filepath.Join(bin, "ran")
+	exe := filepath.Join(bin, "shikii")
+	// the new binary stands in as a script that writes down how it was run: nothing real is started
+	writeFileT(t, exe, "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '"+ran+"'\n")
+	if err := os.Chmod(exe, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, setup := range map[string]struct {
+		put  func(home string)
+		runs bool
+	}{
+		"shikii's plugin runs this binary":    {func(home string) { writePluginT(t, wantPluginDir(home), exe) }, true},
+		"shikii's plugin runs another binary": {func(home string) { writePluginT(t, wantPluginDir(home), "/elsewhere/shikii") }, false},
+		"a folder of the person's":            {func(home string) { writeFileT(t, filepath.Join(wantPluginDir(home), "index.ts"), "mine") }, false},
+		"nothing":                             {func(string) {}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			_ = os.Remove(ran)
+			setup.put(home)
+			out := capture(t, func() error { return finishUpdate(context.Background(), exe) })
+			got, _ := os.ReadFile(ran)
+			if setup.runs && strings.TrimSpace(string(got)) != "hook install --yes" {
+				t.Errorf("the update runs the new binary's hook install --yes for the plugin: ran %q\n%s", got, out)
+			}
+			if !setup.runs && len(got) != 0 {
+				t.Errorf("no hook of this binary: the update runs nothing, ran %q", got)
+			}
+		})
 	}
 }
