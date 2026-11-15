@@ -23,7 +23,7 @@ func resolveWorkFact(f *workFact, w *workState) (*planningFact, error) {
 		if key == "" {
 			return nil, fmt.Errorf("unknown prepared quotation reference %q; the references here: %s", q.Ref, strings.Join(sortedRefs(w.Keys), ", "))
 		}
-		p.Evidence = append(p.Evidence, planningQuote{Source: key, Quote: q.Text})
+		p.Evidence = append(p.Evidence, planningQuote{Source: key, Quote: q.Text, ref: q.Ref})
 	}
 	return p, nil
 }

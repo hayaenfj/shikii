@@ -31,7 +31,7 @@ func preparedWorkConversation(s *hookSession, w *workState, turn string) (map[st
 	}
 	for _, p := range [][5]string{{"current", "current_user", "user", turn, "current"}, {"previous", "previous_user", "user", previous, "previous"}, {"previous_answer", "previous_assistant", "assistant", previous, "previous"}} {
 		if s.Planning.Sources[p[1]] != "" {
-			add(p[0], p[1], p[2], p[3], p[4], 4000)
+			add(p[0], p[1], p[2], p[3], p[4], planningQuoteBytes)
 		}
 	}
 	keys, seen, order := []string{}, map[string]bool{}, map[string]int{}
@@ -58,7 +58,7 @@ func preparedWorkConversation(s *hookSession, w *workState, turn string) (map[st
 			continue
 		}
 		ref := "history" + strconv.Itoa(i+1)
-		item := add(ref, key, parts[2], parts[1], "history", 1200)
+		item := add(ref, key, parts[2], parts[1], "history", planningHistoryQuoteBytes)
 		position, known := order[key]
 		item["order_known"] = known
 		if known {

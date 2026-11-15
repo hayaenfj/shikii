@@ -48,7 +48,15 @@ type planningFrame struct {
 type planningQuote struct {
 	Source string `json:"source"`
 	Quote  string `json:"quote"`
+	ref    string // the quotation ref of a work record (current, history1, ...); empty in hook plan submit
 }
+
+// How much of a message the planning sources keep, and so how much of it can be quoted: the head of the current and previous
+// messages, and of each earlier exchange in history.
+const (
+	planningQuoteBytes        = 4000
+	planningHistoryQuoteBytes = 1200
+)
 
 type planningFact struct {
 	Unknown  bool            `json:"unknown,omitempty"`
@@ -108,13 +116,13 @@ func legacyPlanningRecord(sp *spec.Spec, rec store.Record) bool {
 }
 
 func newPlanningFrame(previous *hookSession, in *hookInput, scope, turnID string) *planningFrame {
-	f := &planningFrame{TurnID: turnID, At: time.Now(), Sources: map[string]string{"current_user": cut(strings.TrimSpace(in.Prompt), 4000)}}
+	f := &planningFrame{TurnID: turnID, At: time.Now(), Sources: map[string]string{"current_user": cut(strings.TrimSpace(in.Prompt), planningQuoteBytes)}}
 	if previous.Scope == scope {
 		if previous.RawPrompt != "" {
-			f.Sources["previous_user"] = cut(previous.RawPrompt, 4000)
+			f.Sources["previous_user"] = cut(previous.RawPrompt, planningQuoteBytes)
 		}
 		if previous.Completed != nil && previous.Completed.TurnID == previous.TurnID {
-			f.Sources["previous_assistant"] = cut(previous.Completed.Summary, 4000)
+			f.Sources["previous_assistant"] = cut(previous.Completed.Summary, planningQuoteBytes)
 		}
 	}
 	addPlanningContext(scope, previous, f)
@@ -381,6 +389,18 @@ func planningReply(root, scope string, planning *planningReceipt, reflection *re
 	return result, nil
 }
 
+// planningQuoteLabel names a quote as its sender wrote it: agreed.quotes[i] (ref r) in a work record, evidence[i] in hook plan submit.
+func planningQuoteLabel(e planningQuote, i int, agreement bool) string {
+	if e.ref == "" {
+		return fmt.Sprintf("evidence[%d]", i)
+	}
+	field := "open"
+	if agreement {
+		field = "agreed"
+	}
+	return fmt.Sprintf("%s.quotes[%d] (ref %s)", field, i, e.ref)
+}
+
 // planningPreface comes before the agent's organizing in the needs-plan input. web/src/components/ItemCard.svelte removes the same text
 // (and the Japanese one of records made before 0.9.2); a test checks the two match.
 const planningPreface = "AI's organizing (not permission to act, not the person's truth): "
@@ -411,7 +431,15 @@ func renderPlanningFact(f *planningFact, sources map[string]string, agreement bo
 			sort.Strings(keys)
 			return "", fmt.Errorf("the source %q of evidence[%d] is not in this request's original text. Usable sources: %s", e.Source, i, strings.Join(keys, ", "))
 		case strings.TrimSpace(e.Quote) == "" || len(e.Quote) > 240:
-			return "", fmt.Errorf("the quote of evidence[%d] must be 1 to 240 bytes (%d bytes)", i, len(e.Quote))
+			return "", fmt.Errorf("the quote of %s must be 1 to 240 bytes (%d bytes)", planningQuoteLabel(e, i, agreement), len(e.Quote))
+		case !strings.Contains(text, e.Quote) && e.ref != "":
+			// A work record quotes by ref from the prepare reply, which has no query step: the refusal says what the ref holds and
+			// where the words come from (second confirmation audit of 0.34.0, U-1: it sent the agent to query).
+			limit := planningQuoteBytes
+			if strings.HasPrefix(e.Source, "history:") {
+				limit = planningHistoryQuoteBytes
+			}
+			return "", fmt.Errorf("%s is not found verbatim in what that ref holds, the first %d bytes of the message: send the record again with words copied exactly from conversation.%s in the prepare reply (when output.omitted names conversation, from the start of that message in this conversation); words after the first %d bytes cannot be quoted", planningQuoteLabel(e, i, agreement), limit, e.ref, limit)
 		case !strings.Contains(text, e.Quote):
 			return "", fmt.Errorf("the quote of evidence[%d] is not found verbatim in the original text of source %s. Copy it from the original text query returned, including formatting and symbols", i, e.Source)
 		}

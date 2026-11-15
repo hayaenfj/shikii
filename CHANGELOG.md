@@ -16,6 +16,7 @@
 - A very long request comes with only its start in the prepared work, while shikii keeps the request as before. Codex and OpenCode receive the same bounded context as Claude Code.
 - When a time field holds a date alone, or a maintenance review in a record names a page instead of the ref from the prepare reply, the refusal now says what to send.
 - A review item with a missed delivery now names `shikii wiki diagnose` as the command to run. It said "diagnose", which MCP does not run.
+- When a record quotes the person's words from past what shikii keeps of a message (its first 4,000 bytes), the refusal names the quote, says how much of the message can be quoted, and asks to copy the words from `conversation` in the prepare reply. It used to point to `query`, which is not part of recording.
 
 ### Limits
 

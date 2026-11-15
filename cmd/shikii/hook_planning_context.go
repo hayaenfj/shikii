@@ -27,12 +27,12 @@ func addPlanningContext(scope string, previous *hookSession, f *planningFrame) {
 		f.Earlier = append([]planningTurn{}, previous.Planning.Earlier...) // the same session and project only, like Recent
 		// only refer to original text that also exists in the pre-update format. Nothing is built from the old joined Request.
 		if len(f.Recent) == 0 && previous.Planning.Sources["previous_user"] != "" {
-			f.Recent = append(f.Recent, planningTurn{ID: previous.TurnID + "-prior", Request: cut(previous.Planning.Sources["previous_user"], 1200), At: previous.Planning.At})
+			f.Recent = append(f.Recent, planningTurn{ID: previous.TurnID + "-prior", Request: cut(previous.Planning.Sources["previous_user"], planningHistoryQuoteBytes), At: previous.Planning.At})
 		}
 		if previous.Planning.Sources["current_user"] != "" {
-			turn := planningTurn{ID: previous.TurnID, Request: cut(previous.Planning.Sources["current_user"], 1200), At: previous.Planning.At}
+			turn := planningTurn{ID: previous.TurnID, Request: cut(previous.Planning.Sources["current_user"], planningHistoryQuoteBytes), At: previous.Planning.At}
 			if previous.Completed != nil && previous.Completed.TurnID == previous.TurnID {
-				turn.Summary = cut(previous.Completed.Summary, 1200)
+				turn.Summary = cut(previous.Completed.Summary, planningHistoryQuoteBytes)
 				for _, t := range previous.Completed.Targets {
 					if t.Spec == "done-as-asked" {
 						turn.Done = t.TraceID
