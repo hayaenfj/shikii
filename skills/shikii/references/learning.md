@@ -92,7 +92,7 @@ the article, while the wiki remains the source of truth for storage.
 
 ## Organize knowledge without losing its provenance
 
-Use `wiki organize` (MCP `operation:"organize"`, HTTP `/v1/wiki/notebook`) with
+Use `shikii wiki organize` (or HTTP `/v1/wiki/notebook`; MCP leaves it out) with
 `organization:{reason,sources,targets,moves}`. This previews a split or merge;
 it writes no articles:
 
@@ -168,7 +168,7 @@ note or patch. Retain all existing connections, practice and prior results. A
 changed question or method is a different investigation.
 
 For concurrent edits, use CLI `shikii wiki reconcile` with JSON
-`{"patch":{...}}` on stdin, or MCP/HTTP `operation:"reconcile",patch:{...}`.
+`{"patch":{...}}` on stdin, or HTTP `operation:"reconcile",patch:{...}` (MCP leaves it out).
 Use the original read revision, normal sources, change_reason and exact edits.
 The read-only response compares base/current/proposed: `ready` contains a patch
 against the checked current revision; `conflict` retains both alternatives;

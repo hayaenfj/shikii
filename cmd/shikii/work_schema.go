@@ -10,7 +10,7 @@ func makeWorkSchema() map[string]any {
 
 	fact := schemaObject(map[string]any{"unknown": map[string]any{"type": "boolean"}, "summary": text, "quotes": schemaArray(schemaObject(map[string]any{"ref": text, "text": text}), 3)})
 	fact["description"] = "Hook planning: agreed states what the person agreed; open states a concrete choice blocking this task. Use {summary,quotes:[{ref,text}]} with exact prepared quotations, or {unknown:true} alone with no summary or quotes. Unverified execution results belong in observations or notes. Omit agreed/open for an agent-supplied task without hook context."
-	note := schemaObject(map[string]any{"ref": text, "target": text, "title": text, "lesson": text, "body": text, "applies_to": text, "sources": refs, "related": refs, "kind": kindSchema, "scene": sceneSchema, "rationale": rationaleSchema, "watch": watchSchema, "passages": passagesSchema, "learning": learningSchema, "change_reason": text, "correction": correctionSchema, "edits": patchSchema["properties"].(map[string]any)["edits"]})
+	note := schemaObject(map[string]any{"ref": text, "target": text, "title": text, "lesson": text, "body": text, "applies_to": text, "sources": refs, "related": refs, "kind": asTopLevel(kindSchema, "kind", ""), "scene": asTopLevel(sceneSchema, "scene", ""), "rationale": asTopLevel(rationaleSchema, "rationale", ""), "watch": asTopLevel(watchSchema, "watch", ""), "passages": asTopLevel(passagesSchema, "passages", ""), "learning": asTopLevel(learningSchema, "learning", " In a note, a connection id may be a prepared article ref and nested sources use prepared observation refs."), "change_reason": text, "correction": correctionSchema, "edits": patchSchema["properties"].(map[string]any)["edits"]})
 	note["description"] = "Only new or changed reusable knowledge needs a note; routine completion does not. Review new or revised claims before saving, as the skill's references/source-review.md describes. Preserve conditions and distinguish decisions, observations and proposals. New notes use draft content. Existing article targets use sources, change_reason, exact edits, passages and/or learning. A placement pending ref accepts ref, target and edits only; target is required and target new forbids edits. A required-note error ref accepts the full corrected note with a current target, or restores the original draft and known sources with ref, target and edits. Repair an existing article using its original ID. Other fields are refused, not ignored."
 	trialPlan := schemaObject(map[string]any{"case": text, "question": text, "expected": text, "method": text, "conditions": text, "decision": text, "effort": map[string]any{"type": "string", "enum": []string{"small", "medium", "large"}}, "evidence": schemaArray(text, 4)})
 	trialResult := schemaObject(map[string]any{"assessment": map[string]any{"type": "string", "enum": []string{"supports", "challenges", "inconclusive"}}, "observed": text, "evidence": schemaArray(text, 4), "measurements": map[string]any{"type": "object", "maxProperties": 4, "propertyNames": map[string]any{"pattern": "^[a-z][a-z0-9_]{0,47}$"}, "additionalProperties": map[string]any{"type": "number", "minimum": 0, "maximum": 1e15}}})
@@ -24,7 +24,7 @@ func makeWorkSchema() map[string]any {
 		"event":      schemaObject(map[string]any{"id": text, "state": map[string]any{"type": "string", "enum": []string{"observed", "completed", "failed", "cancelled", "integrated", "reverted"}}, "summary": text, "unknowns": schemaArray(text, 16), "contradictions": schemaArray(text, 16), "method": text, "commit": text, "code_state": text, "reference": text}),
 		"max_bytes":  map[string]any{"type": "integer", "minimum": 8192, "maximum": 393216},
 		"session_id": text, "turn_id": text, "query": text, "request": text, "receipt": map[string]any{"type": "string", "description": "Prepared receipt. For record only, unchanged initial hook preparation also accepts its exact session_id/turn_id without receipt; explicit replacement preparation requires the new receipt."}, "proposal": text, "conditions": text, "cursor": text,
-		"agreed": fact, "open": fact, "continues_previous": map[string]any{"type": "boolean"},
+		"agreed": fact, "open": sameAs(fact, "The same shape and rules as agreed."), "continues_previous": map[string]any{"type": "boolean"},
 		"observations": schemaArray(schemaObject(map[string]any{"kind": map[string]any{"type": "string", "enum": []string{"human", "agent", "code", "test", "release"}}, "title": text, "content": text, "reference": text, "version": text}), 4),
 		"notes":        schemaArray(note, 2),
 		"reviews":      schemaArray(schemaObject(map[string]any{"ref": text, "answer": map[string]any{"type": "string", "enum": []string{"yes", "no", "unknown"}}, "reason": text}), 128),
@@ -33,4 +33,11 @@ func makeWorkSchema() map[string]any {
 		"discoveries": schemaArray(schemaObject(map[string]any{"ref": text, "context": text, "decision": text, "evidence": text, "case_id": text}), 4),
 		"outcomes":    schemaArray(schemaObject(map[string]any{"ref": text, "conditions": text, "action": text, "failure": text, "correction": text, "result": text, "sources": refs}), 2),
 	})
+}
+
+// sameAs is a copy of a schema whose description points to another field that carries the full one.
+func sameAs(schema map[string]any, description string) map[string]any {
+	c := withoutDescriptions(schema).(map[string]any)
+	c["description"] = description
+	return c
 }

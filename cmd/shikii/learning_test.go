@@ -124,7 +124,7 @@ func TestLearningTransportSchemasAndOrganizationMerge(t *testing.T) {
 	}
 	code, raw, err := callTool(h, "shikii_wiki", encoded)
 	if err != nil || code != 200 || !strings.Contains(string(raw), `"requires"`) {
-		t.Fatal("MCP must expose the same guarded plan", code, string(raw), err)
+		t.Fatal("the HTTP bridge must expose the same guarded plan", code, string(raw), err)
 	}
 	r := httptest.NewRequest("POST", "/v1/wiki/notebook", strings.NewReader(string(encoded)))
 	r.Header.Set("Content-Type", "application/json")
@@ -140,7 +140,8 @@ func TestLearningTransportSchemasAndOrganizationMerge(t *testing.T) {
 			continue
 		}
 		properties := tool["inputSchema"].(map[string]any)["properties"].(map[string]any)
-		for _, field := range []string{"learning", "organization", "create_only"} {
+		// organize is CLI-only on MCP (mcp_wiki_surface_test.go), so organization is not advertised there.
+		for _, field := range []string{"learning", "create_only"} {
 			if properties[field] == nil {
 				t.Fatal("MCP must advertise usable learning fields", field)
 			}

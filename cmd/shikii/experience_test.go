@@ -69,11 +69,15 @@ func TestExperienceTransportAndSchemas(t *testing.T) {
 		if tool["name"] != "shikii_wiki" {
 			continue
 		}
-		raw, _ := json.Marshal(tool)
-		for _, text := range []string{`"consult"`, `"reuse"`, `"request"`, `"proposal"`, `"conditions"`} {
-			if !strings.Contains(string(raw), text) {
-				t.Fatal("MCP must advertise usable operations and their inputs", text)
+		// consult and reuse are prepare's proposal and conditions on MCP (mcp_wiki_surface_test.go); the CLI and HTTP keep both.
+		work := workSchema["properties"].(map[string]any)
+		for _, field := range []string{"receipt", "proposal", "conditions"} {
+			if work[field] == nil {
+				t.Fatal("MCP must advertise the work fields that do consult and reuse", field)
 			}
+		}
+		if mcpWikiCLIOnly["consult"] == "" || mcpWikiCLIOnly["reuse"] == "" {
+			t.Fatal("a consult or reuse call through MCP must be refused with the way to do it")
 		}
 	}
 	raw, _ := json.Marshal(discoverySchema)

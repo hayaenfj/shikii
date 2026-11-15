@@ -25,8 +25,8 @@ var patchSchema = map[string]any{"type": "object", "additionalProperties": false
 	"id": map[string]any{"type": "string"}, "revision": map[string]any{"type": "string"},
 	"sources":       map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "string"}},
 	"change_reason": map[string]any{"type": "string"},
-	"passages":      passagesSchema,
-	"learning":      learningSchema, "requires": articleReferencesSchema, "related": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+	"passages":      asTopLevel(passagesSchema, "passages", ""),
+	"learning":      asTopLevel(learningSchema, "learning", ""), "requires": articleReferencesSchema, "related": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 	"edits": map[string]any{"type": "array", "maxItems": 16, "items": schemaObject(map[string]any{
 		"field":  map[string]any{"type": "string", "enum": []string{"title", "lesson", "applies_to", "body", "rationale", "kind", "scene"}},
 		"before": map[string]any{"type": "string"}, "after": map[string]any{"type": "string"},
@@ -46,3 +46,35 @@ var discoverySchema = schemaObject(map[string]any{
 var kindSchema = map[string]any{"type": "string", "enum": notebook.Kinds, "description": "the lesson's kind (required; omit on an edit to keep it): rule=a rule decided in this project, howto=how to do something, criteria=a basis for judging, fact=a premise or fact, history=how things came to be"}
 
 var sceneSchema = map[string]any{"type": "string", "maxLength": notebook.SceneMax, "description": "the scene it applies to, short and in the work's own words (required; e.g. \"when committing\", \"when sending an invoice\"; one line, up to 48 characters). If place returns an existing scene close to it, use the same wording"}
+
+// asTopLevel is a nested copy, inside shikii_wiki, of one of its top-level fields: the same schema without its descriptions, and
+// one short description that points to the top-level field (and says what differs there). Codex and OpenCode take the whole
+// definition at the start of every session, and each explanation is carried once.
+func asTopLevel(schema map[string]any, field, differs string) map[string]any {
+	c := withoutDescriptions(schema).(map[string]any)
+	c["description"] = "As the top-level " + field + "." + differs
+	return c
+}
+
+// withoutDescriptions copies a schema without its description keywords; a property that happens to be named description stays.
+func withoutDescriptions(v any) any {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return v
+	}
+	c := make(map[string]any, len(m))
+	for k, x := range m {
+		switch k {
+		case "description":
+		case "properties":
+			props := map[string]any{}
+			for name, p := range x.(map[string]any) {
+				props[name] = withoutDescriptions(p)
+			}
+			c[k] = props
+		default:
+			c[k] = withoutDescriptions(x)
+		}
+	}
+	return c
+}

@@ -303,6 +303,14 @@ func handleRPC(req rpcRequest, h http.Handler) map[string]any {
 		if perr != nil {
 			return reply(toolError(perr))
 		}
+		if p.Name == "shikii_wiki" {
+			var call struct {
+				Operation string `json:"operation"`
+			}
+			if json.Unmarshal(args, &call) == nil && mcpWikiCLIOnly[call.Operation] != "" {
+				return reply(toolError(errors.New(mcpWikiCLIOnly[call.Operation])))
+			}
+		}
 		rt, ok := h.(*mcpRouter)
 		if !ok {
 			rt = &mcpRouter{start: h}
