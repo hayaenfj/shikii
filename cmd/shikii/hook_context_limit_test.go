@@ -96,7 +96,8 @@ func TestHookCountsItsBoundInCharactersNotBytes(t *testing.T) {
 // English, 3,000 of pasted HTML, whose <, > and & took six characters each in the JSON, and any request over the 64 KiB the hook
 // keeps). Now the hook writes its JSON without escaping those characters, a request that fits comes whole, and one that does not
 // comes as its head, of at most hookTaskHeadMax characters as delivered, with task_context saying where the rest is. The work is
-// matched (the reading case, the focus of the lessons, the procedure) on the request the hook keeps, not on the head it delivers.
+// matched on the request the hook keeps, not on the head it delivers: the reading case and the procedure's case here, the passages
+// of the lessons in TestAHeadOfTheTaskStillFocusesTheLessonsOnTheWholeRequest.
 func TestHookPreparesAnyRequestWithinTheBound(t *testing.T) {
 	const en, ja = "Explain archive approval for production restore. ", "\u672c\u756a\u306e\u5fa9\u5143\u306e\u627f\u8a8d\u3092\u8aac\u660e\u3057\u3066\u3002"
 	for name, c := range map[string]struct {
@@ -166,9 +167,63 @@ func TestHookPreparesAnyRequestWithinTheBound(t *testing.T) {
 			if reading == nil {
 				t.Fatal("precondition: the preparation keeps a reading trace")
 			}
-			if want := workHash(cut(s.RequestText, store.RecordTextLimit))[:16]; reading.Case != want {
+			want := workHash(cut(s.RequestText, store.RecordTextLimit))[:16]
+			if reading.Case != want {
 				t.Fatalf("the reading case is %s, the hash of the delivered head; the request the hook keeps hashes to %s", reading.Case, want)
 			}
+			procedure := s.Planning.Work.Reasoning.Procedure
+			if c.lessons == "" {
+				return // no lesson is found, so no procedure is chosen
+			}
+			if procedure == nil {
+				t.Fatal("precondition: the preparation chooses a procedure for the lessons it found")
+			}
+			if procedure.Trace.Case != want {
+				t.Fatalf("the procedure's case is %s, the hash of the delivered head; the request the hook keeps hashes to %s", procedure.Trace.Case, want)
+			}
 		})
+	}
+}
+
+// The passages of a lesson are chosen for the whole request, not for the head of it the hook delivers: a word only in the tail
+// of the request chooses the passage that has it. Through the hook this is rarely visible, because a preparation that has to be
+// shortened rebuilds its lessons around the search words alone; so the preparation is called here as the hook calls it, with the
+// head's bound, and with a reply bound wide enough that nothing else is left out.
+func TestAHeadOfTheTaskStillFocusesTheLessonsOnTheWholeRequest(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
+	// five units of about 600 bytes (the size FocusExcerpts reads), the one with the tail's word last: the head alone shares no word
+	// with any of them, so the first ones would be chosen
+	body := strings.Join([]string{strings.Repeat("Name one owner per page. ", 25), strings.Repeat("Write the date first. ", 28),
+		strings.Repeat("Close the ledger at noon. ", 24), strings.Repeat("Sign with ink only. ", 31), strings.Repeat("The quokka entry lists every signer. ", 17)}, "\n")
+	interimAddArticle(t, b, "Archive approval for production restore", body)
+	prompt := "Explain archive approval for production restore. " + strings.Repeat("Mind the conditions above. ", 300) + "Check the quokka entry."
+	runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": prompt}) // records the request only
+	s := loadSession(root, "planning")
+	v, err := prepareWork(root, s.Scope, workRequest{SessionID: "planning", TurnID: s.TurnID, Query: "archive approval production restore", MaxBytes: workSourceBudget * 3, taskMax: hookTaskHeadMax})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply := v.(map[string]any)
+	if task := reply["task"].(string); strings.Contains(task, "quokka") || reply["task_context"].(map[string]any)["text_status"] != "delivered_head" {
+		t.Fatalf("precondition: the hook delivers the head of the request, without its tail: %d bytes", len(task))
+	}
+	found := false
+	for _, raw := range reply["knowledge"].([]any) {
+		e := raw.(map[string]any)
+		if e["title"] != "Archive approval for production restore" && !strings.Contains(fmt.Sprint(e["orientation"]), "Name one owner") {
+			continue
+		}
+		found = true
+		orientation, err := json.Marshal(e["orientation"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(orientation), "The quokka entry lists every signer.") {
+			t.Fatalf("the lesson's passages were chosen for the head the hook delivers, not for the whole request: %s", orientation)
+		}
+	}
+	if !found {
+		t.Fatalf("precondition: the request finds the lesson: %v", reply["knowledge"])
 	}
 }
