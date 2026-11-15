@@ -3,8 +3,8 @@
 # It downloads the latest release for this machine (macOS or Linux, amd64 or arm64) from GitHub, checks it against SHA256SUMS,
 # and puts shikii and shikii-readout in ~/.local/bin (a fixed place that does not move when Go or a version manager is upgraded).
 # Inside a source checkout (`sh install.sh` in its folder) it builds the current source with Go 1.27 or later instead, into the same place.
-# Then it runs `shikii hook install --yes`: hooks for Claude Code and Codex (which measure the AI's own judgment), the agent's working method (skill),
-# and the local model (started in the background if llama-server is present). Run shikii --init once in each project that uses it.
+# Then it runs `shikii hook install --yes`: hooks for Claude Code and Codex, and a plugin that runs the same hooks in OpenCode 2.x (they measure the
+# AI's own judgment), the agent's working method (skill), and the local model (started in the background if llama-server is present). Run shikii --init once in each project that uses it.
 # Asking an agent "I want to use shikii in this project" also gets it initialized. Nothing is recorded in places that are not initialized.
 # Everything is in main, called on the last line: when `curl | sh` gets only part of this file, the shell runs none of it.
 set -eu

@@ -414,3 +414,18 @@ func TestInstallShLeavesALicensesLinkAlone(t *testing.T) {
 		t.Fatalf("nothing is added to the person's folder: %v\n%s", entries, out)
 	}
 }
+
+// The comment at the top of install.sh says what its last step sets up. shikii hook install --yes writes hooks for Claude Code and Codex
+// and, since 0.34.0, the plugin that runs the same hooks in OpenCode 2.x, so the comment names all three.
+func TestInstallShHeaderNamesEveryAgentHookInstallSetsUp(t *testing.T) {
+	head, _, ok := strings.Cut(string(readInstallSh(t)), "\nset -eu\n")
+	if !ok {
+		t.Fatal("install.sh no longer starts with its comment and set -eu; check this test by hand")
+	}
+	step, _, _ := strings.Cut(head[strings.Index(head, "hook install --yes"):], "Run shikii --init")
+	for _, agent := range []string{"Claude Code", "Codex", "OpenCode"} {
+		if !strings.Contains(step, agent) {
+			t.Errorf("the comment on the hook install step does not name %s: %q", agent, step)
+		}
+	}
+}
