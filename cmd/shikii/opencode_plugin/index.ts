@@ -59,7 +59,12 @@ export default Plugin.define({
     const generation = new Map<string, number>() // sessionID -> counts the person's requests: a slow stop of an older one is dropped
     const running = new Set<string>() // sessionIDs with a turn this instance saw start and has not stopped yet
     const seen = new Set<string>() // sessionIDs this instance saw a request of
-    const sessions = new Map<string, { child: boolean; dir?: string }>()
+    const sessions = new Map<string, { child: boolean; dir?: string }>() // what ctx.session.get said; forgotten when the session moves
+    // the text of the assistant message a turn ended with, from session.text.ended: a summary in the middle of a turn takes the turn's
+    // messages out of ctx.session.context, and stop would get no reply
+    const texts = new Map<string, { id: string; byOrdinal: Map<number, string> }>()
+    // Known limit: a turn is only in this instance's memory. When OpenCode reloads the plugins (a file under plugins/ changed) the turns
+    // that were running get no stop. Keeping them in ctx.storage is not done: whether it is per project has not been checked.
 
     // a session of this plugin's own project that is not a subagent's: Claude Code runs no UserPromptSubmit or Stop for a subagent's
     // session, and a session of another folder belongs to the plugin instance of that folder. When unsure, add nothing.
@@ -130,10 +135,13 @@ export default Plugin.define({
         const messages: any = await ctx.session.context({ sessionID })
         const list: any[] = Array.isArray(messages) ? messages : []
         const last = [...list].reverse().find((m) => m?.type === "assistant")
-        const reply = (last?.content ?? [])
+        let reply = (last?.content ?? [])
           .filter((part: any) => part?.type === "text")
           .map((part: any) => part.text)
           .join("\n")
+        const kept = texts.get(sessionID)
+        texts.delete(sessionID)
+        if (!reply && kept) reply = [...kept.byOrdinal.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1]).join("\n")
         const active = continued.get(sessionID) === true
         continued.set(sessionID, false) // read once: a continuation this stop sends sets it again when its prompt arrives
         const out = await hook("stop", sessionID, { last_assistant_message: reply, stop_hook_active: active })
@@ -154,15 +162,15 @@ export default Plugin.define({
     const woken = async (sessionID: string) => {
       if (!sessionID || !seen.has(sessionID) || running.has(sessionID) || !(await mine(sessionID)) || running.has(sessionID)) return
       running.add(sessionID)
-      continued.set(sessionID, false)
-      bump(sessionID)
+      continued.set(sessionID, false) // the number of the person's requests is not moved: a stop that runs now still has its answer heard
     }
 
     // a turn that ended without succeeding gets no stop (Claude Code runs no Stop when the person interrupts a turn or the model fails),
     // so it is no longer running: a summary asked for afterwards runs no stop. A turn superseded by the person's next message is left
     // alone, the prompt hook of that message may already have marked the new turn.
     const ended = (sessionID: string) => {
-      running.delete(sessionID) // continued is read at the next stop only: the next request and a woken turn set it again
+      running.delete(sessionID)
+      texts.delete(sessionID) // continued is read at the next stop only: the next request and a woken turn set it again
     }
 
     const onEvent = async (ev: any) => {
@@ -172,7 +180,13 @@ export default Plugin.define({
         if (ev.type === "session.execution.succeeded") await stop(sid)
         else if (ev.type === "session.execution.failed" || (ev.type === "session.execution.interrupted" && ev.data?.reason !== "superseded")) ended(sid)
         else if (ev.type === "session.inbox.enqueued" && ev.data?.item?.type === "synthetic" && ev.data.item.payload?.metadata?.source === "subagent") await woken(sid)
-        else if (ev.type === "session.compaction.ended" && seen.has(sid)) {
+        else if (ev.type === "session.moved") sessions.delete(sid) // ask again where it is now
+        else if (ev.type === "session.text.ended" && running.has(sid) && typeof ev.data?.text === "string") {
+          const id = String(ev.data.assistantMessageID)
+          let t = texts.get(sid)
+          if (!t || t.id !== id) texts.set(sid, (t = { id, byOrdinal: new Map() }))
+          t.byOrdinal.set(Number(ev.data.ordinal) || 0, ev.data.text)
+        } else if (ev.type === "session.compaction.ended" && seen.has(sid) && (await mine(sid))) {
           // the summary replaced the past the brief was in: ask again now, the rest of the turn needs it; until it answers the old one stays
           const out = await hook("session-start", sid)
           if (out !== undefined) brief.set(sid, additional(out))

@@ -131,6 +131,12 @@ for (const step of scenario.steps) {
       // any other event of OpenCode's, with the session and what the event adds (an interrupted turn's reason, a failure's error)
       broadcast({ type: step.type, data: { sessionID: step.sid, ...(step.data ?? {}) } })
       if (!step.nowait) await settle()
+    } else if (step.op === "move") {
+      // session.move (POST /api/session/:id/move on 2.3.0): the session is in another project folder, ctx.session.get answers the new one
+      // from then on, and session.moved is told to every instance
+      sessions[step.sid] = { ...(sessions[step.sid] ?? { id: step.sid }), location: { directory: step.dir } }
+      broadcast({ type: "session.moved", data: { sessionID: step.sid } })
+      await settle()
     } else if (step.op === "settle") {
       await settle()
     } else if (step.op === "release") {
@@ -828,6 +834,8 @@ func TestOpenCodePluginASubagentsReportWakesTheParentForATurnOfItsOwn(t *testing
 	}
 }
 
+// The "superseded" order below was never seen on 2.3.0: no place that sends it was found, and a message sent while a turn runs joined
+// the same execution without an interrupted event (steer and queue alike). It is a made-up order that fixes what the plugin does with it.
 // A turn that ends without succeeding (the person interrupted it, OpenCode shut down, the model failed) gets no stop, as Claude Code runs
 // no Stop for those: a summary the person asks for right after it runs no stop either. A turn superseded by the person's next message
 // does not end the new turn: the new turn's stop still runs once (measured on 2.3.0: interrupted carries the reason user, shutdown,
@@ -935,5 +943,120 @@ func TestPluginTestsFailInsteadOfSkippingOnCI(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	if why := pluginNodeProblem(); !strings.Contains(why, "not installed") {
 		t.Errorf("a PATH without node is a problem the tests name: %q", why)
+	}
+}
+
+// Measured on 2.3.0: a subagent runs in the background, and its report wakes the parent for a turn of its own. When the report comes while
+// the parent's stop still runs (shikii's Stop may ask its model for up to 20 seconds), the block of that stop is still sent: the person
+// typed nothing, so the request number does not move.
+func TestOpenCodePluginABlockIsKeptWhenASubagentsReportComesDuringTheStop(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "stop", 1, `{"decision":"block","reason":"SAVE-THE-RECORD"}`)
+	b.hold(t, "stop", 1)
+	run, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "a request that starts a subagent in the background"},
+		{"op": "succeeded", "sid": "s1", "nowait": true}, // stop 1 starts and waits (shikii asks its model)
+		{"op": "waitCalls", "event": "stop", "count": 1},
+		{"op": "subagent", "sid": "s1", "nowait": true}, // the child finishes meanwhile: its report wakes the parent
+		{"op": "release", "event": "stop", "n": 1},
+		{"op": "settle"},
+	}})
+	if len(run.Errors) != 0 {
+		t.Fatalf("the steps ran: %v", run.Errors)
+	}
+	if n := countCalls(calls, "user-prompt-submit"); n != 1 {
+		t.Fatalf("precondition: the person sent one request: %d", n)
+	}
+	sent := false
+	for _, p := range run.Prompts {
+		if p.Text == "SAVE-THE-RECORD" {
+			sent = true
+		}
+	}
+	if !sent {
+		t.Errorf("the block of the stop was dropped because a subagent's report came while it ran (the person sent nothing): prompts %+v", run.Prompts)
+	}
+}
+
+// A session moved to another project folder (session.move, event session.moved) belongs to the instance of the new folder from then on:
+// the instance of the old folder asks again where it is, and runs no stop and no session-start for it.
+func TestOpenCodePluginAMovedSessionRunsItsHooksOnlyInItsNewFolder(t *testing.T) {
+	b := newPluginBox(t)
+	projectA := b.otherProject(t)
+	_, calls := b.play(t, map[string]any{
+		"locations": map[string]any{"A": projectA, "B": b.project},
+		"sessions":  map[string]any{"s1": map[string]any{"id": "s1", "location": map[string]any{"directory": projectA}}},
+		"steps": []map[string]any{
+			{"op": "prompt", "at": "A", "sid": "s1", "text": "a request in project A"},
+			{"op": "succeeded", "sid": "s1"},
+			{"op": "move", "sid": "s1", "dir": b.project},
+			{"op": "prompt", "at": "B", "sid": "s1", "text": "a request after the move, it starts a subagent"},
+			{"op": "succeeded", "sid": "s1"},
+			{"op": "subagent", "sid": "s1"}, // the report wakes the parent
+			{"op": "succeeded", "sid": "s1"},
+			{"op": "compaction", "sid": "s1"},
+		},
+	})
+	moved := false
+	for _, c := range calls {
+		if c.Event == "user-prompt-submit" && c.Pwd == b.project {
+			moved = true
+			continue
+		}
+		if moved && c.Pwd != b.project {
+			t.Errorf("after the move, shikii hook %s ran in the old folder %s", c.Event, c.Pwd)
+		}
+	}
+	if !moved {
+		t.Fatalf("precondition: the request after the move ran in project B: %+v", calls)
+	}
+	if n := len(stopsOf(calls)); n != 3 {
+		t.Errorf("three turns ended (A's request, B's request, the woken turn): %d stops", n)
+	}
+}
+
+// A summary in the middle of a turn takes the turn's messages out of ctx.session.context, so stop would be given no reply. The plugin
+// keeps the text of the last assistant message from session.text.ended ({sessionID, assistantMessageID, ordinal, text}) and uses it
+// only when the context gives none; a new message replaces what was kept of the older one.
+func TestOpenCodePluginGivesStopTheReplyWhenASummaryTookItOutOfTheContext(t *testing.T) {
+	b := newPluginBox(t)
+	text := func(sid, id string, ordinal int, text string) map[string]any {
+		return map[string]any{"op": "event", "type": "session.text.ended", "sid": sid, "data": map[string]any{"assistantMessageID": id, "ordinal": ordinal, "text": text}}
+	}
+	_, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "a long request"},
+		text("s1", "m1", 0, "OLD-STEP-TEXT"),
+		text("s1", "m1", 2, "OLD-THIRD-PART"), // an older message: none of it is kept once a newer message starts
+		text("s1", "m2", 1, "SECOND-PART"),
+		text("s1", "m2", 0, "FIRST-PART"),
+		{"op": "compaction", "sid": "s1"}, // the context now holds no message of the turn (the fake ctx answers an empty list)
+		{"op": "succeeded", "sid": "s1"},
+		{"op": "prompt", "sid": "s1", "text": "the next request"},
+		{"op": "succeeded", "sid": "s1"}, // no text this turn: nothing left over from the last one
+	}})
+	stops := stopsOf(calls)
+	if len(stops) != 2 {
+		t.Fatalf("two turns ended: %+v", stops)
+	}
+	if got := stops[0].Stdin["last_assistant_message"]; got != "FIRST-PART\nSECOND-PART" {
+		t.Errorf("stop gets the text of the last assistant message from the events: %q", got)
+	}
+	if got := stops[1].Stdin["last_assistant_message"]; got != "" {
+		t.Errorf("a turn without text is not given the last turn's reply: %q", got)
+	}
+}
+
+// The context comes first: when it still holds the reply, the kept text is not used.
+func TestOpenCodePluginPrefersTheContextsReplyToTheKeptText(t *testing.T) {
+	b := newPluginBox(t)
+	_, calls := b.play(t, map[string]any{
+		"messages": map[string]any{"s1": []map[string]any{{"type": "assistant", "content": []map[string]any{{"type": "text", "text": "FROM-THE-CONTEXT"}}}}},
+		"steps": []map[string]any{
+			{"op": "prompt", "sid": "s1", "text": "x"},
+			{"op": "event", "type": "session.text.ended", "sid": "s1", "data": map[string]any{"assistantMessageID": "m1", "ordinal": 0, "text": "FROM-THE-EVENT"}},
+			{"op": "succeeded", "sid": "s1"},
+		}})
+	if got := stopsOf(calls)[0].Stdin["last_assistant_message"]; got != "FROM-THE-CONTEXT" {
+		t.Errorf("the context's reply is used: %q", got)
 	}
 }
