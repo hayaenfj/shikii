@@ -168,7 +168,7 @@ Stop ───────────── shikii hook stop ──────
 - 裏の作業の完了通知(Claude Code がサブエージェントや背景のコマンドの終わりを「ユーザーの発言」として流す `<task-notification>` / `[SYSTEM NOTIFICATION - NOT USER INPUT]`)は依頼ではない: 考える前の 2 問は聞かず、依頼・一覧・pending も置き換えない(実測で記録の半分近くがこれだった)。通知の後に作業が続いたら、そのターンの終わりで元の依頼に対して「範囲か・終えたか」をもう一度判定する(本人の選択: 長い裏作業の最後の状態を測る。1 つの依頼に通知の数だけ判定が残る)
 - 重なり: Stop(依頼 A)がモデル待ちの間に次の依頼 B が控えを書いても、Stop A が残す物(judged、previous、返答の控え)は A の控えにしか当たらない(依頼ごとの識別子も比べるため、同じ文を繰り返した依頼も区別する)。pending は自分が見た trace だけ settle、一覧は先頭行の依頼のハッシュが合う時だけ比べる。`agent_id` の付いた UserPromptSubmit(サブエージェント等)は人の依頼ではないので控えを変えない
 - hook.log の 1 行は 400 バイトで切る(モデルの誤りの文に応答本文が付いてくることがある)
-- Claude Code 側の契約(公式の hooks reference、2026-10-18): hook は stdin に `session_id` `cwd` `prompt` `stop_hook_active` `last_assistant_message` を受け、stdout の `hookSpecificOutput.additionalContext`(UserPromptSubmit)とトップレベルの `systemMessage` を返せる。Stop で `hookSpecificOutput` を返すと会話が続くので返さない
+- Claude Code 側の契約(公式の hooks reference、2026-10-18): hook は stdin に `session_id` `cwd` `prompt` `stop_hook_active` `last_assistant_message` を受け、stdout の `hookSpecificOutput.additionalContext`(UserPromptSubmit)とトップレベルの `systemMessage` を返せる。Claude Code は `additionalContext` を 10,000 文字まで表示して残りを切るので、依頼の hook は文の全体をその中に収め、準備済みの作業の receipt を先頭に置く。Stop で `hookSpecificOutput` を返すと会話が続くので返さない
 - Codex 側の契約(learn.chatgpt.com/docs/hooks、2026-10-19): 同じ event 名と stdin の鍵(`Stop` にも `last_assistant_message` と `stop_hook_active`)に、Codex だけの `turn_id` と `model` が足される。Stop の出力は JSON か無出力(shikii は出す時は JSON、出さない時は無出力)。Codex 0.164 は Claude Code と同じ `{"decision":"block","reason":…}` を読み、理由を人の側の発言として受けて同じターンを続ける(2 回目の Stop は `stop_hook_active`。0.9.2 の監査で確かめた)。shikii は Codex と Claude Code を見分けない(両方同じ 2 つの問い)
 
 ## claude-jev から移る人へ

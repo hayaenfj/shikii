@@ -10,6 +10,10 @@
 - Before a request, shikii's lessons reach the model, and when a required record is missing at the end of the work, OpenCode is asked to continue. With several projects open in OpenCode, each conversation's hooks run in its own project.
 - `shikii doctor` checks the shikii binary the plugin runs, and `shikii uninstall` removes only shikii's plugin. A folder, file or link of your own with the same name is never overwritten.
 
+### Fixes
+
+- The prepared work the request hook delivers now fits within what Claude Code shows of a hook's context, with the receipt first. It was often cut before, and the receipt and the later lessons did not reach the agent.
+
 ### Limits
 
 - shikii's plugin does not show text to you, so guard explanations and the other notes shikii shows in Claude Code and Codex do not appear in OpenCode. shikii's plugin adds no hook before a command either, so guards that refuse a command do not run there.

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -26,14 +25,17 @@ func prepareHookWork(root string, in *hookInput, out *hookOut) {
 	}
 	notice := fmt.Sprintf("shikii: this task is prepared below. Read its context and evidence before working. Recover omitted originals; add topic words in query with work prepare using its receipt when needed. Do not prepare again from scratch or run hook plan query. End by sending the IDs below and result on standard input to %s work record (or as work to the MCP tool shikii_wiki, operation record). If preparation is replaced, use its new receipt.\n", noticeCommand()) + planJSON(in.SessionID, in.workTurn)
 	base := strings.Replace(out.Context, prior, notice, 1)
+	// The prepared work is written in the reading order of every other reply (receipt first), and the whole context, with the lessons
+	// and notices before it, is bounded by what the agent is shown: what does not fit is left out by limitWorkPreparation, which
+	// names it in output with the way back to it.
 	render := func(v any) hookOut {
-		b, _ := json.Marshal(v)
+		b, _ := orderedReply(v)
 		next := *out
 		next.Context = joinLines(base, "shikii prepared work:\n"+string(b))
 		return next
 	}
-	req := workRequest{SessionID: in.SessionID, TurnID: in.workTurn, Query: cut(strings.TrimSpace(in.Prompt), requestMax), fromHook: true, MaxBytes: 28672}
-	req.responseSize = func(v any) int { return len(render(v).json(hookEventName("user-prompt-submit"))) }
+	req := workRequest{SessionID: in.SessionID, TurnID: in.workTurn, Query: cut(strings.TrimSpace(in.Prompt), requestMax), fromHook: true, MaxBytes: hookContextMax}
+	req.responseSize = func(v any) int { return hookContextLength(render(v).Context) }
 	v, err := prepareWork(root, s.Scope, req)
 	if err != nil {
 		hookLog("work prepare: " + err.Error())
@@ -65,4 +67,20 @@ func hookWorkReceipt(root, scope, session, turn string) (string, error) {
 		return "", errors.New("these IDs do not name an unchanged hook preparation; use the receipt of the latest work prepare")
 	}
 	return workEncode(workToken{Session: session, Turn: turn, Nonce: w.Nonce}), nil
+}
+
+// hookContextMax is the most of a hook's additionalContext Claude Code shows: it cuts the rest at 10,000 characters
+// ("Hook additionalContext truncated at 10000 chars"), counted as JavaScript counts a string's length, in UTF-16 code units.
+const hookContextMax = 10_000
+
+// hookContextLength counts s as hookContextMax does: a character outside the Basic Multilingual Plane counts twice.
+func hookContextLength(s string) int {
+	n := 0
+	for _, r := range s {
+		n++
+		if r > 0xFFFF {
+			n++
+		}
+	}
+	return n
 }

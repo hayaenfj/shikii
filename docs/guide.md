@@ -655,7 +655,7 @@ and failed refs can be retried without resending it. Internal scope/completion
 grades do not ask people to score agents. A concrete task choice may still need
 the person's answer.
 
-Optional max_bytes bounds a prepare response (28672 bytes by default on the CLI; a longer request is not cut, and the reply grows to hold it; the hook keeps 64 KiB of a request); omitted bodies retain exact recovery
+Optional max_bytes bounds a prepare response (28672 bytes by default on the CLI; a longer request is not cut, and the reply grows to hold it; the hook keeps 64 KiB of a request, and the work it prepares fits, with the rest of its context, within the 10,000 characters Claude Code shows); omitted bodies retain exact recovery
 queries. Sentence-boundary excerpts and same-receipt body or identical-excerpt reuse
 reduce rereading; reused excerpts never establish a full-body read.
 Identical host reading notices can be shared verbatim in `reading_notices` within
