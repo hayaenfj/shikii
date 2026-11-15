@@ -31,7 +31,7 @@
 ### Fixes
 
 - When a record exceeds a per-call limit, the refusal names the field and its limit, says that nothing of that record was saved, and asks to send it again within the limits and the rest in a later record with the same receipt.
-- When an MCP client drops fields sent beside `work`, the refusal says, with an example, that every field goes inside `work`.
+- When an MCP client drops fields sent beside `work`, the refusal says, with an example, that every field except `operation` and `project` goes inside `work`.
 - When evidence names a source captured outside the task, the refusal now says which sources it accepts. It used to suggest the same kind of source it had just refused.
 - A receipt changed by one character while being copied is no longer reported as belonging to an earlier request. The refusal asks for the receipt exactly as it was returned.
 

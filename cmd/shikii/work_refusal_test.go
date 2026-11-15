@@ -493,7 +493,8 @@ func TestARefusedOverLimitRecordSaysNothingWasSaved(t *testing.T) {
 // work sent beside it instead of inside it. The client dropped every argument its tool schema does not name (receipt, result), so
 // shikii never saw them and refused what was left with a different cause each time: "prepare/record needs a work object" (twice),
 // an invalid receipt for work:{query}, and "record needs content" for work:{receipt}. The agent fixed one field per call. Each of
-// these refusals over MCP now says that every field of the call goes inside work, with the shape of a record.
+// these refusals over MCP now says that every field of the call except operation and project goes inside work, with the shape of
+// a record.
 func TestARefusalOfWorkWithoutItsFieldsSaysTheyGoInsideWork(t *testing.T) {
 	repo, root, _ := planningFixture(t)
 	h := newServer(serveOpts{storeDir: root, projectScope: feedbackScope(repo)})
@@ -520,15 +521,32 @@ func TestARefusalOfWorkWithoutItsFieldsSaysTheyGoInsideWork(t *testing.T) {
 		{"record whose result the client dropped", `{"operation":"record","work":{"receipt":` + string(receipt) + `}}`, "record needs content that was judged or observed"},
 	} {
 		text := refusal(c.args)
-		for _, w := range []string{c.cause, "every field of the call goes inside work", `{\"operation\":\"record\",\"work\":{\"receipt\":`} {
+		for _, w := range []string{c.cause, "every field of the call except operation and project goes inside work", `{\"operation\":\"record\",\"work\":{\"receipt\":`} {
 			if !strings.Contains(text, w) {
 				t.Errorf("%s: the refusal lacks %q: %s", c.name, w, text)
 			}
 		}
 	}
 	// a refusal that is not about a missing field keeps its own words: a receipt that was sent but is not one
-	if text := refusal(`{"operation":"record","work":{"receipt":"not-a-receipt","result":{"changed":"x"}}}`); strings.Contains(text, "every field of the call goes inside work") {
+	if text := refusal(`{"operation":"record","work":{"receipt":"not-a-receipt","result":{"changed":"x"}}}`); strings.Contains(text, "goes inside work") {
 		t.Errorf("a receipt that was sent is not a field left out: %s", text)
+	}
+	// What the refusal says of operation and project holds (audit of 0.33.0, U-7: it said every field goes inside work): project
+	// inside work is a field work does not have, and beside work the same record goes through.
+	record := func(work map[string]any, project bool) string {
+		args := map[string]any{"operation": "record", "work": work}
+		if project {
+			args["project"] = repo
+		}
+		raw, _ := json.Marshal(args)
+		return string(raw)
+	}
+	result := map[string]any{"changed": "Checked the CSV export."}
+	if text := refusal(record(map[string]any{"project": repo, "receipt": prepared["receipt"], "result": result}, false)); !strings.Contains(text, `unknown field \"project\" in work`) {
+		t.Errorf("project inside work is refused: %s", text)
+	}
+	if got, _ := mcpToolCall(t, h, "shikii_wiki", record(map[string]any{"receipt": prepared["receipt"], "result": result}, true)); got["structuredContent"].(map[string]any)["complete"] != true {
+		t.Errorf("project beside work records: %v", got)
 	}
 }
 
