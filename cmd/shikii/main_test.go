@@ -182,6 +182,14 @@ func TestMain(m *testing.M) {
 	for _, k := range []string{"TYPESAFE_API_KEY", "DECISIONS_API_KEY", "SHIKII_MODEL", "XDG_CONFIG_HOME"} {
 		os.Unsetenv(k)
 	}
+	// A test's temporary folder under a TMPDIR that sits inside a Git working tree would be found by git as part of that repository, and
+	// init (and the tests of it) would write .mcp.json, opencode.json and .shikii/ into the repository outside. git does not search at or
+	// above the temporary folder.
+	ceilings := os.TempDir()
+	if old := os.Getenv("GIT_CEILING_DIRECTORIES"); old != "" {
+		ceilings += string(os.PathListSeparator) + old
+	}
+	os.Setenv("GIT_CEILING_DIRECTORIES", ceilings)
 	// No test asks this machine's model server or looks on its PATH. Closing the port used to be each test's own work (hookEnv,
 	// freshMachine), and a test that only set a temporary HOME and ran init or hook install asked http://127.0.0.1:8080/health and
 	// found this machine's llama-server (0.31.0 audit C A-8, audit D A-6 and U-10: 17 tests did). Now every test starts closed: one
@@ -200,4 +208,11 @@ func TestMain(m *testing.M) {
 	store.SyncTemp = func(*os.File) error { return nil }
 	syncPersonFile = func(*os.File) error { return nil }
 	os.Exit(m.Run())
+}
+
+// A temporary folder is never found to be inside a repository above it: git is told not to search at or above the temporary folder.
+func TestGitDoesNotSearchAboveTheTemporaryFolder(t *testing.T) {
+	if !strings.Contains(os.Getenv("GIT_CEILING_DIRECTORIES"), os.TempDir()) {
+		t.Errorf("GIT_CEILING_DIRECTORIES must hold the temporary folder %s: %q", os.TempDir(), os.Getenv("GIT_CEILING_DIRECTORIES"))
+	}
 }
