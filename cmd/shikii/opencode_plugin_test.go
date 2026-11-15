@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -959,5 +960,45 @@ func TestOpenCodePluginLeavesTheTemporaryFileOfAnInstallStillWriting(t *testing.
 	}
 	if !fileExists(writing) || fileExists(left) {
 		t.Errorf("uninstall keeps the running install's temporary file (%v) and removes the left one (%v)", fileExists(writing), !fileExists(left))
+	}
+}
+
+// The command doctor suggests for an OpenCode started with OPENCODE_CONFIG_DIR works where that folder has no plugins/ yet (the audit
+// confirm1: a bare ln -s failed there), and the line says the link is the person's to remove after uninstall. The command is taken from
+// doctor's line and run with sh.
+func TestDoctorsLinkCommandForAnotherConfigFolderWorks(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	home := t.TempDir()
+	exe := filepath.Join(t.TempDir(), "shikii")
+	writeFileT(t, exe, "binary")
+	if err := os.Chmod(exe, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writePluginT(t, wantPluginDir(home), exe)
+	other := filepath.Join(t.TempDir(), "my opencode") // no plugins/ in it yet, and a space in the path
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OPENCODE_CONFIG_DIR", other)
+	var line string
+	for _, l := range registeredBinaryLines(home, exe) {
+		if strings.Contains(l, "OPENCODE_CONFIG_DIR is set") {
+			line = l
+		}
+	}
+	_, command, ok := strings.Cut(line, "yourself: ")
+	command, _, _ = strings.Cut(command, " (")
+	if !ok || command == "" {
+		t.Fatalf("doctor suggests a command: %q", line)
+	}
+	if out, err := exec.Command("/bin/sh", "-c", command).CombinedOutput(); err != nil {
+		t.Errorf("the suggested command fails: %s: %v\n%s", command, err, out)
+	}
+	got, err := os.ReadFile(filepath.Join(other, "plugins", opencodePluginFolder, opencodeIndexFile))
+	if err != nil || string(got) != opencodePluginFiles(exe)[opencodeIndexFile] {
+		t.Errorf("after the command, OpenCode finds shikii's plugin under $OPENCODE_CONFIG_DIR/plugins: %v", err)
+	}
+	if !strings.Contains(line, "uninstall") {
+		t.Errorf("the line says the link is yours to remove after shikii uninstall: %q", line)
 	}
 }

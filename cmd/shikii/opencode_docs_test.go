@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -210,6 +211,43 @@ func TestDocsSayOnlyShikiisPluginLacksShownTextAndACommandHook(t *testing.T) {
 	for name, text := range docs {
 		for _, sentence := range opencodeLimitSentences(text) {
 			t.Errorf("%s: %q says OpenCode (or any plugin) cannot show text or has no hook before a command; OpenCode 2.3.0 has both, so say it of shikii's plugin", name, sentence)
+		}
+	}
+}
+
+// The documents that say an OpenCode started with OPENCODE_CONFIG_DIR does not read shikii's plugin also say how to link it there, the
+// way doctor says it (mkdir -p first: TestDoctorsLinkCommandForAnotherConfigFolderWorks), and that the link stays after uninstall. The
+// command each document gives is run with sh, with a HOME of the test's and an OPENCODE_CONFIG_DIR that has no plugins/ yet.
+func TestDocsTellHowToLinkShikiisPluginUnderOPENCODE_CONFIG_DIR(t *testing.T) {
+	for _, f := range []string{"README.md", "docs/readme/README_ja.md", "integrations/claude-code.md", "integrations/claude-code.ja.md"} {
+		var command string
+		for _, paragraph := range strings.Split(readDocT(t, f), "\n") {
+			if !strings.Contains(paragraph, "OPENCODE_CONFIG_DIR/plugins") || !strings.Contains(paragraph, "shikii uninstall") {
+				continue
+			}
+			for i, span := range strings.Split(paragraph, "`") {
+				if i%2 == 1 && strings.HasPrefix(span, "mkdir -p ") && strings.Contains(span, " && ln -s ") {
+					command = span
+				}
+			}
+		}
+		if command == "" {
+			t.Errorf("%s does not say how to link shikii's plugin under $OPENCODE_CONFIG_DIR/plugins (mkdir -p, ln -s) and that the link stays after shikii uninstall", f)
+			continue
+		}
+		home := t.TempDir()
+		writePluginT(t, filepath.Join(home, ".config", "opencode", "plugins", opencodePluginFolder), "/opt/shikii")
+		other := filepath.Join(t.TempDir(), "my opencode")
+		if err := os.MkdirAll(other, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command("/bin/sh", "-c", command)
+		cmd.Env = []string{"HOME=" + home, "OPENCODE_CONFIG_DIR=" + other, "PATH=/usr/bin:/bin"}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Errorf("%s: the command fails: %s: %v\n%s", f, command, err, out)
+		}
+		if got, err := os.ReadFile(filepath.Join(other, "plugins", opencodePluginFolder, opencodeIndexFile)); err != nil || string(got) != opencodePluginFiles("/opt/shikii")[opencodeIndexFile] {
+			t.Errorf("%s: after the command, OpenCode does not find shikii's plugin under $OPENCODE_CONFIG_DIR/plugins: %v", f, err)
 		}
 	}
 }

@@ -139,6 +139,8 @@ Goを上げた後や実行ファイルを動かした後にhookが働かなく�
 
 **OpenCodeについて。** OpenCode 2.xにはhookの設定ファイルが無いので、`shikii hook install --yes`(と、この機械で最初の `shikii --init`)が、小さなプラグインを `~/.config/opencode/plugins/shikii/` に置きます(`$XDG_CONFIG_HOME` が絶対パスの時は、その下の `opencode/` です)。Claude CodeやCodexと同じhookを動かすので、依頼の前にshikiiの教訓がモデルに届き、必要な記録が残っていなければ、回の終わりに続きを促します。この終了時の確認は、OpenCode の試験段階の hook(OpenCode 2.3.0)を使って回の中で動くので、TUI でも `opencode run` でも動きます。その hook を動かさない OpenCode では回が終わった後にしか確認できず、自前のサーバーで動く `opencode run`(`--standalone`、または常駐のサービスが動いていない時)はその時にはもう終わっています。同じ名前のあなたのフォルダは上書きせず、リンクもたどらず、その旨を表示して残します。`OPENCODE_CONFIG_DIR` を設定して起こしたOpenCodeは、そのフォルダの `plugins/` からだけプラグインを読むので、shikiiのプラグインを読みません。shikiiはそこへは書かず、`shikii doctor` がそう知らせます。OpenCode 1.xはこのフォルダを読まず、これまでどおりMCPの設定とskillだけを使います。shikiiのプラグインはコマンドの前のhookを持たないので、コマンドを拒む止める検査はOpenCodeでは動きません(終了時の確認は動きます)。shikiiのプラグインはあなたへ文も見せないので、Claude CodeやCodexで表示するshikiiの文(止める検査の説明、答えを待つ数、自動の続きを止めた知らせ)は、OpenCodeには出ません。入れた後はOpenCodeを開き直してください。
 
+**`OPENCODE_CONFIG_DIR` を使うOpenCodeについて。** それを設定して起こしたOpenCodeにshikiiのプラグインを読ませるには、そのフォルダの `plugins/` へ、shikiiのフォルダのリンクを自分で置きます: `mkdir -p "$OPENCODE_CONFIG_DIR/plugins" && ln -s ~/.config/opencode/plugins/shikii "$OPENCODE_CONFIG_DIR/plugins/shikii"`(`shikii doctor` があなたのパスでこのコマンドを出します)。リンクはあなたの物なので、`shikii uninstall` は残します。外した後は自分で消してください。
+
 ### 更新
 
 ```sh
