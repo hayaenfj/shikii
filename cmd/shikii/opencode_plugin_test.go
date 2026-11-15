@@ -963,6 +963,33 @@ func TestOpenCodePluginLeavesTheTemporaryFileOfAnInstallStillWriting(t *testing.
 	}
 }
 
+// A temporary file dated an hour ahead (the clock was set back after an install stopped) is no running install's: an install that runs
+// now made its file within the last minute. Install and uninstall remove it, or it would stay for as long as the clock is behind.
+func TestOpenCodePluginRemovesATemporaryFileDatedAhead(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	home := t.TempDir()
+	ahead := filepath.Join(wantPluginDir(home), ".write-12.tmp")
+	for _, step := range []struct {
+		name string
+		run  func() error
+	}{
+		{"install", func() error { _, err := installOpencodePlugin(home, "/opt/a/shikii", true); return err }},
+		{"uninstall", func() error { _, err := removeOpencodePlugin(home, true); return err }},
+	} {
+		writeFileT(t, ahead, "half")
+		later := time.Now().Add(time.Hour)
+		if err := os.Chtimes(ahead, later, later); err != nil {
+			t.Fatal(err)
+		}
+		if err := step.run(); err != nil {
+			t.Fatal(err)
+		}
+		if fileExists(ahead) {
+			t.Errorf("%s keeps the temporary file dated an hour ahead", step.name)
+		}
+	}
+}
+
 // The command doctor suggests for an OpenCode started with OPENCODE_CONFIG_DIR works where that folder has no plugins/ yet (the audit
 // confirm1: a bare ln -s failed there), and the line says the link is the person's to remove after uninstall. The command is taken from
 // doctor's line and run with sh.

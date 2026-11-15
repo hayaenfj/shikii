@@ -102,7 +102,12 @@ for (const [name, dir] of Object.entries(locations)) {
   const ctx = {
     location: scenario.noLocation ? undefined : { directory: dir },
     session: {
-      hook(n, fn) { hooks[n] = fn },
+      // idleHook: an OpenCode that refuses experimental.idle, with a throw ("throws") or a rejected promise ("rejects")
+      hook(n, fn) {
+        if (n === "experimental.idle" && scenario.idleHook === "throws") throw new Error("unknown hook " + n)
+        if (n === "experimental.idle" && scenario.idleHook === "rejects") return Promise.reject(new Error("unknown hook " + n))
+        hooks[n] = fn
+      },
       get: ({ sessionID }) => track(async () => sessions[sessionID] ?? { id: sessionID }),
       context: ({ sessionID }) => track(async () => scenario.messages?.[sessionID] ?? []),
       prompt: (arg) => track(async () => {
@@ -1810,6 +1815,29 @@ func TestOpenCodePluginDropsTheIdleStopsBlockWhenTheNextRequestComes(t *testing.
 	}
 	if stops[1].Stdin["stop_hook_active"] != false {
 		t.Errorf("the new request's stop is not stop_hook_active: %v", stops[1].Stdin)
+	}
+}
+
+// An OpenCode whose ctx.session.hook refuses experimental.idle (a throw, or a rejected promise): the plugin still loads, and the turn's
+// stop runs at session.execution.succeeded, once, and its block continues the turn.
+func TestOpenCodePluginRunsStopAtTheEndOfTheExecutionWhenOpenCodeRefusesTheIdleHook(t *testing.T) {
+	for _, how := range []string{"throws", "rejects"} {
+		t.Run(how, func(t *testing.T) {
+			b := newPluginBox(t)
+			b.answer(t, "stop", 1, `{"decision":"block","reason":"SAVE-THE-RECORD"}`)
+			run, calls := b.play(t, map[string]any{"idleHook": how, "messages": idleStopMessages, "steps": []map[string]any{
+				{"op": "prompt", "sid": "s1", "text": "a request"},
+				{"op": "idle", "sid": "s1"}, // no idle hook: the execution ends with succeeded, and the plugin hears it
+				{"op": "idle", "sid": "s1"},
+			}})
+			if len(run.Errors) != 0 {
+				t.Fatalf("no hook throws: %v", run.Errors)
+			}
+			stops := stopsOf(calls)
+			if len(stops) != 2 || len(run.Prompts) != 1 {
+				t.Errorf("the stop runs at succeeded and continues once: %d stops, %+v", len(stops), run.Prompts)
+			}
+		})
 	}
 }
 
