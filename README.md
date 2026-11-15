@@ -9,7 +9,7 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-2096%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2097%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.34.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -66,6 +66,7 @@ The AI part of the page and `shikii status` show whether it is working: whether 
 - **Edit or delete knowledge.** Open an article and choose Edit or Delete. Deletion removes it from search and delivery, while its sources and history remain.
 - **Read the work records when you want.** On the page, under Knowledge → Work records, you can read the agent's reports and see its screenshots.
 - **Now and then confirm a wording.** When a better way of asking is found, you check that it asks the same thing and press adopt or reject.
+- **Ask for a tidy-up when you want.** Ask the agent to "tidy shikii": it checks the wiki's wording against its sources and corrects overstatement and repeated explanations, keeping meaning, conditions, exceptions and history.
 
 Everything else is the machine's job.
 

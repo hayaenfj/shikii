@@ -9,7 +9,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-2096%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2097%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.34.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -66,6 +66,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 - **知識を編集・削除する。** 記事を開いて「編集」「削除」を選べます。削除すると検索や配信から外れ、出典と履歴は残ります。
 - **読みたい時に作業記録を読む。** 画面の「知識 → 作業記録」で、エージェントの報告を読み、画像を見られます。
 - **たまに聞き方を確かめる。** より良い聞き方が見つかったら、同じことを聞いているかを見て、採用か却下を押します。
+- **整理したい時に頼む。** 「shikiiを整理して」と頼むと、エージェントがwikiの文章を出典と照らし、言い過ぎや同じ説明の繰り返しを直します。意味・条件・例外・履歴は保ちます。
 
 それ以外は機械の仕事です。
 
