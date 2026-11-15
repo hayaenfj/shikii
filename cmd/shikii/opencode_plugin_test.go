@@ -578,8 +578,8 @@ func TestHookInstallMendsAnInstallThatDiedBeforeTheRename(t *testing.T) {
 	if !fileExists(filepath.Join(dir, opencodeIndexFile)) || !fileExists(filepath.Join(dir, opencodeJSONFile)) {
 		t.Errorf("the next install writes the plugin although shikii's own temporary file is in the folder:\n%s", out)
 	}
-	if !fileExists(filepath.Join(dir, ".write-1234567890.tmp")) {
-		t.Errorf("the temporary file is not removed: shikii removes only the two files it wrote")
+	if fileExists(filepath.Join(dir, ".write-1234567890.tmp")) {
+		t.Errorf("the temporary file an earlier install left is removed: it is shikii's own")
 	}
 	person := freshMachine(t)
 	writeFileT(t, filepath.Join(wantPluginDir(person), ".write-1.tmp"), "x")
@@ -718,5 +718,101 @@ func TestUpdateRewritesTheOpenCodePluginOnAMachineWithOnlyThePlugin(t *testing.T
 				t.Errorf("no hook of this binary: the update runs nothing, ran %q", got)
 			}
 		})
+	}
+}
+
+// An install that stopped between creating its temporary file and the rename leaves .write-<digits>.tmp in the plugin folder. OpenCode
+// reads every folder under plugins/ as a plugin, so a folder left with only that in it is a plugin without an entry: install and
+// uninstall remove shikii's own temporary files. Only a regular file of exactly that name, right in the folder, is one; a link or a folder
+// of that name, and every other file, stay (a link is not followed, what it points at stays too).
+func TestOpenCodePluginInstallAndUninstallRemoveTheTemporaryFilesAnInstallLeft(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Run("install", func(t *testing.T) {
+		home := freshMachine(t)
+		dir := wantPluginDir(home)
+		writeFileT(t, filepath.Join(dir, ".write-1234567890.tmp"), opencodePluginPackage[:10])
+		out := capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+		if left, _ := os.ReadDir(dir); len(left) != 2 || fileExists(filepath.Join(dir, ".write-1234567890.tmp")) {
+			t.Errorf("install writes the two files and removes the temporary file an earlier install left: %v\n%s", left, out)
+		}
+	})
+	t.Run("uninstall of shikii's plugin", func(t *testing.T) {
+		home := freshMachine(t)
+		dir := wantPluginDir(home)
+		writePluginT(t, dir, "/x/shikii")
+		writeFileT(t, filepath.Join(dir, ".write-42.tmp"), "half")
+		out := captureNoFail(func() error { return cmdUninstall([]string{"--yes"}) })
+		if fileExists(dir) {
+			left, _ := os.ReadDir(dir)
+			t.Errorf("uninstall removes the plugin with the temporary file, and the folder: %v\n%s", left, out)
+		}
+	})
+	t.Run("uninstall of a folder with only the temporary file", func(t *testing.T) {
+		home := freshMachine(t)
+		dir := wantPluginDir(home)
+		writeFileT(t, filepath.Join(dir, ".write-7.tmp"), "half")
+		preview := capture(t, func() error { return cmdUninstall(nil) })
+		if !fileExists(filepath.Join(dir, ".write-7.tmp")) || !strings.Contains(preview, "temporary file") {
+			t.Errorf("the preview names the temporary file and removes nothing:\n%s", preview)
+		}
+		out := captureNoFail(func() error { return cmdUninstall([]string{"--yes"}) })
+		if fileExists(dir) {
+			t.Errorf("uninstall removes the temporary file and the folder it leaves empty:\n%s", out)
+		}
+		writeFileT(t, filepath.Join(dir, ".write-8.tmp"), "half")
+		hook := capture(t, func() error { return cmdHook([]string{"uninstall", "--yes"}) })
+		if fileExists(dir) {
+			t.Errorf("hook uninstall removes it too:\n%s", hook)
+		}
+	})
+	t.Run("what is not shikii's temporary file stays", func(t *testing.T) {
+		home := freshMachine(t)
+		dir := wantPluginDir(home)
+		writePluginT(t, dir, "/x/shikii")
+		target := filepath.Join(home, "dotfiles", "kept.txt")
+		writeFileT(t, target, "mine")
+		symlinkT(t, target, filepath.Join(dir, ".write-1.tmp"))
+		writeFileT(t, filepath.Join(dir, ".write-2.tmp", "inside.txt"), "mine")
+		writeFileT(t, filepath.Join(dir, ".write-mine.tmp"), "mine")
+		writeFileT(t, filepath.Join(dir, "notes.txt"), "mine")
+		writeFileT(t, filepath.Join(dir, "sub", ".write-3.tmp"), "mine")
+		captureNoFail(func() error { return cmdUninstall([]string{"--yes"}) })
+		for _, kept := range []string{".write-2.tmp/inside.txt", ".write-mine.tmp", "notes.txt", "sub/.write-3.tmp"} {
+			if !fileExists(filepath.Join(dir, kept)) {
+				t.Errorf("%s is not shikii's temporary file and stays", kept)
+			}
+		}
+		if info, err := os.Lstat(filepath.Join(dir, ".write-1.tmp")); err != nil || info.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("a link named like the temporary file stays: %v %v", info, err)
+		}
+		if got, _ := os.ReadFile(target); string(got) != "mine" {
+			t.Errorf("what the link points at stays")
+		}
+	})
+}
+
+// What shikii removes from the plugin folder is an allowed list: the two files and a temporary file right in the folder. Anything else is
+// refused, whatever its name.
+func TestOpenCodePluginRemovesOnlyItsFilesAndTemporaryFiles(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", "")
+	dir := wantPluginDir(home)
+	for _, allowed := range []string{filepath.Join(dir, "index.ts"), filepath.Join(dir, "package.json"), filepath.Join(dir, ".write-123.tmp")} {
+		if !opencodePluginRemovable(home, allowed) {
+			t.Errorf("shikii may remove %s", allowed)
+		}
+	}
+	for _, refused := range []string{
+		filepath.Join(dir, "notes.txt"),
+		filepath.Join(dir, ".write-x.tmp"),
+		filepath.Join(dir, ".write-1.tmp.bak"),
+		filepath.Join(dir, "sub", ".write-1.tmp"),
+		filepath.Join(filepath.Dir(dir), "mine", ".write-1.tmp"),
+		filepath.Join(filepath.Dir(dir), ".write-1.tmp"),
+		dir,
+	} {
+		if opencodePluginRemovable(home, refused) {
+			t.Errorf("shikii must not remove %s", refused)
+		}
 	}
 }

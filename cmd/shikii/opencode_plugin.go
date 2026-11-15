@@ -155,7 +155,8 @@ func opencodePluginStateOf(dir string) opencodePluginState {
 // opencodeOwnTempFile says whether a directory entry is the temporary file writeAtomic makes next to a file it writes: a regular file
 // named .write-<digits>.tmp (os.CreateTemp fills the * with digits). A folder or a link of that name is not: it is a person's. One that an install
 // left behind when it stopped before the rename is not a person's file: the folder with only that in it counts as empty, so the next
-// install writes the plugin. It is never removed (shikii removes only the two files below).
+// install writes the plugin, and install and uninstall remove it (removeOpencodeTempFiles): OpenCode reads every folder under plugins/
+// as a plugin, and a folder left with only that in it would be one without an entry.
 func opencodeOwnTempFile(e os.DirEntry) bool {
 	return e.Type().IsRegular() && opencodeTempName.MatchString(e.Name())
 }
@@ -169,9 +170,55 @@ func opencodePluginWritable(home, path string) bool {
 	return path == filepath.Join(dir, opencodeJSONFile) || path == filepath.Join(dir, opencodeIndexFile)
 }
 
-// installOpencodePlugin puts the plugin in place for the binary exe. With write false it only says what it would do. The result is
-// "added", "updated" (shikii's own, with other content: an older version or another binary path), "same", or "left" (a person's
-// folder is there: nothing is written; the error is nil, install goes on without it).
+// opencodePluginRemovable is the allowed list of what shikii removes from the plugin folder: the two files, and a temporary file of
+// writeAtomic's name right in the folder. Nothing else, whatever its name. Every removal goes through it.
+func opencodePluginRemovable(home, path string) bool {
+	return opencodePluginWritable(home, path) || filepath.Dir(path) == opencodePluginDir(home) && opencodeTempName.MatchString(filepath.Base(path))
+}
+
+// opencodeTempFiles lists the temporary files an install left in the plugin folder (opencodeOwnTempFile), by path. None when the folder
+// is not a real folder (a link to one is a person's).
+func opencodeTempFiles(home string) []string {
+	dir := opencodePluginDir(home)
+	if info, err := os.Lstat(dir); err != nil || !info.IsDir() {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	for _, e := range entries {
+		if opencodeOwnTempFile(e) {
+			paths = append(paths, filepath.Join(dir, e.Name()))
+		}
+	}
+	return paths
+}
+
+// removeOpencodeTempFiles removes the temporary files an install left in the plugin folder and says how many it removed. Each is looked
+// at again right before it is removed, without following a link: only a regular file is removed, so a link or a folder that took the
+// name in between stays (and what a link points at is never touched).
+func removeOpencodeTempFiles(home string) (int, error) {
+	n := 0
+	for _, path := range opencodeTempFiles(home) {
+		if !opencodePluginRemovable(home, path) {
+			return n, errors.New(path + " is outside the OpenCode plugin folder")
+		}
+		if info, err := os.Lstat(path); err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
+// installOpencodePlugin puts the plugin in place for the binary exe, and removes the temporary files an earlier install left. With write
+// false it only says what it would do. The result is "added", "updated" (shikii's own, with other content: an older version or another
+// binary path), "same", or "left" (a person's folder is there: nothing is written or removed; the error is nil, install goes on without it).
 func installOpencodePlugin(home, exe string, write bool) (string, error) {
 	dir := opencodePluginDir(home)
 	state := opencodePluginStateOf(dir)
@@ -199,6 +246,11 @@ func installOpencodePlugin(home, exe string, write bool) (string, error) {
 			return "", err
 		}
 	}
+	if write {
+		if _, err := removeOpencodeTempFiles(home); err != nil {
+			return "", err
+		}
+	}
 	return result, nil
 }
 
@@ -212,13 +264,21 @@ func writeOpencodePluginFile(home, path string, content []byte) error {
 	return writeAtomicMode(path, content, 0o644)
 }
 
-// removeOpencodePlugin removes shikii's plugin: its two files, then the folder when nothing else is in it. It returns what is at the
-// plugin folder; only shikii's own (opencodePluginShikii) is removed, a person's folder stays. With write false it only says what it
-// would find.
+// removeOpencodePlugin removes shikii's plugin: its two files and the temporary files an install left, then the folder when nothing else
+// is in it. It returns what is at the plugin folder; only shikii's own (opencodePluginShikii) is removed, a person's folder stays. A
+// folder that holds only temporary files counts as absent, and they are removed too (opencodeTempFiles says whether there are any). With
+// write false it only says what it would find.
 func removeOpencodePlugin(home string, write bool) (opencodePluginState, error) {
 	dir := opencodePluginDir(home)
 	state := opencodePluginStateOf(dir)
-	if state != opencodePluginShikii || !write {
+	if state == opencodePluginForeign || !write {
+		return state, nil
+	}
+	if state == opencodePluginAbsent {
+		if n, err := removeOpencodeTempFiles(home); err != nil || n == 0 {
+			return state, err
+		}
+		_ = os.Remove(dir) // only when nothing else is in it
 		return state, nil
 	}
 	for _, name := range []string{opencodeIndexFile, opencodeJSONFile} {
@@ -226,12 +286,15 @@ func removeOpencodePlugin(home string, write bool) (opencodePluginState, error) 
 		if s, _ := opencodeFileState(path, name); s != opencodePluginShikii { // checked again right before removing
 			continue
 		}
-		if !opencodePluginWritable(home, path) {
+		if !opencodePluginRemovable(home, path) {
 			return state, errors.New(path + " is outside the OpenCode plugin folder")
 		}
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return state, err
 		}
+	}
+	if _, err := removeOpencodeTempFiles(home); err != nil {
+		return state, err
 	}
 	_ = os.Remove(dir) // only when nothing else is in it
 	return state, nil

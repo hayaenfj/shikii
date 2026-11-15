@@ -534,42 +534,61 @@ func pct(p float64) int { return int(math.Round(p * 100)) }
 // installOpencodePlugin what it would do (without writing), so the preview says what the install will do: add, update, or change nothing.
 func opencodePluginPreview(home, exe string, install bool) string {
 	shown := displayUnder(home)(opencodePluginDir(home))
+	temps := ""
+	if n := len(opencodeTempFiles(home)); n > 0 {
+		temps = "; " + opencodeTempNote(n)
+	}
 	if install {
 		res, _ := installOpencodePlugin(home, exe, false)
 		switch res {
 		case "left":
 			return fmt.Sprintf("%s: %s is there, so the OpenCode plugin is left as it is (not written)", shown, opencodeNotShikiis)
 		case "same":
-			return fmt.Sprintf("%s: shikii's OpenCode plugin is already there as this install would write it, so nothing changes", shown)
+			return fmt.Sprintf("%s: shikii's OpenCode plugin is already there as this install would write it, so nothing changes%s", shown, temps)
 		case "updated":
-			return fmt.Sprintf("%s: update shikii's OpenCode plugin (package.json and index.ts) to the one that runs `%s hook <event>`; anything else in the folder stays", shown, exe)
+			return fmt.Sprintf("%s: update shikii's OpenCode plugin (package.json and index.ts) to the one that runs `%s hook <event>`; anything else in the folder stays%s", shown, exe, temps)
 		}
-		return fmt.Sprintf("%s: add the OpenCode plugin (package.json and index.ts) that runs `%s hook <event>` for OpenCode 2.x (user-prompt-submit and session-start before a turn, stop after it); OpenCode 1.x does not read it and keeps using only the MCP server. A folder of yours with that name is never overwritten; a second install changes nothing", shown, exe)
+		return fmt.Sprintf("%s: add the OpenCode plugin (package.json and index.ts) that runs `%s hook <event>` for OpenCode 2.x (user-prompt-submit and session-start before a turn, stop after it); OpenCode 1.x does not read it and keeps using only the MCP server. A folder of yours with that name is never overwritten; a second install changes nothing%s", shown, exe, temps)
 	}
 	switch state, _ := removeOpencodePlugin(home, false); state {
 	case opencodePluginShikii:
-		return fmt.Sprintf("%s: remove shikii's OpenCode plugin (its two files; anything else in the folder and your other plugins stay)", shown)
+		return fmt.Sprintf("%s: remove shikii's OpenCode plugin (its two files; anything else in the folder and your other plugins stay)%s", shown, temps+opencodeFolderGoes)
 	case opencodePluginForeign:
 		return fmt.Sprintf("%s: not shikii's plugin (%s), so it stays", shown, opencodeNotShikiis)
 	}
+	if temps != "" {
+		return fmt.Sprintf("%s: no shikii OpenCode plugin found%s%s", shown, temps, opencodeFolderGoes)
+	}
 	return fmt.Sprintf("%s: no shikii OpenCode plugin found, nothing to remove", shown)
 }
+
+// opencodeTempNote says what is done with the n temporary files an install of the plugin left when it stopped before the rename.
+func opencodeTempNote(n int) string {
+	return fmt.Sprintf("remove the %d temporary file(s) (.write-<digits>.tmp) an install of shikii's OpenCode plugin left when it stopped", n)
+}
+
+// opencodeFolderGoes is added to opencodeTempNote when the plugin is taken out.
+const opencodeFolderGoes = "; the folder goes when nothing else is in it"
 
 // hookInstallOpencodePlugin puts OpenCode's plugin in place (install) or takes it out (uninstall) and says what happened.
 func hookInstallOpencodePlugin(home string, install bool) error {
 	shown := displayUnder(home)(opencodePluginDir(home))
 	if !install {
+		temps := len(opencodeTempFiles(home))
 		state, err := removeOpencodePlugin(home, true)
 		switch {
 		case err != nil:
 			return err
 		case state == opencodePluginShikii:
 			fmt.Fprintf(stdout, "%s: OpenCode plugin removed. Reopen OpenCode for it to take effect\n", shown)
+		case state == opencodePluginAbsent && temps > 0:
+			fmt.Fprintf(stdout, "%s: removed the %d temporary file(s) an install of shikii's OpenCode plugin left when it stopped\n", shown, temps)
 		default:
 			fmt.Fprintf(stdout, "%s: no shikii OpenCode plugin found, nothing changed\n", shown)
 		}
 		return nil
 	}
+	temps := len(opencodeTempFiles(home))
 	res, err := installOpencodePlugin(home, shikiiBinaryPath(), true)
 	if err != nil {
 		// as when Codex's registration cannot be fixed: one line, and the install goes on. A config folder that cannot be written (owned
@@ -587,6 +606,10 @@ func hookInstallOpencodePlugin(home string, install bool) error {
 		fmt.Fprintf(stdout, "%s: OpenCode plugin was already there, nothing changed (OpenCode 2.x)\n", shown)
 	default:
 		fmt.Fprintf(stdout, "%s: %s is there, so the OpenCode plugin is left as it is. Move it away and run shikii hook install --yes again to get lessons in OpenCode 2.x\n", shown, opencodeNotShikiis)
+		return nil
+	}
+	if temps > 0 {
+		fmt.Fprintf(stdout, "%s: removed the %d temporary file(s) an earlier install left when it stopped\n", shown, temps)
 	}
 	return nil
 }

@@ -101,6 +101,14 @@ func cmdUninstall(args []string) error {
 		}})
 	case opencodePluginForeign:
 		left = append(left, fmt.Sprintf("%s is not shikii's OpenCode plugin (%s), so it is left as it is; remove it by hand if it is shikii's", tilde(pluginDir), opencodeNotShikiis))
+	case opencodePluginAbsent:
+		// an install that stopped before it wrote the files left only its temporary files: OpenCode would read the folder as a plugin
+		if temps := opencodeTempFiles(home); len(temps) > 0 {
+			steps = append(steps, uninstallStep{fmt.Sprintf("%s: %s%s", tilde(pluginDir), opencodeTempNote(len(temps)), opencodeFolderGoes), func() error {
+				_, err := removeOpencodePlugin(home, true)
+				return err
+			}})
+		}
 	}
 	// 2) Codex's MCP server
 	codex := filepath.Join(home, ".codex", "config.toml")
