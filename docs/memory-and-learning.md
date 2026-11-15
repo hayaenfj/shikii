@@ -112,6 +112,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.30.8 | That decision can be undone on the page. Lines you were writing before a request are no longer treated as the agent's. |
 | 0.31.0 | An agent's calls to its memory fail less often. A message you send mid-work no longer costs the agent what it had read. |
 | 0.32.0 | Checks wiki wording against sources while preserving meaning; delivers prepared context and saved articles for review. |
+| 0.33.0 | Agents read only the section of a reference they need, and the MCP tool definition is smaller. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -332,3 +333,11 @@ Ask the agent to "tidy shikii" to review existing articles against their origina
 New or revised claims are checked against the original request and sources before saving. Interpretations, translations and combined sources receive a separate review when available; direct copying that meets the skill's conditions can be checked by the author. The agent reports any unavailable independent review. These instructions guide the agent; they do not guarantee the quality of every generated sentence.
 
 Request hooks now deliver prepared context directly. After saving an edited article, shikii returns its text and source references for review, and distinguishes successful saving from completed review. The agent still checks the content and records its review. Stored knowledge keeps its sources and history.
+
+### In 0.33.0, agents read less
+
+0.31.0 and 0.32.0 reduced failed calls to the memory and the work of recording. 0.33.0 looked at how much an agent reads before that. Counting this machine's conversation records showed agents reading the whole recording guide at the start of a task, and the MCP tool definitions taking a large part of each session. Codex and OpenCode take those definitions whole in every session.
+
+So the skill and the preparation reply now link to a section of a long reference, and the skill says how to read one section. The MCP tool definition leaves out operations that were almost never called, and a description repeated in several places is written once. The removed operations still run from the CLI, and calling one over MCP returns the way to do it.
+
+After the change, the same small request was sent once each to Claude Code, Codex and OpenCode. All three finished the work without reading the recording guide whole. Each ran once, so the difference is not separated from variation between runs.

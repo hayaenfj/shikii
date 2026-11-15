@@ -2,6 +2,20 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.33.0 — Agents read less and get a smaller MCP tool
+
+### Highlights
+
+- The skill and the preparation reply point agents to the one section of a long reference they need, and the skill explains how to read only that section. Agents no longer read the whole recording guide at the start of a task.
+- The `shikii_wiki` MCP tool definition is smaller. `organize`, `reconcile` and `diagnose` are no longer offered over MCP; run them with the CLI. Over MCP, check an approach or reuse a procedure by adding `proposal` or `conditions` to a prepared task. Calling a removed operation over MCP returns the way to do it.
+
+### Fixes
+
+- When a record exceeds a per-call limit, the refusal names the field and its limit and asks for the rest with the same receipt.
+- When an MCP client drops fields sent beside `work`, the refusal says, with an example, that every field goes inside `work`.
+- When evidence names a source captured outside the task, the refusal now says which sources it accepts. It used to suggest the same kind of source it had just refused.
+- A receipt changed by one character while being copied is no longer reported as belonging to an earlier request. The refusal asks for the receipt exactly as it was returned.
+
 ## 0.32.0 — Review wiki wording and reduce recording work
 
 ### Highlights
