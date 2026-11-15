@@ -113,6 +113,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.31.0 | An agent's calls to its memory fail less often. A message you send mid-work no longer costs the agent what it had read. |
 | 0.32.0 | Checks wiki wording against sources while preserving meaning; delivers prepared context and saved articles for review. |
 | 0.33.0 | Agents read only the section of a reference they need, and the MCP tool definition is smaller. |
+| 0.34.0 | OpenCode 2.x also gets lessons through hooks and is asked for the record at the end of the work. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -341,3 +342,9 @@ Request hooks now deliver prepared context directly. After saving an edited arti
 So the skill and the preparation reply now link to a section of a long reference, and the skill says how to read one section. The MCP tool definition leaves out operations that were almost never called, and a description repeated in several places is written once. The removed operations still run from the CLI, and calling one over MCP returns the way to do it.
 
 After the change, the same small request was sent once each to Claude Code, Codex and OpenCode. All three finished the work without reading the recording guide whole. Each ran once, so the difference is not separated from variation between runs.
+
+### In 0.34.0, OpenCode gets the hooks
+
+Until now OpenCode had only the MCP settings, so shikii could not deliver lessons before a request or ask for a record at the end of the work. OpenCode 2.x lets a plugin follow a conversation, so shikii installs a plugin that runs the same hooks as in Claude Code and Codex.
+
+One OpenCode server serves the conversations of several projects, and its notices reach the plugin of every project. Each conversation's hooks therefore run only in its own project, and the check at the end of the work runs once for each piece of work. The plugin went through five rounds of independent audit and was checked with a real OpenCode 2.3.0. The cases where lessons do not arrive, such as moving a conversation to another project in the middle of the work, are listed in the integration guide.

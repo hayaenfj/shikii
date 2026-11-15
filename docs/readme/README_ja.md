@@ -12,9 +12,9 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 [![Tests](https://img.shields.io/badge/tests-2072%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.33.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.34.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.33.0では、エージェントが長い参照のうち必要な節だけを読むようになり、MCP の `shikii_wiki` の道具の説明も小さくなりました。作業の前に読む量が減ります。記録を断る時も、次に送る物が分かるように案内します。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
+0.34.0では、OpenCode 2.x でも shikii の hook が働きます。Claude Code や Codex と同じように、依頼の前に教訓がモデルに届き、作業の終わりに足りない記録を促します。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
 
 同じプロジェクトへ書く本体を全て更新し、hookなしの場合は既存のプロジェクトで `shikii --init` を実行して作法も更新してください。その後、エージェントのセッション・ページ・MCPを起動し直します。既存の記録を保持し、原資料を残したメモリ更新作業をエージェントへ届けます。進捗は英語で表示します。詳しくは[記憶と学習](../memory-and-learning.ja.md)を参照してください。
 
@@ -120,7 +120,7 @@ export PATH="$HOME/.local/bin:$PATH"
 shikii hook install --yes
 ```
 
-シェルの設定でも `~/.local/bin` をPATHに加え、続けて手順3で利用するプロジェクトを初期化してください。版を指定する時は、両方のコマンドの `@latest` を `@v0.33.0` のようなタグへ置き換えます。
+シェルの設定でも `~/.local/bin` をPATHに加え、続けて手順3で利用するプロジェクトを初期化してください。版を指定する時は、両方のコマンドの `@latest` を `@v0.34.0` のようなタグへ置き換えます。
 
 Goを上げた後や実行ファイルを動かした後にhookが働かなくなったら、上のインストーラーのコマンドをもう一度流してください。多くは実行ファイルそのものが消えていて(miseのようなGoの版の管理ツールでは、Goを上げると `go install` が置いた版ごとのフォルダごと消えます)、`shikii doctor` も一緒に消えています。`shikii` がまだ動く時は `shikii doctor` を流すと、hookやCodexの登録が、もう無い・動かせないshikiiの実行ファイルを指している時はそう言い、直し方を出します。
 
@@ -171,6 +171,8 @@ shikiiがエージェントに入れた物を外します。`~/.claude/settings.
 手順の再利用では、今の条件と依頼・行動の内容に合う実行結果を最大2件返し、関連する以前の失敗も残します。同点は新しい順とし、関連する文脈が無ければ従来どおり新しい結果を使います。返す内容は比較の候補であり、成功・人の正解・実行の許可にはしません。chitenを使わなくても、この選び方と通常の記録を利用できます。[集合知の使い方](../guide.ja.md#変更を受け渡し並行した仕事を比べる0230)を参照してください。
 
 hookを入れると、毎回のターンの2つの瞬間が残ります。エージェントが始める前の依頼と、終えた後の返答と変わったファイルです。次の人の発言が一組を閉じます。前の依頼の続きだけの発言(「ok」「続けて」「それでいこう」など)は、前の依頼にまとめます。続きかどうかはエージェントが着手前の整理で決め、決まった相づちの一覧は予備です。エージェントはそこから出典付きの教訓を書き、shikiiは似た仕事の前に関係する教訓を届けます。エージェントは振り返りで、届いた教訓が役立ったかを報告します。保存した評価から、同じ入り口で繰り返し使われなかった教訓や判断を妨げた教訓を、判断と証拠付きで優先して見直しに回します。エージェントが出典を確認してから編集し、変更不要という判断も保存できます。不明な評価や古い版の評価を、悪い評価として扱いません。
+
+0.34.0では、`shikii hook install --yes` が OpenCode 2.x 用の小さなプラグインも入れ、OpenCode でも Claude Code や Codex と同じように shikii の hook が働きます。OpenCode にはプラグインからあなたへ文を見せる場所とコマンドの前の hook が無いので、止める検査の説明は出ず、コマンドを拒む止める検査も動きません。教訓が届かない場面は[連携の文書](../../integrations/claude-code.ja.md)に書いています。
 
 0.33.0では、作法と準備の返答が長い参照のファイル全体ではなく節を示し、節だけを読む方法を作法に書きます。MCP では `organize`・`reconcile`・`diagnose` を CLI に任せ、作業案の確認と手順の再利用は、準備した作業に `proposal` か `conditions` を付けて行います。外した操作を MCP で呼ぶと、代わりの使い方を返します。
 

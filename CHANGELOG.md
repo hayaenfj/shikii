@@ -2,16 +2,18 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## Unreleased — Hooks for OpenCode 2.x
+## 0.34.0 — shikii's hooks for OpenCode 2.x
 
 ### Highlights
 
-- OpenCode 2.x gets shikii's hooks, as Claude Code and Codex do. `shikii hook install --yes` (and the first `shikii --init` on a machine) puts a small plugin in `~/.config/opencode/plugins/shikii/`, or under `$XDG_CONFIG_HOME/opencode/` when that is set. Before a request, shikii's lessons reach the model; at the end of a turn, a required record continues the turn. The plugin has no hook before a command, so guards that refuse a command do not run there. Reopen OpenCode after installing. OpenCode 1.x keeps using only the MCP setup and the skill.
-- In OpenCode, `shikii hook stop` runs once at the end of each turn, in the folder of the project the session belongs to, even when OpenCode has several projects open. A turn is a request of yours, a continuation shikii asked for, or a subagent's report that wakes the session; a summary of the conversation that you ask for, a turn you interrupt and a turn that fails run no stop, as in Claude Code. After a summary in the middle of a turn, the session's lessons are asked for again at once, and a slow stop that answers after you sent the next request is dropped instead of continuing the older one.
-- In OpenCode, a conversation moved to another project runs its hooks in the folder it moved to. A subagent's report that arrives while the end-of-turn check is running does not discard that check's answer, and the check still gets the turn's last reply when a summary was taken in the middle of the turn.
-- An install of the OpenCode plugin that was cut off halfway is finished by the next install.
-- OpenCode 2.x gives plugins no place to show text to you, so what shikii shows you in Claude Code and Codex (a guard's explanation, the number of answers waiting, a note that automatic continuing stopped) does not appear there.
-- A plugin folder, file or link of your own with the same name is never overwritten or followed. The preview of `shikii hook install` says whether the plugin will be added, updated or left unchanged, as the install decides it. `shikii doctor` checks the shikii binary the plugin runs, and `shikii uninstall` removes only shikii's plugin files.
+- OpenCode 2.x gets shikii's hooks, as Claude Code and Codex do. `shikii hook install --yes` (and the first `shikii --init` on a machine) installs a small plugin in `~/.config/opencode/plugins/shikii/`; reopen OpenCode after installing it.
+- Before a request, shikii's lessons reach the model, and when a required record is missing at the end of the work, OpenCode is asked to continue. With several projects open in OpenCode, each conversation's hooks run in its own project.
+- `shikii doctor` checks the shikii binary the plugin runs, and `shikii uninstall` removes only shikii's plugin. A folder, file or link of your own with the same name is never overwritten.
+
+### Limits
+
+- OpenCode gives plugins no place to show text to you, so guard explanations and the other notes shikii shows in Claude Code and Codex do not appear there. A plugin has no hook before a command, so guards that refuse a command do not run.
+- OpenCode 1.x still uses only the MCP settings and the skill.
 
 ## 0.33.0 — Agents read less and get a smaller MCP tool
 

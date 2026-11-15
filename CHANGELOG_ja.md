@@ -2,16 +2,18 @@
 
 [English](CHANGELOG.md) · **日本語**
 
-## 未公開 — OpenCode 2.x のhook
+## 0.34.0 — OpenCode 2.x でも shikii の hook が働く
 
 ### 主な変更
 
-- OpenCode 2.xでも、Claude CodeやCodexと同じようにshikiiのhookが働きます。`shikii hook install --yes`(と、この機械で最初の `shikii --init`)が、小さなプラグインを `~/.config/opencode/plugins/shikii/`(`$XDG_CONFIG_HOME` を設定していれば、その下の `opencode/`)に置きます。依頼の前にshikiiの教訓がモデルに届き、必要な記録が残っていなければ、回の終わりに続きを促します。プラグインにはコマンドの前のhookが無いので、コマンドを拒む止める検査は動きません。入れた後はOpenCodeを開き直してください。OpenCode 1.xはMCPの設定とskillだけを使います。
-- OpenCodeでは、複数のプロジェクトを開いていても、`shikii hook stop` は回の終わりごとに1回、その会話のプロジェクトのフォルダで動きます。回とは、あなたの依頼、shikiiが促した続き、サブエージェントの報告で会話が動き出した分です。あなたが頼んだ会話の要約だけの実行や、あなたが中断した回、失敗した回でも、Claude Codeと同じく動きません。回の途中で要約された後は、会話の教訓をその場で取り直します。遅い終了時の確認が次の依頼の後に答えても、前の依頼の続きにはせず捨てます。
-- OpenCodeで、別のプロジェクトへ移した会話は、移した先のフォルダでhookが動きます。終了時の確認の最中にサブエージェントの報告が届いても、その確認の答えは捨てません。回の途中で要約されても、終了時の確認には回の最後の返事を渡します。
-- 途中で止まったOpenCodeのプラグインのinstallは、次のinstallが書き直して仕上げます。
-- OpenCode 2.xにはプラグインがあなたへ文を見せる場所が無いので、Claude CodeやCodexでshikiiが表示する文(止める検査の説明、答えを待つ数、自動の続きを止めた知らせ)はOpenCodeには出ません。
-- 同じ名前のあなたのフォルダ・ファイル・リンクは、上書きもたどりもしません。`shikii doctor` はプラグインが動かすshikiiの実行ファイルを確かめ、`shikii uninstall` はshikiiのプラグインのファイルだけを外します。`shikii hook install` の事前の表示は、プラグインを追加するのか、更新するのか、変えないのかを、実際の処理と同じ決め方で示します。
+- OpenCode 2.x でも、Claude Code や Codex と同じように shikii の hook が働きます。`shikii hook install --yes`(と、この機械で最初の `shikii --init`)が小さなプラグインを `~/.config/opencode/plugins/shikii/` に置きます。入れた後は OpenCode を開き直してください。
+- 依頼の前に教訓がモデルに届き、作業の終わりに必要な記録が無ければ続きを促します。OpenCode で複数のプロジェクトを開いていても、各会話の hook はその会話のプロジェクトで動きます。
+- `shikii doctor` はプラグインが動かす shikii を確かめ、`shikii uninstall` は shikii のプラグインだけを外します。同じ名前のあなたのフォルダ・ファイル・リンクは上書きしません。
+
+### 制限
+
+- OpenCode にはプラグインからあなたへ文を見せる場所が無いので、止める検査の説明など、Claude Code と Codex で表示する文は出ません。プラグインにはコマンドの前の hook が無いので、コマンドを拒む止める検査も動きません。
+- OpenCode 1.x は、これまでどおり MCP の設定と skill だけを使います。
 
 ## 0.33.0 — エージェントが読む量と、MCP の道具の説明を減らす
 
