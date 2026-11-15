@@ -40,14 +40,23 @@ type notebookRequest struct {
 	Content      string                      `json:"content,omitempty"` // body to write to a work record (handoff_write / handoff_append)
 }
 
+// workFieldsInside follows the refusals of prepare and record that a field left out of work causes. An MCP client can drop the
+// arguments its tool schema does not name: OpenCode 2.3.0 dropped receipt and result sent beside work (2026-11-15), and the agent
+// was refused four times, with a different cause each time, before it put them inside.
+const workFieldsInside = `every field of the call goes inside work, for example {"operation":"record","work":{"receipt":"<receipt>","result":{"changed":"..."}}}; an MCP client can drop fields sent beside work`
+
 func runNotebook(root, scope string, req notebookRequest) (any, error) {
 	b := notebook.Book{Root: root, Scope: scope}
 	switch req.Operation {
 	case "prepare", "record":
 		if req.Work == nil {
-			return nil, errors.New("prepare/record needs a work object")
+			return nil, errors.New("prepare/record needs a work object; " + workFieldsInside)
 		}
-		return runWork(root, scope, req.Operation, *req.Work)
+		result, err := runWork(root, scope, req.Operation, *req.Work)
+		if errors.Is(err, errNoRecordContent) || errors.Is(err, errInvalidReceipt) && req.Work.Receipt == "" {
+			err = fmt.Errorf("%w; %s", err, workFieldsInside)
+		}
+		return result, err
 	case "organize":
 		if req.Organization == nil {
 			return nil, errors.New("wiki organize needs an organization object")

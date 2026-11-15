@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -412,5 +413,48 @@ func TestARecordOverItsItemLimitsNamesTheLimit(t *testing.T) {
 		if !strings.Contains(err.Error(), w) {
 			t.Errorf("the refusal lacks %q: %v", w, err)
 		}
+	}
+}
+
+// Found on 2026-11-15 in OpenCode 2.3.0's run of the shikii_wiki tool: four refusals in a row came from one cause, the fields of
+// work sent beside it instead of inside it. The client dropped every argument its tool schema does not name (receipt, result), so
+// shikii never saw them and refused what was left with a different cause each time: "prepare/record needs a work object" (twice),
+// an invalid receipt for work:{query}, and "record needs content" for work:{receipt}. The agent fixed one field per call. Each of
+// these refusals over MCP now says that every field of the call goes inside work, with the shape of a record.
+func TestARefusalOfWorkWithoutItsFieldsSaysTheyGoInsideWork(t *testing.T) {
+	repo, root, _ := planningFixture(t)
+	h := newServer(serveOpts{storeDir: root, projectScope: feedbackScope(repo)})
+	refusal := func(args string) string {
+		t.Helper()
+		params, _ := json.Marshal(map[string]any{"name": "shikii_wiki", "arguments": json.RawMessage(args)})
+		reply := handleRPC(rpcRequest{JSONRPC: "2.0", ID: json.RawMessage("1"), Method: "tools/call", Params: params}, h)
+		result, _ := reply["result"].(map[string]any)
+		if result == nil || result["isError"] != true {
+			t.Fatalf("%s must be refused: %v", args, reply)
+		}
+		return result["content"].([]map[string]any)[0]["text"].(string)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": planningTestRequest})
+	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
+	prepared, err := workCall(t, b, "prepare", map[string]any{"session_id": "planning", "turn_id": loadSession(root, "planning").TurnID, "query": "CSV export"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, _ := json.Marshal(prepared["receipt"])
+	for _, c := range []struct{ name, args, cause string }{
+		{"prepare whose receipt the client dropped", `{"operation":"prepare","query":"memory-upgrade"}`, "prepare/record needs a work object"},
+		{"record whose receipt and result the client dropped", `{"operation":"record","work":{"query":"CSV export"}}`, "invalid work receipt"},
+		{"record whose result the client dropped", `{"operation":"record","work":{"receipt":` + string(receipt) + `}}`, "record needs content that was judged or observed"},
+	} {
+		text := refusal(c.args)
+		for _, w := range []string{c.cause, "every field of the call goes inside work", `{\"operation\":\"record\",\"work\":{\"receipt\":`} {
+			if !strings.Contains(text, w) {
+				t.Errorf("%s: the refusal lacks %q: %s", c.name, w, text)
+			}
+		}
+	}
+	// a refusal that is not about a missing field keeps its own words: a receipt that was sent but is not one
+	if text := refusal(`{"operation":"record","work":{"receipt":"not-a-receipt","result":{"changed":"x"}}}`); strings.Contains(text, "every field of the call goes inside work") {
+		t.Errorf("a receipt that was sent is not a field left out: %s", text)
 	}
 }

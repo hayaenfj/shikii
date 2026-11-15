@@ -12,6 +12,10 @@ import (
 // workAfterWrite is a deterministic failure point for persistence tests.
 var workAfterWrite = func(kind string) error { return nil }
 
+// errNoRecordContent is a record with nothing judged or observed in it. Over MCP it is also what is left when the client drops
+// the fields sent beside work, so runNotebook adds where they go.
+var errNoRecordContent = errors.New("record needs content that was judged or observed")
+
 // recordItemsOverLimit names each field of one work record over its fixed number of items, with the number sent and the limit (the
 // refusal said only "exceeds its fixed item limits" before, and an agent sending three notes had to read the code: 2026-11-15).
 func recordItemsOverLimit(req workRequest) []string {
@@ -46,7 +50,7 @@ func validateWorkRecording(req workRequest) error {
 		return errors.New("the recording batch exceeds its fixed item limits (" + strings.Join(over, "; ") + "); send the rest in another work record with the same receipt")
 	}
 	if req.Result == nil && req.Reading == nil && req.Trial == nil && req.Comparison == nil && req.Reasoning == nil && req.Agreed == nil && req.Open == nil && req.ContinuesPrevious == nil && len(req.Observations)+len(req.Notes)+len(req.Reviews)+len(req.Memory)+len(req.Reviewed)+len(req.Maintenance)+len(req.Discoveries)+len(req.Outcomes) == 0 {
-		return errors.New("record needs content that was judged or observed")
+		return errNoRecordContent
 	}
 	return validateWorkCompletion(req.Result)
 }
