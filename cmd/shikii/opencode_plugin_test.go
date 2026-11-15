@@ -641,3 +641,39 @@ func TestOpenCodePluginAPersonsFolderNamedLikeATemporaryFileIsNotTakenForOne(t *
 		})
 	}
 }
+
+// A machine whose ~/.config cannot be written (it is often owned by root after a sudo run) and that may not use OpenCode at all: in
+// 0.33.0, hook install --yes wrote the Claude Code and Codex hooks and finished with exit 0. The OpenCode plugin must not turn that into
+// a failure (install.sh runs it under set -eu and shikii update stops on it): install says in one line that the plugin could not be
+// written, as it does when Codex's registration cannot be fixed, and goes on to the local model and the answer page.
+func TestHookInstallGoesOnWhenTheOpenCodePluginCannotBeWritten(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes into a folder without write permission: the case cannot be made")
+	}
+	home := freshMachine(t)
+	config := filepath.Join(home, ".config")
+	if err := os.MkdirAll(config, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(config, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(config, 0o755) })
+	var err error
+	out := captureNoFail(func() error { err = cmdHook([]string{"install", "--yes"}); return err })
+	if b, rerr := os.ReadFile(filepath.Join(home, ".claude", "settings.json")); rerr != nil || !strings.Contains(string(b), " hook stop") {
+		t.Fatalf("the Claude Code hooks are written: %v %s", rerr, b)
+	}
+	if err != nil {
+		t.Errorf("hook install --yes fails because the OpenCode plugin cannot be written: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "answer page:") {
+		t.Errorf("the steps after the plugin (the local model, the answer page) are skipped:\n%s", out)
+	}
+	if !strings.Contains(out, "plugins/shikii: the OpenCode plugin could not be written") || !strings.Contains(out, "permission denied") {
+		t.Errorf("install says in one line that the plugin could not be written, and why:\n%s", out)
+	}
+	if fileExists(filepath.Join(config, "opencode")) {
+		t.Errorf("nothing is written under the folder that cannot be written")
+	}
+}

@@ -572,7 +572,11 @@ func hookInstallOpencodePlugin(home string, install bool) error {
 	}
 	res, err := installOpencodePlugin(home, shikiiBinaryPath(), true)
 	if err != nil {
-		return err
+		// as when Codex's registration cannot be fixed: one line, and the install goes on. A config folder that cannot be written (owned
+		// by root after a sudo run) must not fail the hooks of Claude Code and Codex, which are already written (install.sh runs this
+		// under set -eu, and shikii update stops on a failing hook install)
+		fmt.Fprintf(stdout, "%s: the OpenCode plugin could not be written (%v); Claude Code and Codex are not affected. Make the folder writable and run shikii hook install --yes again to get lessons in OpenCode 2.x\n", shown, err)
+		return nil
 	}
 	switch res {
 	case "added":
