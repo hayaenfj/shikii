@@ -83,8 +83,16 @@ async function settle() {
 }
 
 const prompts = []
-const contexts = []
+const contexts = [] // per model call: the system texts, then every text the plugin added to the messages
+const requests = [] // per model call: the system texts and every message's texts, as the model would get them
 const errors = []
+// measured on 2.3.0: the context hook gets the messages of the model call ({id, role, content}); a user message of the person's request
+// has the messageID of its prompt hook, and a summary's checkpoint may carry its text as a plain string
+const llm = {} // sessionID -> the messages of the next model call
+const queued = {} // sessionID -> messages sent while a turn runs, not delivered yet (steer waits for a step boundary)
+let lastID = 0
+const newID = () => "msg-" + (++lastID)
+const partsOf = (content) => typeof content === "string" ? [content] : Array.isArray(content) ? content.map((p) => String(p?.text ?? "")) : []
 const sessions = scenario.sessions ?? {}
 const locations = scenario.locations ?? { main: scenario.directory }
 const instances = {}
@@ -99,8 +107,10 @@ for (const [name, dir] of Object.entries(locations)) {
       context: ({ sessionID }) => track(async () => scenario.messages?.[sessionID] ?? []),
       prompt: (arg) => track(async () => {
         prompts.push(arg)
+        const id = newID()
+        ;(llm[arg.sessionID] ??= []).push({ id, role: "user", content: [{ type: "text", text: arg.text }] })
         // OpenCode runs the prompt hook for a prompt the plugin sends too
-        await hooks.prompt({ sessionID: arg.sessionID, prompt: { text: arg.text }, metadata: arg.metadata })
+        await hooks.prompt({ sessionID: arg.sessionID, messageID: id, prompt: { text: arg.text }, metadata: arg.metadata })
       }),
     },
     event: { subscribe() { return subscribe() } },
@@ -114,16 +124,32 @@ for (const step of scenario.steps) {
   try {
     const hooks = instances[step.at ?? first]
     if (step.op === "prompt") {
-      const sent = hooks.prompt({ sessionID: step.sid, prompt: { text: step.text }, metadata: step.metadata })
+      // queued: the message waits until a "deliver" step (sent while a turn runs); noMessageID: an OpenCode that gives the hook no messageID
+      const id = newID()
+      const message = { id, role: "user", content: [{ type: "text", text: step.text }] }
+      ;((step.queued ? queued : llm)[step.sid] ??= []).push(message)
+      const sent = hooks.prompt({ sessionID: step.sid, messageID: step.noMessageID ? undefined : id, prompt: { text: step.text }, metadata: step.metadata })
       // nowait: the next steps run while the prompt hook still works (settle waits for it)
       if (step.nowait) void track(() => sent); else await sent
     } else if (step.op === "context") {
-      const e = { sessionID: step.sid, system: [{ type: "text", text: "BASE" }] }
+      const given = llm[step.sid] ?? []
+      const e = { sessionID: step.sid, system: [{ type: "text", text: "BASE" }], messages: given.map((m) => ({ ...m, content: Array.isArray(m.content) ? m.content.map((p) => ({ ...p })) : m.content })) }
       await hooks.context(e)
-      contexts.push(e.system.map((s) => s.text))
+      const added = []
+      e.messages.forEach((m, i) => added.push(...partsOf(m.content).slice(partsOf(given[i]?.content).length)))
+      contexts.push([...e.system.map((s) => s.text), ...added.map((t) => t.trim())])
+      requests.push({ system: e.system.map((s) => s.text), messages: e.messages.map((m) => ({ id: m.id, role: m.role, texts: partsOf(m.content).map((t) => t.trim()) })) })
+    } else if (step.op === "deliver") {
+      ;(llm[step.sid] ??= []).push(...(queued[step.sid] ?? []))
+      queued[step.sid] = []
     } else if (step.op === "succeeded" || step.op === "compaction" || step.op === "subagent") {
       if (step.op === "succeeded") broadcast({ type: "session.execution.succeeded", data: { sessionID: step.sid } })
-      if (step.op === "compaction") broadcast({ type: "session.compaction.ended", data: { sessionID: step.sid } })
+      if (step.op === "compaction") {
+        // the summary replaces the messages: a checkpoint with the summary as a string, and the last step.keep messages (none by default)
+        const kept = step.keep ? (llm[step.sid] ?? []).slice(-step.keep) : []
+        llm[step.sid] = [{ id: newID(), role: "user", content: "SUMMARY-OF-THE-CONVERSATION" }, ...kept]
+        broadcast({ type: "session.compaction.ended", data: { sessionID: step.sid } })
+      }
       if (step.op === "subagent") {
         // measured on 2.3.0: the report of a finished subagent is put into the parent's inbox and wakes the parent; no prompt hook runs
         broadcast({ type: "session.inbox.enqueued", data: { sessionID: step.sid, inboxID: "inbox", item: { type: "synthetic", delivery: "steer", payload: { text: "<subagent/>", metadata: { source: "subagent", childID: "child", agent: "subagent", state: "completed" } } } } })
@@ -162,7 +188,7 @@ for (const step of scenario.steps) {
     errors.push(String(err))
   }
 }
-console.log(JSON.stringify({ prompts, contexts, errors }))
+console.log(JSON.stringify({ prompts, contexts, requests, errors }))
 process.exit(0)
 `
 
@@ -181,7 +207,18 @@ type pluginRun struct {
 		Metadata  map[string]any
 	}
 	Contexts [][]string
+	Requests []modelRequest
 	Errors   []string
+}
+
+// modelRequest is one model call as the fake OpenCode would send it: the system texts and every message's texts.
+type modelRequest struct {
+	System   []string
+	Messages []struct {
+		ID    string
+		Role  string
+		Texts []string
+	}
 }
 
 // pluginBox is one scenario's folders: the plugin made from the embedded text, the fake shikii and the project's folder.
@@ -375,8 +412,8 @@ func stopsOf(calls []pluginCall) []pluginCall {
 	return stops
 }
 
-// The brief of the session and the text of the request are in the system text of every model call, of the second request too:
-// text put there is not kept in the conversation. Each request has its own text, the brief is asked for once.
+// The brief of the session and the text of the request are in every model call, of the second request too: what the hooks give is not
+// kept in the conversation, so the plugin adds it to each call. Each request has its own text, the brief is asked for once.
 func TestOpenCodePluginGivesTheBriefAndTheRequestTextToEveryTurn(t *testing.T) {
 	b := newPluginBox(t)
 	b.answer(t, "session-start", 0, additionalJSON("BRIEF-OF-THE-SESSION"))
@@ -398,8 +435,10 @@ func TestOpenCodePluginGivesTheBriefAndTheRequestTextToEveryTurn(t *testing.T) {
 			t.Errorf("model call %d must carry the brief and %q: %q", i+1, want, got)
 		}
 	}
-	if slices.Contains(run.Contexts[2], "TEXT-OF-REQUEST-ONE") {
-		t.Errorf("the second request does not carry the first one's text: %q", run.Contexts[2])
+	// the first request's text stays on the first request's message (as Claude Code keeps it in the conversation), once: the second
+	// request does not add it again (where each text goes: TestOpenCodePluginPutsItsTextsOnThePersonsMessagesAndLeavesTheSystemAlone)
+	if n := strings.Count(strings.Join(run.Contexts[2], " "), "TEXT-OF-REQUEST-ONE"); n != 1 {
+		t.Errorf("the second request's call has the first one's text once, on its message: %d times in %q", n, run.Contexts[2])
 	}
 	if n := countCalls(calls, "session-start"); n != 1 {
 		t.Errorf("the brief is asked for once per session, asked %d times", n)
@@ -1473,5 +1512,138 @@ func TestOpenCodePluginForgetsADeletedSession(t *testing.T) {
 	}
 	if n := len(stopsOf(calls)); n != 1 {
 		t.Errorf("only the other session's turn ends with a stop: %d stops", n)
+	}
+}
+
+// textsOf is the texts of message i of a model call ("" texts and missing messages give nil).
+func textsOf(r modelRequest, i int) []string {
+	if i >= len(r.Messages) {
+		return nil
+	}
+	return r.Messages[i].Texts
+}
+
+// The model's system text is the same in every model call: a provider caches the start of a request, and a system text that changed
+// with every request made it start over each time. The brief goes on the first message of the conversation and each request's text on
+// that request's own message, where they stay in the later calls (as Claude Code keeps what its hooks add in the conversation), so the
+// earlier part of every call is sent as it was.
+func TestOpenCodePluginPutsItsTextsOnThePersonsMessagesAndLeavesTheSystemAlone(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "session-start", 0, additionalJSON("BRIEF-OF-THE-SESSION"))
+	b.answer(t, "user-prompt-submit", 1, additionalJSON("TEXT-OF-REQUEST-ONE"))
+	b.answer(t, "user-prompt-submit", 2, additionalJSON("TEXT-OF-REQUEST-TWO"))
+	run, _ := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "first"},
+		{"op": "context", "sid": "s1"},
+		{"op": "context", "sid": "s1"}, // a second model call of the same turn
+		{"op": "prompt", "sid": "s1", "text": "second"},
+		{"op": "context", "sid": "s1"},
+	}})
+	if len(run.Errors) != 0 || len(run.Requests) != 3 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	for i, r := range run.Requests {
+		if !slices.Equal(r.System, []string{"BASE"}) {
+			t.Errorf("model call %d: the system text is changed: %q", i+1, r.System)
+		}
+	}
+	one := []string{"first", "BRIEF-OF-THE-SESSION", "TEXT-OF-REQUEST-ONE"}
+	for i := range 3 {
+		if got := textsOf(run.Requests[i], 0); !slices.Equal(got, one) {
+			t.Errorf("model call %d: the first request's message carries the brief and its text, as in every call: %q", i+1, got)
+		}
+	}
+	if got := textsOf(run.Requests[2], 1); !slices.Equal(got, []string{"second", "TEXT-OF-REQUEST-TWO"}) {
+		t.Errorf("the second request's message carries its own text: %q", got)
+	}
+}
+
+// A summary in the middle of a turn takes the request's message away: the brief asked for again and the request's text go on the
+// summary's message (its text may be a plain string), and the system text is still left alone. When the request's message is kept after
+// the summary, its text stays on it. A summary that comes before any model call of the request takes its message as well.
+func TestOpenCodePluginPutsItsTextsOnTheSummaryWhenTheRequestsMessageWentWithIt(t *testing.T) {
+	for _, keep := range []int{0, 1, -1} { // -1: the summary comes before the request's first model call
+		first := map[string]any{"op": "context", "sid": "s1"}
+		if keep < 0 {
+			first = map[string]any{"op": "settle"}
+		}
+		b := newPluginBox(t)
+		b.answer(t, "session-start", 1, additionalJSON("BRIEF-BEFORE"))
+		b.answer(t, "session-start", 2, additionalJSON("BRIEF-AFTER-THE-SUMMARY"))
+		b.answer(t, "user-prompt-submit", 0, additionalJSON("TEXT-OF-THE-REQUEST"))
+		run, _ := b.play(t, map[string]any{"steps": []map[string]any{
+			{"op": "prompt", "sid": "s1", "text": "a long request"},
+			first,
+			{"op": "compaction", "sid": "s1", "keep": max(keep, 0)},
+			{"op": "context", "sid": "s1"},
+		}})
+		if len(run.Errors) != 0 || len(run.Requests) == 0 {
+			t.Fatalf("keep %d: the steps ran: %+v", keep, run)
+		}
+		after := run.Requests[len(run.Requests)-1]
+		if !slices.Equal(after.System, []string{"BASE"}) {
+			t.Errorf("keep %d: the system text is changed after the summary: %q", keep, after.System)
+		}
+		want := [][]string{{"SUMMARY-OF-THE-CONVERSATION", "BRIEF-AFTER-THE-SUMMARY", "TEXT-OF-THE-REQUEST"}}
+		if keep == 1 {
+			want = [][]string{{"SUMMARY-OF-THE-CONVERSATION", "BRIEF-AFTER-THE-SUMMARY"}, {"a long request", "TEXT-OF-THE-REQUEST"}}
+		}
+		if len(after.Messages) != len(want) {
+			t.Fatalf("keep %d: the call after the summary: %+v", keep, after.Messages)
+		}
+		for i := range want {
+			if got := textsOf(after, i); !slices.Equal(got, want[i]) {
+				t.Errorf("keep %d: message %d after the summary: %q, want %q", keep, i+1, got, want[i])
+			}
+		}
+	}
+}
+
+// A message the person sends while a turn runs waits until a step boundary (steer). Until it arrives in the model's messages, its text
+// goes nowhere: the running turn's calls are not given the next request's text. When it arrives, the text goes on it.
+func TestOpenCodePluginPutsTheTextOfAWaitingMessageOnItWhenItArrives(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "user-prompt-submit", 1, additionalJSON("TEXT-OF-REQUEST-ONE"))
+	b.answer(t, "user-prompt-submit", 2, additionalJSON("TEXT-OF-REQUEST-TWO"))
+	run, _ := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "first"},
+		{"op": "context", "sid": "s1"},
+		{"op": "prompt", "sid": "s1", "text": "second", "queued": true},
+		{"op": "context", "sid": "s1"}, // the running turn's next call: the second message has not arrived
+		{"op": "deliver", "sid": "s1"},
+		{"op": "context", "sid": "s1"},
+	}})
+	if len(run.Errors) != 0 || len(run.Requests) != 3 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	if slices.Contains(run.Contexts[1], "TEXT-OF-REQUEST-TWO") {
+		t.Errorf("the text of a message that has not arrived is given to the running turn: %q", run.Contexts[1])
+	}
+	if got := textsOf(run.Requests[1], 0); !slices.Equal(got, []string{"first", "TEXT-OF-REQUEST-ONE"}) {
+		t.Errorf("the running turn keeps its request's text on its message: %q", got)
+	}
+	if got := textsOf(run.Requests[2], 1); !slices.Equal(got, []string{"second", "TEXT-OF-REQUEST-TWO"}) {
+		t.Errorf("the message that arrived carries its text: %q", got)
+	}
+	if got := textsOf(run.Requests[2], 0); !slices.Equal(got, []string{"first", "TEXT-OF-REQUEST-ONE"}) {
+		t.Errorf("the first message is sent as it was: %q", got)
+	}
+}
+
+// An OpenCode that does not give the prompt hook the request's messageID: the text cannot be put on its message, so it goes into the
+// system text as before rather than nowhere.
+func TestOpenCodePluginStillGivesTheTextWhenOpenCodeGivesNoMessageID(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "session-start", 0, additionalJSON("BRIEF-OF-THE-SESSION"))
+	b.answer(t, "user-prompt-submit", 0, additionalJSON("TEXT-OF-THE-REQUEST"))
+	run, _ := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "a request", "noMessageID": true},
+		{"op": "context", "sid": "s1"},
+	}})
+	if len(run.Errors) != 0 || len(run.Contexts) != 1 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	if !slices.Contains(run.Contexts[0], "TEXT-OF-THE-REQUEST") || !slices.Contains(run.Contexts[0], "BRIEF-OF-THE-SESSION") {
+		t.Errorf("the model call still gets the brief and the request's text: %q", run.Contexts[0])
 	}
 }

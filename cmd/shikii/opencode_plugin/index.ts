@@ -2,15 +2,17 @@
 //
 // OpenCode 2.x has no JSON hook settings, so this plugin calls the same `shikii hook <event>` commands Claude Code and Codex call,
 // with the same JSON on stdin:
-//   - the person's request          -> shikii hook user-prompt-submit (its additionalContext goes into the model's system text)
+//   - the person's request          -> shikii hook user-prompt-submit (its additionalContext goes on the request's message)
 //   - the first request of a session, and right after a summary of the conversation (compaction) -> shikii hook session-start
 //   - the end of a turn             -> shikii hook stop (a block makes OpenCode continue the turn with the reason)
 // A turn is what this plugin saw start: the person's request, a continuation it sent itself, or a subagent's report that wakes the
 // session. An execution that no turn of those started (a summary the person asked for) runs no stop, and neither does a turn that was
 // interrupted or failed (Claude Code runs no Stop for those). One OpenCode server runs a plugin
 // instance per project folder, and every instance is told every session's events: an instance acts only on sessions of its own folder.
-// Text put into the system text is not kept in the conversation, so the plugin puts the session's brief and the request's text into
-// every model call of the turn. Every hook is wrapped in try/catch and a failure or a timeout adds nothing: a hook must never stop
+// What the hooks give is not kept in the conversation, so the plugin adds it to every model call again, at the same place: the session's
+// brief on the first message the model gets, each request's text on that request's own message (as Claude Code keeps it in the
+// conversation). The system text is left as it is: a provider caches the start of a request, and a system text that changed with every
+// request made it start over each time. Every hook is wrapped in try/catch and a failure or a timeout adds nothing: a hook must never stop
 // the work (a throw in the prompt or context hook would make OpenCode refuse the request).
 import { Plugin } from "@opencode/plugin"
 import { spawn } from "node:child_process"
@@ -55,7 +57,10 @@ export default Plugin.define({
     // sessionID -> the session-start text, asked for at the session's first request. "" when that gave nothing (none, a failure, a
     // timeout): it is not asked for again until a summary or a move asks again, as Claude Code runs SessionStart only at those times
     const brief = new Map<string, string>()
-    const turn = new Map<string, string>() // sessionID -> the user-prompt-submit text of the person's last request
+    // sessionID -> the person's requests: messageID -> the user-prompt-submit text, and whether that message was in a model call yet.
+    // "" is the messageID when OpenCode gave none. current is the person's last request.
+    const notes = new Map<string, Map<string, { text: string; seen: boolean }>>()
+    const current = new Map<string, string>()
     const continued = new Map<string, boolean>() // sessionID -> the running turn was started by this plugin (stop_hook_active)
     const chain = new Map<string, number>() // sessionID -> continuations this plugin started since the person's last request
     const generation = new Map<string, number>() // sessionID -> counts the person's requests: a slow stop of an older one is dropped
@@ -125,18 +130,53 @@ export default Plugin.define({
         const first = brief.has(sessionID) ? undefined : hook("session-start", sessionID)
         const [started, prepared] = await Promise.all([first, hook("user-prompt-submit", sessionID, { prompt: e.prompt?.text ?? "" })])
         if (first) brief.set(sessionID, additional(started))
-        turn.set(sessionID, additional(prepared))
+        const id = typeof e.messageID === "string" ? e.messageID : ""
+        current.set(sessionID, id)
+        const text = additional(prepared)
+        if (text) {
+          let mine = notes.get(sessionID)
+          if (!mine) notes.set(sessionID, (mine = new Map()))
+          mine.set(id, { text, seen: false })
+        }
       } catch {
         // add nothing
       }
     })
 
-    // text put into the system text is not kept in the conversation: every model call of the turn, a continuation's too, gets both
+    // every model call gets the brief on its first message and each request's text on that request's message, the same way each time
     ctx.session.hook("context", async (e: any) => {
       try {
-        for (const text of [brief.get(e.sessionID), turn.get(e.sessionID)]) {
-          if (text) e.system.push({ type: "text", text })
+        const sessionID: string = e.sessionID
+        const list: any[] = Array.isArray(e.messages) ? e.messages : []
+        const users = list.flatMap((m: any, i: number) => (m?.role === "user" ? [i] : []))
+        const add = new Map<number, string[]>() // index in the messages -> texts to put after its own
+        const loose: string[] = [] // texts with no message to go on: into the system text, rather than nowhere
+        const put = (i: number | undefined, text: string | undefined) => {
+          if (!text) return
+          if (i === undefined) loose.push(text)
+          else add.set(i, [...(add.get(i) ?? []), text])
         }
+        put(users[0], brief.get(sessionID))
+        const mine = notes.get(sessionID)
+        if (mine) {
+          const here = new Map(users.map((i) => [String(list[i]?.id), i]))
+          for (const [id, note] of mine) {
+            if (here.has(id)) note.seen = true
+            else if (!id) put(undefined, note.text) // OpenCode gave no messageID
+            else if (!note.seen) continue // not in the model's messages yet (a message sent while a turn runs waits): it goes on it when it comes
+            else if (id === current.get(sessionID)) put(users[0], note.text) // a summary took the request's message: the rest of its turn still needs it
+            else mine.delete(id) // a summary took an older request's message, and its text with it
+          }
+          for (const [id, i] of here) put(i, mine.get(id)?.text)
+        }
+        for (const [i, texts] of add) {
+          const m = list[i]
+          const own = typeof m.content === "string" ? [{ type: "text", text: m.content }] : Array.isArray(m.content) ? m.content : undefined
+          // a copy: the message itself is left as it is. Parts are joined without a break by some providers, so each starts with one
+          if (own) list[i] = { ...m, content: [...own, ...texts.map((text) => ({ type: "text", text: "\n\n" + text }))] }
+          else loose.push(...texts)
+        }
+        for (const text of loose) e.system.push({ type: "text", text })
       } catch {
         // add nothing
       }
@@ -192,7 +232,7 @@ export default Plugin.define({
 
     // a deleted session is gone for good: nothing of it is kept, so the tables do not grow with every session the server ever had
     const forget = (sessionID: string) => {
-      for (const table of [brief, turn, continued, chain, generation, sessions, ends, texts]) table.delete(sessionID)
+      for (const table of [brief, notes, current, continued, chain, generation, sessions, ends, texts]) table.delete(sessionID)
       for (const set of [running, seen, inherited]) set.delete(sessionID)
     }
 
@@ -227,6 +267,8 @@ export default Plugin.define({
           if (!t || t.id !== id) texts.set(sid, (t = { id, byOrdinal: new Map() }))
           t.byOrdinal.set(Number(ev.data.ordinal) || 0, ev.data.text)
         } else if (ev.type === "session.compaction.ended" && seen.has(sid) && (await mine(sid))) {
+          // a request's message the summary took before any model call had it is gone as well: not waited for any more
+          for (const note of notes.get(sid)?.values() ?? []) note.seen = true
           await refreshBrief(sid) // the summary replaced the past the brief was in: the rest of the turn needs it
         }
       } catch {
