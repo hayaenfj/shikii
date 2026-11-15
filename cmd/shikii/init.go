@@ -199,7 +199,8 @@ func completeProjectInit(root, scope string, version int, home string, firstProj
 		for _, target := range hookTargets {
 			files = append(files, "~/"+filepath.ToSlash(target.rel))
 		}
-		fmt.Fprintf(stdout, "Hooks: not installed (no shikii hook in %s), so requests in this project are not recorded and the page does not start. This machine already has shikii projects, so init leaves the hooks as they are: see what they add with %s hook install, then install them with %s hook install --yes. An agent without hooks (OpenCode) uses the MCP server and the skill set up above.\n", strings.Join(files, " or "), exe, exe)
+		files = append(files, opencodePluginShown(home)+"/")
+		fmt.Fprintf(stdout, "Hooks: not installed (no shikii hook in %s), so requests in this project are not recorded and the page does not start. This machine already has shikii projects, so init leaves the hooks as they are: see what they add with %s hook install, then install them with %s hook install --yes. OpenCode 1.x has no plugin hooks and uses the MCP server and the skill set up above.\n", strings.Join(files, " or "), exe, exe)
 		fmt.Fprintln(stdout, "Next: after the hooks are installed, make requests in this project as usual. New MCP settings take effect from the next session.")
 	} else {
 		fmt.Fprintln(stdout, "Page: the hook starts it on the agent's first request (on a free port) and opens it in the browser. Get the URL with shikii page")
@@ -209,7 +210,7 @@ func completeProjectInit(root, scope string, version int, home string, firstProj
 	return nil
 }
 
-// agentsWithShikiiHook lists the agents (hookTargets) whose settings hold a shikii hook: one in the form shikii writes, or one a
+// agentsWithShikiiHook lists the agents (hookTargets, and OpenCode's plugin) whose settings hold a shikii hook: one in the form shikii writes, or one a
 // person wrote for a shikii event (the request reaches shikii either way). A settings file that is missing or cannot be read
 // holds none.
 func agentsWithShikiiHook(home string) []string {
@@ -240,6 +241,11 @@ func agentsWithShikiiHook(home string) []string {
 		if found {
 			with = append(with, target.who)
 		}
+	}
+	// OpenCode 2.x has no hook settings: its hook is shikii's own plugin folder (opencode_plugin.go). A person's folder of that name
+	// is not one: the plugin there is not shikii's, so nothing reaches shikii through it.
+	if home != "" && opencodePluginStateOf(opencodePluginDir(home)) == opencodePluginShikii {
+		with = append(with, "OpenCode")
 	}
 	return with
 }

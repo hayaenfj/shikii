@@ -199,8 +199,8 @@ func TestDoctorSaysWhenTheRegisteredBinaryIsGone(t *testing.T) {
 			t.Fatalf("after hook install --yes every registration must run a binary that exists: %s", line)
 		}
 	}
-	if n := len(registeredBinaryLines(home, mcpCommand())); n != 3 {
-		t.Fatalf("doctor must report the 2 hook files and Codex's registration, reported %d", n)
+	if n := len(registeredBinaryLines(home, mcpCommand())); n != 4 {
+		t.Fatalf("doctor must report the 2 hook files, OpenCode's plugin and Codex's registration, reported %d", n)
 	}
 }
 
@@ -313,7 +313,7 @@ func TestDoctorSaysAHandWrittenShikiiHookWasNotChecked(t *testing.T) {
 			t.Fatalf("after hook install --yes doctor must say ok for shikii's hook and note the hand-written one: %s", line)
 		}
 	}
-	if notes != 2 || oks != 2 {
+	if notes != 2 || oks != 3 { // ok: Claude Code, Codex and OpenCode's plugin
 		t.Fatalf("doctor must say ok for shikii's hook and note the hand-written one in each file, said %d ok and %d notes", oks, notes)
 	}
 	for command, want := range map[string]string{
@@ -323,7 +323,12 @@ func TestDoctorSaysAHandWrittenShikiiHookWasNotChecked(t *testing.T) {
 		"'/gone dir/shikii' hook stop":         "MISSING ", // shikii's form, gone
 	} {
 		writeHookFiles(t, home, command)
-		lines := registeredBinaryLines(home, mcpCommand())
+		var lines []string
+		for _, l := range registeredBinaryLines(home, mcpCommand()) {
+			if !strings.Contains(l, "OpenCode plugin") { // the plugin put there by the install above is not what this loop is about
+				lines = append(lines, l)
+			}
+		}
 		if want == "" {
 			if len(lines) != 0 {
 				t.Fatalf("%s: another tool's hook must say nothing, said %q", command, lines)

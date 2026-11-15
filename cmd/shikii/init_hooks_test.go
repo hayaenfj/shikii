@@ -37,8 +37,8 @@ func TestInitInstallsTheHooksForTheFirstProjectOnAMachine(t *testing.T) {
 	if strings.Contains(out, "Hooks: not installed") {
 		t.Errorf("init of the first project says the hooks are missing:\n%s", out)
 	}
-	if got := shikiiHooks(); len(got) != 2 {
-		t.Errorf("init of the first project installs the hooks for Claude Code and Codex: %v", got)
+	if got := shikiiHooks(); len(got) != 3 {
+		t.Errorf("init of the first project installs the hooks for Claude Code, Codex and OpenCode (its plugin): %v", got)
 	}
 	if settings := string(mustRead(t, filepath.Join(home, ".claude", "settings.json"))); !strings.Contains(settings, "rtk hook claude") {
 		t.Errorf("the other tool's hook stays: %s", settings)

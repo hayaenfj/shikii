@@ -110,14 +110,14 @@ func usageText() string {
   shikii doctor    [--specs DIR] [--store DIR] [--local URL] [--hosted URL]
   shikii update    Check the latest stable release and update shikii and readout in the same place as the running shikii
   shikii hook      install [--yes] | uninstall [--yes] | user-prompt-submit | stop | subagent-start | plan query|submit | variants submit
-                   As a Claude Code / Codex hook, measure how the AI itself thinks at 2 points: before thinking (will this request end up changing files, should the plan be agreed before starting) and
+                   As a Claude Code / Codex hook (OpenCode 2.x: a plugin that runs the same hooks), measure how the AI itself thinks at 2 points: before thinking (will this request end up changing files, should the plan be agreed before starting) and
                    after thinking (did the changes stay within what was asked, was the request finished). The store is the project's .shikii/, the model is :8080, the page uses a free port per project (shikii page). Quotes past conversations and wiki lessons and hands the organizing to the agent. Advice from decisions starts only after a line is drawn. Never blocks tools
   shikii work prepare | record (JSON on stdin)
                    Prepare knowledge; add searches/consult/reuse with the same receipt; record judgments, evidence and procedure outcomes
   shikii hook plan query | submit (JSON on stdin)
                    The older entry for organizing the request, the agreed plan and open questions before starting (work prepare and work record do it in one call each). Not treated as a person's input or as a truth
   shikii uninstall [--yes]
-                   Remove what shikii put into the agents: its hooks (~/.claude/settings.json, ~/.codex/hooks.json), [mcp_servers.shikii] in ~/.codex/config.toml,
+                   Remove what shikii put into the agents: its hooks (~/.claude/settings.json, ~/.codex/hooks.json), the OpenCode plugin (~/.config/opencode/plugins/shikii), [mcp_servers.shikii] in ~/.codex/config.toml,
                    the shikii entry in each registered project's .mcp.json and opencode.json, the skill (~/.claude/skills/shikii, ~/.agents/skills/shikii), and stop its pages.
                    Without --yes it only lists them. The data (each project's .shikii/ and ~/.shikii/agent) stays; the binaries stay and it prints the rm command for them
   shikii decide   <spec.yaml> -i key=value ... [--model M] [--hosted URL] [--local URL] [--tainted] [--store DIR] [--no-record] [--json]

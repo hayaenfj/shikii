@@ -1,0 +1,6 @@
+{
+  "name": "shikii-opencode-plugin",
+  "private": true,
+  "type": "module",
+  "main": "index.ts"
+}

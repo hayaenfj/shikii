@@ -65,7 +65,7 @@ func agentHome() (string, error) {
 }
 
 func cmdHook(args []string) error {
-	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | user-prompt-submit | stop | subagent-start | session-start | agent-task | tool-lesson | plan query | plan submit | variants submit\n  install/uninstall: Claude Code and Codex hooks that measure the agent's own thinking before and after each turn (shown first; --yes does it)\n  the event hooks, plan query/submit and variants submit are run by the agent and read JSON on stdin; not for typing by hand\n"
+	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | user-prompt-submit | stop | subagent-start | session-start | agent-task | tool-lesson | plan query | plan submit | variants submit\n  install/uninstall: Claude Code and Codex hooks, and a plugin for OpenCode 2.x, that measure the agent's own thinking before and after each turn (shown first; --yes does it)\n  the event hooks, plan query/submit and variants submit are run by the agent and read JSON on stdin; not for typing by hand\n"
 	if len(args) == 0 {
 		return errors.New(strings.TrimSpace(usage))
 	}
@@ -103,7 +103,7 @@ func cmdHook(args []string) error {
 
 // ---------------------------------------------------------------- Claude Code / Codex JSON
 
-// hookInput is the part of the JSON Claude Code and Codex pass on stdin that we use (the keys are the same for both).
+// hookInput is the part of the JSON Claude Code and Codex pass on stdin that we use (the keys are the same for both; the OpenCode plugin sends the same keys).
 type hookInput struct {
 	SessionID            string          `json:"session_id"`
 	AgentID              string          `json:"agent_id"`   // if set, this is not the person's request (a subagent etc.). Do not change the kept request

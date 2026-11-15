@@ -16,6 +16,7 @@ import (
 // shikii uninstall (0.9.3) takes out what shikii put into the agents' settings and stops its pages, and keeps everything else:
 //   - shikii's hooks in ~/.claude/settings.json and ~/.codex/hooks.json (other hooks and the files stay)
 //   - [mcp_servers.shikii] in ~/.codex/config.toml (only that table and its lines; the file and every other line stay)
+//   - OpenCode's plugin folder opencode/plugins/shikii under $XDG_CONFIG_HOME or ~/.config (its two files, only when the folder is shikii's)
 //   - the shikii entry in each registered project's .mcp.json (mcpServers) and opencode.json (mcp)
 //   - the skill folders ~/.claude/skills/shikii and ~/.agents/skills/shikii (only when they are shikii's skill, not a link)
 //   - the running pages (shikii serve) the hooks started, found through their marks in ~/.shikii/agent/pages/
@@ -89,6 +90,17 @@ func cmdUninstall(args []string) error {
 		for _, c := range handWrittenShikiiHooksIn(path) { // shikii cannot tell what a hook written another way runs, so it stays: say so (0.10)
 			left = append(left, fmt.Sprintf("%s: the hook %q looks like it runs shikii but was written by hand, so it is left as it is; remove it by hand if it is shikii's", tilde(path), c))
 		}
+	}
+	// 1b) OpenCode's plugin folder (opencode_plugin.go): shikii's two files only. A folder, file or link of the person's with that name stays
+	pluginDir := opencodePluginDir(home)
+	switch found, _ := removeOpencodePlugin(home, false); {
+	case found:
+		steps = append(steps, uninstallStep{fmt.Sprintf("%s: shikii's OpenCode plugin (its two files; any other file in the folder, and your other plugins, stay)", tilde(pluginDir)), func() error {
+			_, err := removeOpencodePlugin(home, true)
+			return err
+		}})
+	case opencodePluginStateOf(pluginDir) == opencodePluginForeign:
+		left = append(left, fmt.Sprintf("%s is not shikii's OpenCode plugin (a folder, file or link of yours), so it is left as it is; remove it by hand if it is shikii's", tilde(pluginDir)))
 	}
 	// 2) Codex's MCP server
 	codex := filepath.Join(home, ".codex", "config.toml")
@@ -218,7 +230,7 @@ func cmdUninstall(args []string) error {
 		fmt.Fprintln(stdout, "(shown only; pass --yes to do it)")
 		return nil
 	}
-	fmt.Fprintln(stdout, "Next: reopen any open Claude Code and Codex sessions (and their MCP) so they stop using shikii.")
+	fmt.Fprintln(stdout, "Next: reopen any open Claude Code, Codex and OpenCode sessions (and their MCP) so they stop using shikii.")
 	if len(failed) > 0 {
 		return errors.New("uninstall: some parts could not be removed (see above)")
 	}

@@ -186,6 +186,18 @@ func registeredBinaryLines(home, exe string) []string {
 			lines = append(lines, fmt.Sprintf("note %s: %s was written by hand, so doctor did not check what it runs; hook install --yes leaves it as it is and adds shikii's own hook, so you may have two: remove yours if so", where, command))
 		}
 	}
+	// OpenCode's plugin runs the binary written into its index.ts (opencode_plugin.go)
+	pluginWhere := "OpenCode plugin in " + opencodePluginShown(home)
+	switch dir := opencodePluginDir(home); opencodePluginStateOf(dir) {
+	case opencodePluginShikii:
+		if bin, ok := opencodePluginBinary(home); ok {
+			report(pluginWhere, bin, fix)
+		} else {
+			lines = append(lines, fmt.Sprintf("WARN %s: cannot read which shikii it runs → run %s hook install --yes to write it again", pluginWhere, shellQuote(exe)))
+		}
+	case opencodePluginForeign:
+		lines = append(lines, fmt.Sprintf("note %s: it is not shikii's plugin (a folder, file or link of yours), so doctor did not check it and hook install --yes leaves it as it is", pluginWhere))
+	}
 	codex := "Codex's MCP server in ~/.codex/config.toml"
 	b, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
 	var m map[string]any

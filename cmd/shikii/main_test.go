@@ -177,7 +177,9 @@ const closedModelURL = "http://127.0.0.1:1"
 // and the store's records, calibrations and bands change and the tests fail (2026-10-23: 6 failed right after the key was put in an environment variable).
 // Tests that try Jev (hook_hosted_test.go) call t.Setenv themselves.
 func TestMain(m *testing.M) {
-	for _, k := range []string{"TYPESAFE_API_KEY", "DECISIONS_API_KEY", "SHIKII_MODEL"} {
+	// XDG_CONFIG_HOME moves where shikii puts OpenCode's plugin (opencode_plugin.go): a test that installs under a temporary HOME
+	// must not write into this machine's real config folder. A test that wants it set sets it (t.Setenv) to a temporary folder.
+	for _, k := range []string{"TYPESAFE_API_KEY", "DECISIONS_API_KEY", "SHIKII_MODEL", "XDG_CONFIG_HOME"} {
 		os.Unsetenv(k)
 	}
 	// No test asks this machine's model server or looks on its PATH. Closing the port used to be each test's own work (hookEnv,

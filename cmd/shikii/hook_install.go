@@ -26,13 +26,7 @@ import (
 // command is the current executable's absolute path + " hook <event>": it works even if the agent's shell PATH has no `shikii` (e.g. ~/go/bin right after go install).
 // If the executable moves, rerunning `shikii hook install --yes` removes the handlers with the old path and adds new ones.
 func hookEvents() []hookEvent {
-	exe := "shikii"
-	if p, err := os.Executable(); err == nil {
-		if r, err := filepath.EvalSymlinks(p); err == nil {
-			p = r
-		}
-		exe = p
-	}
+	exe := shikiiBinaryPath()
 	return []hookEvent{
 		{"UserPromptSubmit", hookCommand(exe, "user-prompt-submit"), hookTimeout, false, ""},
 		{"SessionStart", hookCommand(exe, "session-start"), hookTimeout, false, ""}, // the project's brief at the start and right after a summary (source compact). Both agents read its additionalContext (0.11)
@@ -41,6 +35,19 @@ func hookEvents() []hookEvent {
 		{"PreToolUse", hookCommand(exe, "agent-task"), hookTimeout, true, "Agent|Task"},       // keep the task text passed to the child (0.9.1)
 		{"PreToolUse", hookCommand(exe, "tool-lesson"), hookTimeout, true, toolLessonMatcher}, // a lesson naming the file or command, right before it (0.11)
 	}
+}
+
+// shikiiBinaryPath is the absolute path of the running shikii (links resolved), or the bare name when it cannot be found: the binary the hooks
+// of every agent run, including OpenCode's plugin (opencode_plugin.go).
+func shikiiBinaryPath() string {
+	exe := "shikii"
+	if p, err := os.Executable(); err == nil {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			p = r
+		}
+		exe = p
+	}
+	return exe
 }
 
 // hookCommand is the command line of one hook. The agents run it through a shell, so a path with a space or a quote is quoted
@@ -210,7 +217,8 @@ func hookInstall(args []string, install bool) error {
 			evs := hookEventsFor(t.who)
 			fmt.Fprintf(stdout, "%d. %s: add %d hooks (%s) running `%s hook <event>` (%s; the binary's own path, so the agent's PATH does not matter); shikii hooks from an older version or an older path are removed; a backup of the file as it was goes to %s.bak-shikii (once, only if it existed). Other hooks are kept; a second install adds nothing.%s\n", i+2, tilde(filepath.Join(home, t.rel)), len(evs), hookEventNames(evs), tilde(func() string { bin, _ := hookBinary(evs[0].cmd); return bin }()), t.who, filepath.Base(t.rel), t.note)
 		}
-		fmt.Fprintf(stdout, "   The hooks measure the agent's own thinking before a turn (will this request change files? should it agree on an approach first?) and after it (were the changes within what was asked? was the request completed?). Model-based advice waits for calibration; past exchanges from the same project can be quoted before similar requests without labeling them as truths. They never stop a tool, except that a guard the person enabled refuses a command right before it runs. Claude Code and Codex.\n")
+		fmt.Fprintf(stdout, "%d. %s\n", len(hookTargets)+2, opencodePluginPreview(home, shikiiBinaryPath(), true))
+		fmt.Fprintf(stdout, "   The hooks measure the agent's own thinking before a turn (will this request change files? should it agree on an approach first?) and after it (were the changes within what was asked? was the request completed?). Model-based advice waits for calibration; past exchanges from the same project can be quoted before similar requests without labeling them as truths. They never stop a tool, except that a guard the person enabled refuses a command right before it runs. Claude Code, Codex and OpenCode 2.x.\n")
 		fmt.Fprintf(stdout, "   Recommended model: TypeSafe Jev. With TYPESAFE_API_KEY in the environment the hooks send there and start no local model. Without a key, the local model (%s) is started in the background by the hooks when it is not running (install starts it now if llama-server is on PATH). The answer page is one per project: the first request's hook starts it on a free port, records it in ~/.shikii/agent/pages/, and opens it in the browser\n", hookLocalURL)
 		// shown before it is added: Codex will no longer ask before each call of shikii's MCP tools (codex_tools_allowed.go). The
 		// preview decides as the install below does: on the registration as fixCodexServer leaves it (a command that is gone is
@@ -230,6 +238,7 @@ func hookInstall(args []string, install bool) error {
 		for i, t := range hookTargets {
 			fmt.Fprintf(stdout, "%d. %s: remove the handlers whose command is `… shikii hook <event>` (other hooks stay)\n", i+1, tilde(filepath.Join(home, t.rel)))
 		}
+		fmt.Fprintf(stdout, "%d. %s\n", len(hookTargets)+1, opencodePluginPreview(home, "", false))
 		fmt.Fprintf(stdout, "   %s and each project's .shikii/ are kept\n", tilde(agent))
 	}
 	if install {
@@ -237,7 +246,7 @@ func hookInstall(args []string, install bool) error {
 		to := currentVersion()
 		switch {
 		case broken:
-			fmt.Fprintf(stdout, "%d. %s: the version marker cannot be read, so no project's .shikii/ is removed (check its contents and fix it. Until it is fixed, --yes stops too)\n", len(hookTargets)+2, tilde(installedVersionPath(agent)))
+			fmt.Fprintf(stdout, "%d. %s: the version marker cannot be read, so no project's .shikii/ is removed (check its contents and fix it. Until it is fixed, --yes stops too)\n", len(hookTargets)+3, tilde(installedVersionPath(agent)))
 		case crossesStoreReset(from, to):
 			plan := planWipe(registeredProjects(agent))
 			wipes := 0
@@ -247,9 +256,9 @@ func hookInstall(args []string, install bool) error {
 				}
 			}
 			if wipes > 0 {
-				fmt.Fprintf(stdout, "%d. update to %s (previous version %s): everything inside .shikii/ of %d initialized projects is removed and initialized again (project.json is kept). Save anything you want to keep first:\n", len(hookTargets)+2, versionString(to), versionString(from), wipes)
+				fmt.Fprintf(stdout, "%d. update to %s (previous version %s): everything inside .shikii/ of %d initialized projects is removed and initialized again (project.json is kept). Save anything you want to keep first:\n", len(hookTargets)+3, versionString(to), versionString(from), wipes)
 			} else if len(plan) > 0 {
-				fmt.Fprintf(stdout, "%d. update to %s (previous version %s): no projects to remove (already initialized in this version, or not removed):\n", len(hookTargets)+2, versionString(to), versionString(from))
+				fmt.Fprintf(stdout, "%d. update to %s (previous version %s): no projects to remove (already initialized in this version, or not removed):\n", len(hookTargets)+3, versionString(to), versionString(from))
 			}
 			for _, p := range plan {
 				switch p.Action {
@@ -345,6 +354,9 @@ func hookInstall(args []string, install bool) error {
 		default:
 			fmt.Fprintf(stdout, "%s: no shikii hooks found, nothing changed (%s)\n", tilde(settings), t.who)
 		}
+	}
+	if err := hookInstallOpencodePlugin(home, install); err != nil {
+		return err
 	}
 	if install {
 		if usesHosted() {
@@ -517,3 +529,52 @@ func editHooksTo(path string, install bool, hookEvents []hookEvent, write bool) 
 
 // pct is a probability as a whole percent, as the page shows the AI's confidence.
 func pct(p float64) int { return int(math.Round(p * 100)) }
+
+// opencodePluginPreview is the line the preview prints for OpenCode's plugin (opencode_plugin.go).
+func opencodePluginPreview(home, exe string, install bool) string {
+	shown := opencodePluginShown(home)
+	state := opencodePluginStateOf(opencodePluginDir(home))
+	switch {
+	case install && state == opencodePluginForeign:
+		return fmt.Sprintf("%s: a folder, file or link of yours is there, so the OpenCode plugin is left as it is (not written)", shown)
+	case install:
+		return fmt.Sprintf("%s: add the OpenCode plugin (package.json and index.ts) that runs `%s hook <event>` for OpenCode 2.x (user-prompt-submit and session-start before a turn, stop after it); OpenCode 1.x does not read it and keeps using only the MCP server. A folder of yours with that name is never overwritten; a second install changes nothing", shown, exe)
+	case state == opencodePluginShikii:
+		return fmt.Sprintf("%s: remove shikii's OpenCode plugin (its two files; anything else in the folder and your other plugins stay)", shown)
+	case state == opencodePluginForeign:
+		return fmt.Sprintf("%s: not shikii's plugin (a folder, file or link of yours), so it stays", shown)
+	}
+	return fmt.Sprintf("%s: no shikii OpenCode plugin found, nothing to remove", shown)
+}
+
+// hookInstallOpencodePlugin puts OpenCode's plugin in place (install) or takes it out (uninstall) and says what happened.
+func hookInstallOpencodePlugin(home string, install bool) error {
+	shown := opencodePluginShown(home)
+	if !install {
+		found, err := removeOpencodePlugin(home, true)
+		switch {
+		case err != nil:
+			return err
+		case found:
+			fmt.Fprintf(stdout, "%s: OpenCode plugin removed. Reopen OpenCode for it to take effect\n", shown)
+		default:
+			fmt.Fprintf(stdout, "%s: no shikii OpenCode plugin found, nothing changed\n", shown)
+		}
+		return nil
+	}
+	res, err := installOpencodePlugin(home, shikiiBinaryPath(), true)
+	if err != nil {
+		return err
+	}
+	switch res {
+	case "added":
+		fmt.Fprintf(stdout, "%s: OpenCode plugin added (OpenCode 2.x). Reopen OpenCode for it to take effect\n", shown)
+	case "updated":
+		fmt.Fprintf(stdout, "%s: OpenCode plugin updated (OpenCode 2.x). Reopen OpenCode for it to take effect\n", shown)
+	case "same":
+		fmt.Fprintf(stdout, "%s: OpenCode plugin was already there, nothing changed (OpenCode 2.x)\n", shown)
+	default:
+		fmt.Fprintf(stdout, "%s: a folder, file or link that is not shikii's is there, so the OpenCode plugin is left as it is. Move it away and run shikii hook install --yes again to get lessons in OpenCode 2.x\n", shown)
+	}
+	return nil
+}
