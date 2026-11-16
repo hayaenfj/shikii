@@ -98,3 +98,22 @@ func refreshFixtureTexts(t *testing.T) ([]byte, []byte) {
 	}
 	return legacy, current
 }
+
+// A copy calibrated by a build before 2026-10-25 carries that build's Japanese generated note on the calibration key and nothing of the
+// person's. It is still the generated note, so the copy is refreshed like any earlier built-in copy.
+func TestJapaneseGeneratedNoteFromEarlierBuildStillRefreshes(t *testing.T) {
+	legacy, current := refreshFixtureTexts(t)
+	note := "\n# \u8f03\u6b63\u30d6\u30ed\u30c3\u30af\u306f `shikii calibrate --write` \u304c\u751f\u6210\u3059\u308b\u3002\u624b\u3067\u66f8\u304b\u306a\u3044\u3002\ncalibration:\n  method: platt\n"
+	copied := append(append([]byte{}, legacy...), []byte(note)...)
+	path := filepath.Join(t.TempDir(), "needs-plan.yaml")
+	if err := os.WriteFile(path, copied, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := refreshNeedsPlanCopy(path, current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("a copy whose only extra comment is the earlier Japanese generated note must be refreshed")
+	}
+}

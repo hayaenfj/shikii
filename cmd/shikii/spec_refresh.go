@@ -112,7 +112,9 @@ func decisionWording(b []byte) (map[string]any, []string, error) {
 	return wording, comments, nil
 }
 
-// generatedCalibrationNote says whether a comment is the note that `shikii calibrate --write` puts on the generated calibration key.
+// generatedCalibrationNote says whether a comment is a note that `shikii calibrate --write` puts on the generated calibration key: the current note
+// or the one earlier builds wrote.
 func generatedCalibrationNote(c string) bool {
-	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(c), "#")) == spec.CalibrationNote
+	t := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(c), "#"))
+	return t == spec.CalibrationNote || t == spec.CalibrationNoteEarlierJapanese
 }
