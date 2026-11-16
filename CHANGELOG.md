@@ -8,7 +8,7 @@
 
 - The memory upgrade can set aside a page whose original evidence cannot be read or does not support it. Its review record declares it `blocked` with the reason; the batch skips that page, and it comes back for review when its text changes.
 - When the person asks for a memory upgrade, the skill runs it to the end in the same turn, without scheduled wake-ups or splitting it across turns.
-- A go-ahead message, such as a request to start, now counts as a reply to the previous request, so the question about a decision is not asked for it. A phrasing not on that list is still a new request.
+- A go-ahead message, such as a request to start, now counts as a reply to the previous request, so the question about a decision is not asked for it. The list only joins a short reply to the previous request. Whether the question is skipped depends on the organizing: a message marked as continuing the previous request (`continues_previous`) gets no question, whatever its wording.
 - The question about a decision that should have been asked first now asks whether the person wanted to be asked before the work began. A new project gets the new wording. A project that already exists keeps its copy in `.shikii/decisions/`, so its question keeps the old wording; stored answers are not converted.
 
 ## 0.34.0 — shikii's hooks for OpenCode 2.x
