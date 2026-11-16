@@ -52,3 +52,19 @@ func TestUnsureChoiceWithConcreteOpenAgreementDoesNotWait(t *testing.T) {
 		t.Fatal("control: a concrete open decision that agrees must not wait for the person")
 	}
 }
+
+// The planning hook itself, from the saved organizing to the asked list: the unit tests above call planningWaits directly, so they would still
+// pass if the hook stopped using it. An unsure choice (no answer reaches the threshold) with nothing open is not put to the person.
+func TestUnsureChoiceWithNothingOpenIsNotAskedThroughTheHook(t *testing.T) {
+	_, root, trace := planningWith(t, .4, false)
+	rec, err := (store.Store{Dir: root}).FindRecord("needs-plan", trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Band != "discard" {
+		t.Fatalf("fixture: the model at p=0.4 should leave the choice unsure (discard), got band %q", rec.Band)
+	}
+	if asked := loadSession(root, "planning").Asked; len(asked) != 0 {
+		t.Fatalf("an unsure choice with nothing open is put to the person by the planning hook: %+v", asked)
+	}
+}
