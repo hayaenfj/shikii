@@ -29,18 +29,22 @@ const (
 
 // hookSubagentStop saves the assessments in the child's last message for the lessons delivered to that child. A line assesses
 // every delivery of its lesson to the child (the same lesson can reach it at its start and again right before a command or a
-// file). A delivery is tied to the child, not to the turn that is open when the child ends: a child that runs in the background
-// can end after the person's next request. A key that was not delivered to this child is not saved (the store refuses it too) and
+// file). A delivery is tied to the child and the session it runs under, not to the turn that is open when the child ends: a child
+// that runs in the background can end after the person's next request, and another session's child can carry the same id. A key that was not delivered to this child is not saved (the store refuses it too) and
 // does not count toward subagentAssessMax, and a lesson already assessed stays as it is. What the child says is also the answer
 // to the delivery's own question (lesson-applies), as an assessment from the reflection is.
 func hookSubagentStop(agent string, in *hookInput, snapshot *hookSession) {
-	if in.AgentID == "" || snapshot.Scope == "" || snapshot.TurnID == "" {
+	if in.AgentID == "" || in.SessionID == "" || snapshot.Scope == "" || snapshot.TurnID == "" {
 		return
 	}
 	report := in.LastAssistantMessage
 	if len(report) > subagentReportMax {
-		report = report[len(report)-subagentReportMax:]
-		report = report[strings.IndexByte(report, '\n')+1:] // the line the limit falls in is not read
+		start := len(report) - subagentReportMax
+		whole := report[start-1] == '\n' // the part read starts at the head of a line
+		report = report[start:]
+		if !whole { // the line the limit falls in is not read: its head is outside, so the form cannot be checked from the line's head
+			_, report, _ = strings.Cut(report, "\n")
+		}
 	}
 	lines := subagentAssessLine.FindAllStringSubmatch(report, -1)
 	if len(lines) == 0 {
@@ -68,11 +72,11 @@ func hookSubagentStop(agent string, in *hookInput, snapshot *hookSession) {
 			did = "The subagent reported that no decision of its task used this lesson."
 		}
 		for _, d := range deliveries {
-			if d.Agent != in.AgentID || !deliveryHasKey(d, key) {
+			if d.Agent != in.AgentID || d.Session != in.SessionID || !deliveryHasKey(d, key) {
 				continue
 			}
 			seen[key] = true
-			a := store.MemoryAssessment{SourceID: d.ID, Key: key, Result: result, Decision: cut(did, 2000), Evidence: "The subagent's own final report.", Agent: in.AgentID}
+			a := store.MemoryAssessment{SourceID: d.ID, Key: key, Result: result, Decision: cut(did, store.FeedbackTextLimit), Evidence: "The subagent's own final report.", Agent: in.AgentID}
 			if err := st.SaveMemoryAssessment(snapshot.Scope, a); err != nil {
 				hookLog("subagent-stop: " + err.Error())
 				continue

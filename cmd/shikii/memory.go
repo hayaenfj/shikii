@@ -261,7 +261,7 @@ func deliverQuotes(root, scope, request string, quotes []memoryQuote, keys []str
 				recorded = door
 			}
 		}
-		if err := (store.Store{Dir: root}).SaveMemoryDelivery(store.MemoryDelivery{ID: id, Scope: scope, Request: request, Quotes: clipped, Parent: parent, Agent: agent, Phrase: recorded}); err != nil {
+		if err := (store.Store{Dir: root}).SaveMemoryDelivery(store.MemoryDelivery{ID: id, Scope: scope, Request: request, Quotes: clipped, Parent: parent, Agent: agent, Session: session.session, Phrase: recorded}); err != nil {
 			return "", false, err
 		}
 	}

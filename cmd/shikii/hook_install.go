@@ -483,7 +483,11 @@ func editHooksTo(path string, install bool, hookEvents []hookEvent, write bool) 
 		var kept []any
 		removed := false
 		for _, g := range groups {
-			gm, _ := g.(map[string]any)
+			gm, isGroup := g.(map[string]any)
+			if !isGroup {
+				kept = append(kept, g) // not a group of hooks: it stays as the person wrote it
+				continue
+			}
 			hs, _ := gm["hooks"].([]any)
 			var rest []any
 			for _, h := range hs {

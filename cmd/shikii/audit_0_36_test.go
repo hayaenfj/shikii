@@ -243,10 +243,13 @@ func TestAFailingToolLessonAddsNothingAndRefusesNothing(t *testing.T) {
 			os.Chmod(d, 0o755)
 		}
 	})
-	out := runHook(t, "tool-lesson", map[string]any{"session_id": "s", "cwd": scope, "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_input": map[string]any{"command": "*** Begin Patch\n*** Update File: cmd/shikii/version.go\n@@\n-a\n+b\n*** End Patch"}})
-	if strings.Contains(out, ids["version"]) {
-		t.Skipf("the store could still be written, so nothing failed: %s", out)
+	// whether the failure can be made is asked of the folder, not of the hook's output: a hook that adds the lesson anyway fails below
+	if probe := filepath.Join(st.Dir, "probe"); os.WriteFile(probe, nil, 0o600) == nil {
+		os.Remove(probe)
+		t.Skip("this user writes into read-only folders, so the store cannot be made to fail")
 	}
+	out := runHook(t, "tool-lesson", map[string]any{"session_id": "s", "cwd": scope, "hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_input": map[string]any{"command": "*** Begin Patch\n*** Update File: cmd/shikii/version.go\n@@\n-a\n+b\n*** End Patch"}})
+	_ = ids
 	if log, _ := os.ReadFile(filepath.Join(filepath.Dir(st.Dir), "hook.log")); len(log) > 0 {
 		t.Logf("hook.log: %s", log)
 	}

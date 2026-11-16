@@ -68,6 +68,14 @@ func TestAudit011DocsMatchTheHooksAndTheGuards(t *testing.T) {
 		{"docs/guide.md", "Codex retains turn-end checks without this command", "Codex has the command hook from 0.36.0"},
 		{"docs/guide.ja.md", "\u3053\u306e\u30b3\u30de\u30f3\u30c9\u7528hook\u3092\u767b\u9332\u305b\u305a", "Codex has the command hook from 0.36.0"},
 		{"README.md", "right before it runs in Claude Code.", "a guard on commands refuses in Codex too"},
+		{"skills/shikii/references/guards.md", "Codex retains its turn-end checks", "Codex has the command hook from 0.36.0"},
+		{"skills/shikii/references/guards.md", "OpenCode uses MCP and skills without automatic hooks", "shikii's OpenCode plugin runs the hooks of a request, a stop and a subagent"},
+		{"docs/guide.ja.md", "Claude Code \u304c\u30b3\u30de\u30f3\u30c9\u3092\u6d41\u3059\u76f4\u524d(Bash", "a forbidden-commands guard runs in Codex too"},
+		{"integrations/claude-code.md", "only when a `forbidden-commands` guard the person enabled", "the file and commit-body guards also refuse a publication command"},
+		{"integrations/claude-code.md", "an enabled forbidden-commands guard", "the file and commit-body guards also refuse a publication command"},
+		{"integrations/claude-code.ja.md", "\u4eba\u304c\u6709\u52b9\u306b\u3057\u305f `forbidden-commands` \u306e\u691c\u67fb\u304c", "the file and commit-body guards also refuse a publication command"},
+		{"integrations/claude-code.ja.md", "\u6709\u52b9\u306a forbidden-commands \u306e\u691c\u67fb", "the file and commit-body guards also refuse a publication command"},
+		{"README.md", "and a subagent receives lessons close to the task it was given", "a Codex subagent gets no lesson chosen by its task"},
 		{"skills/shikii/references/guards.md", "that same Claude Code Bash hook", "the hook before a command runs in Codex too"},
 		{"docs/guide.ja.md", "Codex \u306f 3 \u3064)", "Codex has 6 hooks"},
 		{"README.md", "Delivery to subagents is in Claude Code and OpenCode 2.x |", "Codex subagents get the rules for every request too"},
@@ -103,6 +111,22 @@ func TestAudit011DocsMatchTheHooksAndTheGuards(t *testing.T) {
 		{"integrations/claude-code.md", "`" + toolLessonMatcher + "` in Claude Code, `" + toolLessonMatcherCodex + "` in Codex", "the matchers of tool-lesson"},
 		{"integrations/claude-code.ja.md", "Claude Code \u3067\u306f `" + toolLessonMatcher + "`\u3001Codex \u3067\u306f `" + toolLessonMatcherCodex + "`", "the matchers of tool-lesson"},
 	}
+	// the timeouts the document gives are the ones of the list: Stop has its own, every other hook has one and the same
+	stopTimeout, otherTimeout := 0, 0
+	for _, ev := range hookEventsFor("Claude Code") {
+		switch {
+		case ev.event == "Stop":
+			stopTimeout = ev.timeout
+		case otherTimeout == 0:
+			otherTimeout = ev.timeout
+		case ev.timeout != otherTimeout:
+			t.Fatalf("precondition: every hook but Stop has the same timeout, got %d and %d", otherTimeout, ev.timeout)
+		}
+	}
+	says = append(says,
+		claim{"integrations/claude-code.md", fmt.Sprintf("Timeouts are %d seconds for Stop and %d seconds for every other hook.", stopTimeout, otherTimeout), "the timeouts of the hooks"},
+		claim{"integrations/claude-code.ja.md", fmt.Sprintf("timeout \u306f Stop \u304c %d \u79d2\u3001\u307b\u304b\u306e hook \u306f\u5168\u90e8 %d \u79d2\u3002", stopTimeout, otherTimeout), "the timeouts of the hooks"},
+	)
 	for _, c := range says {
 		if !strings.Contains(read(c.file), c.text) {
 			t.Errorf("%s does not say %q (%s)", c.file, c.text, c.why)

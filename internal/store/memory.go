@@ -30,10 +30,11 @@ type MemoryDelivery struct {
 	Request string        `json:"request"`
 	Quotes  []MemoryQuote `json:"quotes"`
 	At      time.Time     `json:"at"`
-	Parent  string        `json:"parent,omitempty"` // delivery to a subagent: the parent turn (the conversation source id). The review is evaluated alongside the parent's conversation (0.7.4)
-	Agent   string        `json:"agent,omitempty"`  // the subagent's id
-	Tool    string        `json:"tool,omitempty"`   // delivered right before a tool call (0.11): the tool and the file or command words it matched; Parent is the turn
-	Phrase  string        `json:"phrase,omitempty"` // the door the quotes came through (0.12): the command phrase or file name the lesson matched at a tool call, "request" when chosen by the request's words. Empty for the always rules and older records
+	Parent  string        `json:"parent,omitempty"`  // delivery to a subagent: the parent turn (the conversation source id). The review is evaluated alongside the parent's conversation (0.7.4)
+	Agent   string        `json:"agent,omitempty"`   // the subagent's id
+	Session string        `json:"session,omitempty"` // delivery to a subagent: the session it runs under. Another session's subagent can carry the same id
+	Tool    string        `json:"tool,omitempty"`    // delivered right before a tool call (0.11): the tool and the file or command words it matched; Parent is the turn
+	Phrase  string        `json:"phrase,omitempty"`  // the door the quotes came through (0.12): the command phrase or file name the lesson matched at a tool call, "request" when chosen by the request's words. Empty for the always rules and older records
 }
 
 // toolMax is the longest Tool a delivery keeps (a file path or a command's leading words).

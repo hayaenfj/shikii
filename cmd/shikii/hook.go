@@ -183,6 +183,8 @@ func (o hookOut) json(event string) []byte {
 // hookSession is the per-project record (.shikii/sessions/<id>.json). The transcript is not read (its shape is undocumented).
 // The working tree listing at request time is the neighbouring <id>.files (too large for the JSON).
 type hookSession struct {
+	session string // the session a subagent's deliveries are recorded under (not saved: set where a delivery to a subagent is made)
+
 	MemoryUpgrade string                        `json:"memory_upgrade,omitempty"`
 	KnowledgeSeen []notebook.CollectiveBaseline `json:"knowledge_seen,omitempty"`
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -377,5 +378,50 @@ func TestTheNoticeBeforeARequestNamesTheSessionWithItsTargets(t *testing.T) {
 	}
 	if plain := reflectAsk("shikii reflect", []string{"0123456789abcdef"}, ""); strings.Contains(plain, "session_id") {
 		t.Fatalf("a notice for no session names none:\n%s", plain)
+	}
+}
+
+// The MCP tool takes the session of the notice too: its definition names session_id (a client that follows the definition can
+// send it), and a query through the tool with another session's id leaves the owner's delivery to the owner.
+func TestTheMCPReflectionTakesTheSessionOfTheNotice(t *testing.T) {
+	var properties map[string]any
+	for _, tool := range mcpTools {
+		if tool["name"] == "shikii_reflect" {
+			properties, _ = tool["inputSchema"].(map[string]any)["properties"].(map[string]any)
+		}
+	}
+	// every field of the targets a hook's text gives is a field of the definition, so a client that follows it can send them as given
+	raw, _ := json.Marshal(reflectTargets([]string{"0123456789abcdef"}, "owner"))
+	var targets map[string]any
+	if err := json.Unmarshal(raw, &targets); err != nil || targets["session_id"] == nil {
+		t.Fatalf("precondition: the targets carry the session: %s", raw)
+	}
+	for field := range targets {
+		if _, ok := properties[field]; !ok {
+			t.Errorf("the definition of shikii_reflect names %s of the targets, got %v", field, slices.Sorted(maps.Keys(properties)))
+		}
+	}
+	st, scope, h, draft, revision := memoryEffectFixture(t)
+	key := "lesson:" + draft.ID + ":" + revision
+	if ctx := memoryEffectPrompt(t, scope, "owner"); !strings.Contains(ctx, key) {
+		t.Fatalf("precondition: the lesson is quoted before the owner's request:\n%s", ctx)
+	}
+	turn := memoryEffectComplete(t, st, scope, "owner")
+	deliveries := func(arguments string) int {
+		t.Helper()
+		result, _ := mcpToolCall(t, h, "shikii_reflect", arguments)
+		raw, _ := json.Marshal(result["structuredContent"])
+		var view reflectView
+		if err := json.Unmarshal(raw, &view); err != nil {
+			t.Fatal(err)
+		}
+		_, n := listedMemory(view, turn)
+		return n
+	}
+	if n := deliveries(`{"operation":"query","session_id":"other"}`); n != 0 {
+		t.Fatalf("a query through the MCP tool with another session's id lists none of the owner's deliveries, got %d", n)
+	}
+	if n := deliveries(`{"operation":"query","session_id":"owner"}`); n != 1 {
+		t.Fatalf("the owner's query through the MCP tool lists its delivery, got %d", n)
 	}
 }

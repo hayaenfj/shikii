@@ -29,7 +29,7 @@ Implementation: `cmd/shikii/project.go`, `cmd/shikii/init.go`, `internal/store/p
 
 ## 2. Connect before a request and after the work
 
-Automatic connection uses the Claude Code and Codex hooks (before a request, after the work, when a subagent starts and ends, right before a file edit or a command, and in Claude Code just before a subagent is launched) and the OpenCode 2.x plugin, which runs the first three of these. No other tool call runs anything.
+Automatic connection uses the Claude Code and Codex hooks (before a request, after the work, when a subagent starts and ends, right before a file edit or a command, and in Claude Code just before a subagent is launched) and the OpenCode 2.x plugin, which runs only those before a request, after the work, and when a subagent starts and ends. No other tool call runs anything.
 
 | When | What happens |
 |---|---|

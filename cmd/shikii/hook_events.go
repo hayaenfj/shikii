@@ -345,7 +345,7 @@ func hookSubagentStart(agent string, in *hookInput, snapshot *hookSession) (hook
 		return hookOut{}, nil, err
 	}
 	var muts []func(*hookSession)
-	sub := hookSession{Scope: snapshot.Scope} // no record of delivered versions: deliver to the subagent even if the parent already received them
+	sub := hookSession{Scope: snapshot.Scope, session: in.SessionID} // no record of delivered versions: deliver to the subagent even if the parent already received them
 	var context, head string
 	var err error
 	if ok {

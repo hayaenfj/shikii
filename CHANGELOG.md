@@ -6,7 +6,7 @@
 
 ### Highlights
 
-- In Codex, a lesson that names a command or a file now reaches the model right before the command runs or the file is changed, as in Claude Code. A guard you enabled that forbids a command now refuses it in Codex before it runs, and your guards on files and commit messages are also checked in Codex before a `git push` or a `gh release` that changes something.
+- In Codex, a lesson that names a command or a file is now delivered when the command is about to run or the file is about to be changed, as in Claude Code. The agent reads it together with the result of that call. A guard you enabled that forbids a command now refuses it in Codex before it runs, and your guards on files and commit messages are also checked in Codex before a `git push` or a `gh release` that changes something.
 - A lesson delivered to a subagent is now assessed by that subagent. It ends its final report with one line for each lesson, and shikii saves those lines. Before, the parent was asked, and it could not see how the subagent had used the lesson. This works in Claude Code, Codex and OpenCode 2.x.
 - In OpenCode 2.x, a subagent now gets lessons chosen by its task and is told where to write its report.
 

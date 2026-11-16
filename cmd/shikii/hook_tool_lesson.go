@@ -37,8 +37,11 @@ const patchMax = 1 << 20
 func patchTarget(patch, cwd string) string {
 	if len(patch) > patchMax {
 		// the line the limit falls in is not read: a header cut inside its name would name a file the patch does not touch
+		whole := patch[patchMax] == '\n' // the last line read ends right at the limit
 		patch = patch[:patchMax]
-		patch = patch[:strings.LastIndexByte(patch, '\n')+1]
+		if !whole {
+			patch = patch[:strings.LastIndexByte(patch, '\n')+1]
+		}
 	}
 	for _, m := range patchFile.FindAllStringSubmatch(patch, -1) {
 		file := m[1]
@@ -566,7 +569,7 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (out hoo
 			return
 		}
 		attempt.Set(chosen.page.ID, "quote_budget", quote.Trace)
-		context, deliveryErr = deliverToolLesson(agent, s, quote, target, chosen.phrase, in.AgentID)
+		context, deliveryErr = deliverToolLesson(agent, s, quote, target, chosen.phrase, in.AgentID, in.SessionID)
 	})
 	if err == nil {
 		err = deliveryErr
@@ -705,7 +708,7 @@ func namedDoors(p notebook.Page, target toolTarget) []string {
 
 // deliverToolLesson records one quote delivered at a tool call (its own delivery id, under the turn as parent, so the reflection
 // assesses it with that turn's conversation) and returns the text for the agent. phrase is the door it came through (recorded, 0.12).
-func deliverToolLesson(agent string, s *hookSession, q memoryQuote, target toolTarget, phrase, agentID string) (string, error) {
+func deliverToolLesson(agent string, s *hookSession, q memoryQuote, target toolTarget, phrase, agentID, sessionID string) (string, error) {
 	what := "the file you are about to change"
 	if target.file == "" {
 		what = "the command you are about to run"
@@ -722,6 +725,9 @@ func deliverToolLesson(agent string, s *hookSession, q memoryQuote, target toolT
 		}
 		sum := sha256.Sum256([]byte(s.TurnID + "/tool/" + target.label + "/" + quoteCacheKey(q)))
 		d := store.MemoryDelivery{ID: hex.EncodeToString(sum[:])[:16], Scope: s.Scope, Request: cut(s.Request, requestMax), Quotes: clipped, Parent: s.TurnID, Agent: agentID, Tool: target.label, Phrase: phrase}
+		if agentID != "" {
+			d.Session = sessionID
+		}
 		if err := (store.Store{Dir: agent}).SaveMemoryDelivery(d); err != nil {
 			return "", err
 		}

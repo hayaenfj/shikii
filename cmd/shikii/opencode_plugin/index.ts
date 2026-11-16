@@ -176,8 +176,10 @@ export default Plugin.define({
           .map((part: any) => part.text)
           .join("\n")
         // a continued subagent that ends a turn without a new message has nothing to report: its last message is the one already sent
-        if (!reply || reported.get(sessionID) === reply) return
-        reported.set(sessionID, reply)
+        // (told apart by the message's id, or by how many messages the subagent has written: the same words can be a new message)
+        const said = String(last?.id ?? list.filter((m) => m?.type === "assistant").length) + "\n" + reply
+        if (!reply || reported.get(sessionID) === said) return
+        reported.set(sessionID, said)
         await hook("subagent-stop", sub.parent, { agent_id: sessionID, agent_type: sub.agent, last_assistant_message: reply })
       } catch {
         // add nothing
