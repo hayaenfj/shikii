@@ -81,6 +81,7 @@ export default Plugin.define({
     const sessions = new Map<string, { child: boolean; parent?: string; agent?: string; dir?: string; busy: boolean }>()
     const briefed = new Set<string>() // subagents' sessionIDs whose task went to shikii hook subagent-start
     const working = new Set<string>() // subagents' sessionIDs with a turn this instance saw start: its end goes to shikii hook subagent-stop once
+    const reported = new Map<string, string>() // subagent's sessionID -> its last message that went to shikii hook subagent-stop
     const ends = new Map<string, number>() // sessionID -> executions seen ending (any folder's)
     const inherited = new Set<string>() // sessions moved here while a turn of the old folder ran: that turn ends there, a report joining it wakes nothing here
     // the text of the assistant message a turn ended with, from session.text.ended: a summary in the middle of a turn takes the turn's
@@ -174,7 +175,10 @@ export default Plugin.define({
           .filter((part: any) => part?.type === "text")
           .map((part: any) => part.text)
           .join("\n")
-        if (reply) await hook("subagent-stop", sub.parent, { agent_id: sessionID, agent_type: sub.agent, last_assistant_message: reply })
+        // a continued subagent that ends a turn without a new message has nothing to report: its last message is the one already sent
+        if (!reply || reported.get(sessionID) === reply) return
+        reported.set(sessionID, reply)
+        await hook("subagent-stop", sub.parent, { agent_id: sessionID, agent_type: sub.agent, last_assistant_message: reply })
       } catch {
         // add nothing
       }
@@ -327,7 +331,7 @@ export default Plugin.define({
     // a deleted session is gone for good: nothing of it is kept, so the tables do not grow with every session the server ever had
     const forget = (sessionID: string) => {
       for (const table of [brief, notes, current, continued, chain, generation, sessions, ends, texts]) table.delete(sessionID)
-      for (const set of [running, seen, inherited, briefed, working]) set.delete(sessionID)
+      for (const set of [running, seen, inherited, briefed, working, reported]) set.delete(sessionID)
     }
 
     const onEvent = async (ev: any) => {

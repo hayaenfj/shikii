@@ -144,8 +144,8 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 				}
 				ids = append(ids, l.id)
 			}
-			data, _ := json.Marshal(map[string]any{"sources": ids})
-			reason = "The reflection has not been saved and you are about to finish: " + strings.Join(leftLines(left), "; ") + ". Read the raw text and delivered memories with " + hookExe() + " reflect query (or query of shikii_reflect; targets " + string(data) + "), submit reviews, wiki (only sources when there is no lesson) and memory (helpful / unused / harmful / unknown for each delivered lesson), then finish"
+			data, _ := json.Marshal(reflectTargets(ids, in.SessionID))
+			reason = "The reflection has not been saved and you are about to finish: " + strings.Join(leftLines(left), "; ") + ". Read the raw text and delivered memories with " + hookExe() + " reflect query (or query of shikii_reflect; targets " + string(data) + ", and the same session_id with submit), submit reviews, wiki (only sources when there is no lesson) and memory (helpful / unused / harmful / unknown for each delivered lesson), then finish"
 			failed = append(failed, reason)
 		}
 		recs = append(recs, guardRecord{At: now, Session: in.SessionID, Turn: snapshot.TurnID, Guard: ritualReflect, Pass: pass, Reason: reason, Recheck: recheck})

@@ -33,11 +33,11 @@ func TestEveryRequestTextIsShortAndTheReplyCarriesTheShape(t *testing.T) {
 			t.Errorf("how_to_submit of hook plan query lacks %q", w)
 		}
 	}
-	ask := exe.ReplaceAllString(reflectAsk("'shikii' reflect", []string{"0123456789abcdef"}), "'shikii'")
+	ask := exe.ReplaceAllString(reflectAsk("'shikii' reflect", []string{"0123456789abcdef"}, "0123456789abcdef0123456789abcdef0123"), "'shikii'")
 	if len(ask) > 520 {
 		t.Errorf("the reflection notice is %d bytes, over 520: %q", len(ask), ask)
 	}
-	for _, w := range []string{"reflect query", "how_to_submit", "rule, test or procedure", `{"sources":["0123456789abcdef"]}`} {
+	for _, w := range []string{"reflect query", "how_to_submit", "rule, test or procedure", `{"session_id":"0123456789abcdef0123456789abcdef0123","sources":["0123456789abcdef"]}`} {
 		if !strings.Contains(ask, w) {
 			t.Errorf("the reflection notice lacks %q: %q", w, ask)
 		}

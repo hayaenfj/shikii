@@ -681,7 +681,7 @@ func TestReflectionNoticeIsOneFormAndTheStopCheckRepeatsTheSteps(t *testing.T) {
 		runHook(t, "stop", map[string]any{"session_id": "s1", "cwd": scope, "last_assistant_message": "README \u3092\u76f4\u3057\u307e\u3057\u305f\u3002"})
 		first = prompt("README \u306e\u5225\u306e\u7bc0\u3082\u76f4\u3057\u3066\u304f\u3060\u3055\u3044 " + strings.Repeat("x", i+1))
 	}
-	if !strings.Contains(first, "wrap up the reflection") || !strings.Contains(first, "reflect query") || !strings.Contains(first, `{"sources":[`) || strings.Contains(first, "reviews:[") {
+	if !strings.Contains(first, "wrap up the reflection") || !strings.Contains(first, "reflect query") || !strings.Contains(first, `{"session_id":"s1","sources":[`) || strings.Contains(first, "reviews:[") {
 		t.Fatalf("the ask names the command and the conversations and leaves the shape to the reply: %q", first)
 	}
 	// the turn ends without the reflection: the Stop check repeats the steps, and the next ask is the same form
@@ -690,7 +690,7 @@ func TestReflectionNoticeIsOneFormAndTheStopCheckRepeatsTheSteps(t *testing.T) {
 		t.Fatalf("the Stop check repeats the steps of the missed reflection: %s", stop)
 	}
 	again := prompt("README \u306e\u8868\u3082\u76f4\u3057\u3066\u304f\u3060\u3055\u3044")
-	if !strings.Contains(again, "wrap up the reflection") || !strings.Contains(again, `{"sources":[`) || !strings.Contains(again, "reflect query") {
+	if !strings.Contains(again, "wrap up the reflection") || !strings.Contains(again, `{"session_id":"s1","sources":[`) || !strings.Contains(again, "reflect query") {
 		t.Fatalf("the next ask is the same form naming the command and the conversations: %q", again)
 	}
 }

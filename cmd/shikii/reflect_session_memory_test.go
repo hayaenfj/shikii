@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -304,5 +305,77 @@ func TestThePlanningSubmitLeavesAnotherSessionsDeliveriesOutOfWhatIsLeft(t *test
 	}
 	if left := asList(reflection["left_memory"]); len(left) != 0 {
 		t.Fatalf("the owner's delivery is not left for the other session: %v", left)
+	}
+}
+
+// stopTargets is the request the Stop's reason tells the agent to send: the JSON after "targets " in the reason, read as the reflection
+// reads a request.
+func stopTargets(t *testing.T, stop string) reflectRequest {
+	t.Helper()
+	reason, blocked := stopReason(t, stop)
+	i := strings.Index(reason, "targets {")
+	if !blocked || i < 0 {
+		t.Fatalf("the Stop does not ask for the reflection with targets:\n%s", stop)
+	}
+	var req reflectRequest
+	if err := json.NewDecoder(strings.NewReader(reason[i+len("targets "):])).Decode(&req); err != nil {
+		t.Fatalf("the targets of the Stop are not a request: %v\n%s", err, reason)
+	}
+	return req
+}
+
+// A session that owes only the wiki part of another session's conversation is stopped and sent to reflect query. The targets it is
+// given name the session, so the query and the submit that follow the Stop leave the owner's deliveries to the owner: the other
+// session saw nothing of how the lesson was used and could only answer unknown, for good.
+func TestTheStopsTargetsLeaveAnotherSessionsDeliveriesToTheirOwner(t *testing.T) {
+	st, scope, turn, key := sessionDelivery(t)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "other", "cwd": scope, "prompt": "Adjust the size of the screen text."})
+	targets := stopTargets(t, runHook(t, "stop", map[string]any{"session_id": "other", "cwd": scope, "last_assistant_message": "Adjusted the size of the screen text."}))
+	if targets.SessionID != "other" || !slices.Contains(targets.Sources, turn) {
+		t.Fatalf("the Stop names the conversation and the session that is asked, got %+v", targets)
+	}
+	query := targets
+	query.Operation = "query"
+	view, err := runReflect(st.Dir, scope, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed, n := listedMemory(view.(reflectView), turn); !listed || n != 0 {
+		t.Fatalf("the query the Stop sends the other session to lists the conversation without the owner's delivery %s, got listed %v with %d deliveries", key, listed, n)
+	}
+	submit := targets
+	submit.Operation, submit.Wiki = "submit", []notebook.Draft{{Sources: []string{turn}}}
+	r, err := runReflect(st.Dir, scope, submit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := r.(reflectResult); len(res.LeftMemory) != 0 || strings.Contains(strings.Join(res.Left, " "), "delivered lessons") {
+		t.Fatalf("the submit that follows the Stop leaves the owner's delivery to the owner, got left %v and left_memory %v", res.Left, res.LeftMemory)
+	}
+	// the owner is still asked, and a request that names no session is not narrowed
+	own, err := runReflect(st.Dir, scope, reflectRequest{Operation: "query", SessionID: "owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, n := listedMemory(own.(reflectView), turn); n != 1 {
+		t.Fatalf("the owner's query lists its delivery, got %d", n)
+	}
+	plain, err := runReflect(st.Dir, scope, reflectRequest{Operation: "query"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, n := listedMemory(plain.(reflectView), turn); n != 1 {
+		t.Fatalf("a query that names no session is not narrowed, got %d", n)
+	}
+}
+
+// The notice before a request names the session with the conversations too, so the query it points to is narrowed in the same way.
+func TestTheNoticeBeforeARequestNamesTheSessionWithItsTargets(t *testing.T) {
+	ask := reflectAsk("shikii reflect", []string{"0123456789abcdef"}, "other")
+	if !strings.Contains(ask, `{"session_id":"other","sources":["0123456789abcdef"]}`) {
+		t.Fatalf("the notice gives the session with the targets:\n%s", ask)
+	}
+	if plain := reflectAsk("shikii reflect", []string{"0123456789abcdef"}, ""); strings.Contains(plain, "session_id") {
+		t.Fatalf("a notice for no session names none:\n%s", plain)
 	}
 }

@@ -447,8 +447,10 @@ func editHooksTo(path string, install bool, hookEvents []hookEvent, write bool) 
 		hooks = map[string]any{}
 	}
 	want := map[string]bool{}
+	matcher := map[string]string{} // the matcher this version registers each of its commands under
 	for _, ev := range hookEvents {
 		want[ev.cmd] = install
+		matcher[ev.cmd] = ev.matcher
 		if v, has := hooks[ev.event]; has {
 			if _, ok := v.([]any); !ok {
 				return false, fmt.Errorf("%s: hooks.%s is not a list (fix it by hand; shikii does not replace what it cannot read)", path, ev.event)
@@ -460,9 +462,16 @@ func editHooksTo(path string, install bool, hookEvents []hookEvent, write bool) 
 		c, _ := m["command"].(string)
 		return c
 	}
-	stale := func(h any) bool { // to remove: shikii handlers not in this version (all of them for uninstall. Old handlers whose executable path changed are removed here too)
+	// to remove: shikii handlers not in this version (all of them for uninstall. Old handlers whose executable path changed are removed
+	// here too), and a handler of this version under another matcher than it is registered with (written by another build, or edited
+	// by hand): it would not run for the tools it is for, so it is taken out here and added again below with its matcher
+	stale := func(h any, group map[string]any) bool {
 		c := command(h)
-		return isShikiiHook(c) && !want[c]
+		if !isShikiiHook(c) {
+			return false
+		}
+		m, _ := group["matcher"].(string)
+		return !want[c] || m != matcher[c]
 	}
 	changed := false
 	// 1) sweep all events
@@ -478,7 +487,7 @@ func editHooksTo(path string, install bool, hookEvents []hookEvent, write bool) 
 			hs, _ := gm["hooks"].([]any)
 			var rest []any
 			for _, h := range hs {
-				if stale(h) {
+				if stale(h, gm) {
 					changed, removed = true, true
 				} else {
 					rest = append(rest, h)

@@ -5,6 +5,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,12 @@ func TestAudit011DocsMatchTheHooksAndTheGuards(t *testing.T) {
 		{"integrations/claude-code.md", "none is added to Codex", "Codex gets SubagentStart, SubagentStop and the PreToolUse of tool-lesson"},
 		{"integrations/claude-code.ja.md", "\u3069\u308c\u3082 Codex \u306b\u306f\u8db3\u3055\u306a\u3044", "Codex gets SubagentStart, SubagentStop and the PreToolUse of tool-lesson"},
 		{"docs/guide.md", "Codex has 3)", "Codex has 6 hooks"},
+		{"docs/guide.md", "Codex does not get this hook", "Codex gets the PreToolUse of tool-lesson for its shell and apply_patch"},
+		{"docs/guide.ja.md", "Codex \u306b\u306f\u8db3\u3055\u306a\u3044\u3002", "Codex gets the PreToolUse of tool-lesson for its shell and apply_patch"},
+		{"docs/guide.md", "Codex retains turn-end checks without this command", "Codex has the command hook from 0.36.0"},
+		{"docs/guide.ja.md", "\u3053\u306e\u30b3\u30de\u30f3\u30c9\u7528hook\u3092\u767b\u9332\u305b\u305a", "Codex has the command hook from 0.36.0"},
+		{"README.md", "right before it runs in Claude Code.", "a guard on commands refuses in Codex too"},
+		{"skills/shikii/references/guards.md", "that same Claude Code Bash hook", "the hook before a command runs in Codex too"},
 		{"docs/guide.ja.md", "Codex \u306f 3 \u3064)", "Codex has 6 hooks"},
 		{"README.md", "Delivery to subagents is in Claude Code and OpenCode 2.x |", "Codex subagents get the rules for every request too"},
 		{"integrations/claude-code.md", "and for Claude Code 3 more", "Claude Code gets 4 more than the 2 shared ones (SessionStart, SubagentStart, PreToolUse x2), or the 2 are 3 (SessionStart is shared)"},
@@ -81,6 +88,24 @@ func TestAudit011DocsMatchTheHooksAndTheGuards(t *testing.T) {
 	for _, c := range stale {
 		if strings.Contains(read(c.file), c.text) {
 			t.Errorf("%s still says %q, but %s", c.file, c.text, c.why)
+		}
+	}
+	// The numbers and the matchers the documents give are the ones of the list itself: a claim that names them is built from
+	// hookEventsFor, so a document left behind when the list changes fails here whatever its wording around the number.
+	says := []claim{
+		{"integrations/claude-code.md", fmt.Sprintf("(%d for Claude Code, %d for Codex)", claude, codex), "hook uninstall removes the hooks shikii added"},
+		{"integrations/claude-code.ja.md", fmt.Sprintf("(Claude Code %d \u3064\u3001Codex %d \u3064)", claude, codex), "hook uninstall removes the hooks shikii added"},
+		{"integrations/claude-code.md", fmt.Sprintf("2. Adds %d to the `hooks` of", codex), "install adds that many to both agents"},
+		{"integrations/claude-code.md", fmt.Sprintf("Claude Code gets %d more", claude-codex), "Claude Code has agent-task besides"},
+		{"integrations/claude-code.ja.md", fmt.Sprintf("\u306e `hooks` \u306b %d \u3064\u3092\u8db3\u3059", codex), "install adds that many to both agents"},
+		{"docs/guide.md", fmt.Sprintf("(%d in both; Claude Code has %d more", codex, claude-codex), "the guide counts the hooks"},
+		{"docs/guide.ja.md", fmt.Sprintf("(\u3069\u3061\u3089\u3082 %d \u3064\u3002Claude Code \u306f\u3082\u3046 %d \u3064", codex, claude-codex), "the guide counts the hooks"},
+		{"integrations/claude-code.md", "`" + toolLessonMatcher + "` in Claude Code, `" + toolLessonMatcherCodex + "` in Codex", "the matchers of tool-lesson"},
+		{"integrations/claude-code.ja.md", "Claude Code \u3067\u306f `" + toolLessonMatcher + "`\u3001Codex \u3067\u306f `" + toolLessonMatcherCodex + "`", "the matchers of tool-lesson"},
+	}
+	for _, c := range says {
+		if !strings.Contains(read(c.file), c.text) {
+			t.Errorf("%s does not say %q (%s)", c.file, c.text, c.why)
 		}
 	}
 }

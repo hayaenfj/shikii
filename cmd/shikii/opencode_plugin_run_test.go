@@ -744,6 +744,24 @@ func TestOpenCodePluginReportsASubagentFromTheIdleHookOrFromTheEndOfItsExecution
 	}
 }
 
+// A subagent that is continued and ends that turn without saying anything new is not reported again with the message of its
+// earlier turn: a turn with no message reports nothing.
+func TestOpenCodePluginReportsNoSubagentTurnThatAddedNoMessage(t *testing.T) {
+	b := newPluginBox(t)
+	_, calls := b.play(t, map[string]any{
+		"sessions": map[string]any{"child": map[string]any{"id": "child", "parentID": "s1"}},
+		"messages": map[string]any{"child": []map[string]any{{"type": "assistant", "content": []map[string]any{{"type": "text", "text": "Done."}}}}},
+		"steps": []map[string]any{
+			{"op": "prompt", "sid": "child", "text": "a task"},
+			{"op": "idle", "sid": "child"},
+			{"op": "prompt", "sid": "child", "text": "one more thing"},
+			{"op": "idle", "sid": "child"},
+		}})
+	if n := countCalls(calls, "subagent-stop"); n != 1 {
+		t.Fatalf("the second turn added no message, so the subagent is reported once, got %d: %+v", n, calls)
+	}
+}
+
 // A shikii that prints something broken, exits with 1, or is not there never makes a hook throw (a throw refuses the person's request),
 // and nothing is added or continued.
 func TestOpenCodePluginNeverThrowsWhenShikiiFails(t *testing.T) {

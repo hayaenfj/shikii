@@ -463,7 +463,7 @@ func TestNoticesKeepTheirInstructions(t *testing.T) {
 		{"planning notice (no query)", planningNoQueryNotice, []string{"lesson:<id>:<revision>"}},
 		{"planningShape", planningShape, []string{"the <id> in history:<id>:user", "continues_previous is true, false or left out"}},
 		{"habitsNotice", habitsNotice, []string{"handoff_write in shikii_wiki", "shikii handoff write <path>"}},
-		{"reflection notice", reflectAsk("'shikii' reflect", nil), []string{"reflect query", "how_to_submit", "this request comes first"}},
+		{"reflection notice", reflectAsk("'shikii' reflect", nil, ""), []string{"reflect query", "how_to_submit", "this request comes first"}},
 		{"reflection how_to_submit", reflectHowToSubmit, []string{"the latest page_id", "Read the sources and existing pages", "the skill's references/wiki.md"}},
 	} {
 		for _, w := range c.want {
@@ -784,7 +784,7 @@ func TestRestatesReachesRequestSixTurnsBack(t *testing.T) {
 func TestNewRulesTestsAndProceduresGoToTheWiki(t *testing.T) {
 	ja := "新しく作った・変えた決まり・テスト・手順"
 	en := "rule, test or procedure"
-	reflectText := reflectAsk("shikii", nil)
+	reflectText := reflectAsk("shikii", nil, "")
 	skill, _ := os.ReadFile("../../skills/shikii/SKILL.md")
 	wikiRef, _ := os.ReadFile("../../skills/shikii/references/wiki.md")
 	// The pre-work sorting guidance arrives with every request (the ritual one-liner is only once per session, and Claude Code in a project without work rules did not use it when it finished making something; measured in 0.9.1)

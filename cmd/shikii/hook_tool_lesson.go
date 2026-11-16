@@ -26,8 +26,8 @@ const toolLessonMatcher = "Edit|Write|MultiEdit|NotebookEdit|Bash"
 // tool_input.command, and every file change is one apply_patch whose tool_input.command is the patch.
 const toolLessonMatcherCodex = "^(Bash|apply_patch)$"
 
-// patchFile is a file header of an apply_patch patch: the file the patch adds, updates or deletes.
-var patchFile = regexp.MustCompile(`(?m)^\*\*\* (?:Add|Update|Delete) File: (.+?)[ \t]*$`)
+// patchFile is a file header of an apply_patch patch: the file the patch adds, updates or deletes. A line may end with CRLF.
+var patchFile = regexp.MustCompile(`(?m)^\*\*\* (?:Add|Update|Delete) File: (.+?)[ \t\r]*$`)
 
 // patchMax is how much of a patch is read for its file headers.
 const patchMax = 1 << 20
@@ -35,7 +35,12 @@ const patchMax = 1 << 20
 // patchTarget is the first file of a patch whose name is specific enough to look for in lessons (one lesson at most is delivered),
 // as an absolute path: Codex writes a path relative to the folder it works in.
 func patchTarget(patch, cwd string) string {
-	for _, m := range patchFile.FindAllStringSubmatch(cut(patch, patchMax), -1) {
+	if len(patch) > patchMax {
+		// the line the limit falls in is not read: a header cut inside its name would name a file the patch does not touch
+		patch = patch[:patchMax]
+		patch = patch[:strings.LastIndexByte(patch, '\n')+1]
+	}
+	for _, m := range patchFile.FindAllStringSubmatch(patch, -1) {
 		file := m[1]
 		if !distinctiveFileName(filepath.Base(file)) {
 			continue

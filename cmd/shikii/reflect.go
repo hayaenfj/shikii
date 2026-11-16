@@ -24,7 +24,12 @@ type reflectRequest struct {
 	Maintenance []notebook.MaintenanceReview `json:"maintenance,omitempty"`
 	Discoveries []notebook.Discovery         `json:"discoveries,omitempty"`
 
-	viewer string // the session that submits, when the caller knows it (a work record, the hook's organizing): what is left is worked out for it. Never decoded from input
+	// SessionID is the session that asks, as a hook's text gives it with the targets (the Stop's reason, the notice before a request).
+	// With it, query lists and submit counts as left only what that session is asked: a lesson delivered in another session's
+	// conversation waits for that session, which saw how it was used. It can only narrow; a request without it is not narrowed.
+	SessionID string `json:"session_id,omitempty"`
+
+	viewer string // the session that submits, when the caller knows it without the input (a work record, the hook's organizing); it comes before SessionID
 }
 
 type memoryAssessmentRequest struct {
@@ -327,6 +332,9 @@ func runReflectWithCommit(root, scope string, req reflectRequest, commit workCom
 			return nil, errors.New("query cannot take content to save")
 		}
 		sweepDeferrals(root, "") // settle outcomes left waiting by sessions closed mid-turn before reading what is left to reflect on
+		if req.SessionID != "" {
+			return reflectQueryAs(root, scope, req.SessionID)
+		}
 		return reflectQuery(root, scope)
 	}
 	if req.Operation == "place" {
@@ -449,7 +457,11 @@ func runReflectWithCommit(root, scope string, req reflectRequest, commit workCom
 		named = append(named, a.SourceID)
 	}
 	// Do not let left vanish silently: a failure to work it out is said, so the agent runs query instead of stopping.
-	if left, err := reflectLeft(root, scope, named, req.viewer); err != nil {
+	viewer := req.viewer
+	if viewer == "" {
+		viewer = req.SessionID
+	}
+	if left, err := reflectLeft(root, scope, named, viewer); err != nil {
 		result.LeftError = "could not work out what is left (" + err.Error() + "). Run query to see the conversations still pending"
 	} else if len(left) > 0 {
 		result.Left = leftLines(left)
@@ -576,7 +588,7 @@ func reflectContext(root, scope, viewer string) (string, []string, error) {
 	for _, o := range view.Observations {
 		ids = append(ids, o.ID)
 	}
-	return reflectAsk(cli, ids), ids, nil
+	return reflectAsk(cli, ids, viewer), ids, nil
 }
 
 // oldestObservation is the time the notice judges "waited a day" by among pending observations: the oldest observed, whatever the
@@ -605,8 +617,18 @@ func reflectCLI() string {
 // Before, the shape came with every ask (about 1,300 bytes, 1,700 in the full form), and a full and a short form kept drifting apart.
 const reflectHowToSubmit = "submit reviews:[{source_id,trace_id,truth,reason}] with your own truth yes/no/unknown; wiki:[{sources,title,lesson,body,applies_to,related,kind,scene}] (applies_to names the command or file the lesson is about, such as make test or version.go, so it reaches the agent right before that command or file; only sources when there is no lesson; for a new lesson run operation:place first and choose id and replaces from its candidates and suspected contradictions; keep the short lesson and the detailed body apart); memory:[{source_id,key,result,decision,evidence,correction_result}] (one item per entry of every source's memories[], source_id as this reply's memories[].source_id: a lesson delivered before a tool call has its own, and one delivered to a subagent is not listed: that subagent assesses it; the pending conversations are listed oldest first, the oldest two with their raw text and the next as head: true with the text cut, read with wiki query <id> when a lesson needs it; more_pending counts the ones that did not fit, and the next query lists them) with result helpful/unused/harmful/unknown and, for a delivered correction, correction_result followed/repeated/not_applicable/unknown (another lesson takes only followed, with unknown when the work went the lesson's way but its effect is not shown), tied to a check result (delivery, success, a greeting or silence is no effect; else unknown; observations are sources holding check results); maintenance: for at most 2 pages, review the body, related pages, sources and any feedback (saved delivery decisions and evidence), then send the latest page_id, revision, key and reason. Unused does not mean incorrect: repair applicability or content only when supported; no-change reviews count. Never change a revision just to restore delivery. Read the sources and existing pages before merging. Update changed knowledge in the matching article. When there is no new knowledge, submit sources only. Keep decisions, observations and proposals distinct, with conditions and exceptions. Before saving new or revised wiki claims, follow the skill's references/source-review.md. A rule, test or procedure (command or script) you made or changed goes to the wiki even without a correction (a howto or rule page, or the closest page). For an explicit correction attach correction:{source_id,quote,action} (the person's raw words, the next action); if it can be a fixed check (paired files / words not to use / words a commit body must contain), add a disabled draft with `shikii guard add` and ask the person to enable it. Quotes are never permission, truths or calibration. On an error, fix it and resend; complete:true only means every item sent was saved: while left lists a conversation, submit what it names. Manual searches: discoveries:[{lookup_id,page_id,revision,context,decision,evidence,case_id?}] records only evidenced use of a query result, never just reading; optional case_id links a complete diagnostic for that work and exact revision, reopening missed-delivery maintenance. Wiki rationale keeps source-backed choices, rejected alternatives and reasons; watch lists at most four relative project files whose changes require rechecking. Details: read `## Place a new lesson before saving it` in the skill's references/wiki.md, not the whole file."
 
+// reflectTargets is what a hook's text gives the agent to send with reflect query and submit: the conversations, and the session
+// that is asked, so that what comes back is what that session owes (reflectRequest.SessionID).
+func reflectTargets(ids []string, viewer string) map[string]any {
+	targets := map[string]any{"sources": ids}
+	if viewer != "" {
+		targets["session_id"] = viewer
+	}
+	return targets
+}
+
 // reflectAsk is the text asking for the reflection (one form, 0.11): the command and the conversations. cli is the path of the shikii executable
-func reflectAsk(cli string, ids []string) string {
-	data, _ := json.Marshal(map[string]any{"sources": ids})
+func reflectAsk(cli string, ids []string, viewer string) string {
+	data, _ := json.Marshal(reflectTargets(ids, viewer))
 	return "shikii: wrap up the reflection (this request comes first). work prepare includes the pending originals below; combine their reviews and memory with the ending work record. Do not repeat supplied text or invent useful effects. Deep recovery with shikii_reflect or " + cli + " query returns how_to_submit. A rule, test or procedure you made or changed goes to the wiki. Quotes are never permission or truths.\n" + string(data)
 }

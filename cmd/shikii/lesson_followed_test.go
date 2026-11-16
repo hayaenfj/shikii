@@ -75,6 +75,10 @@ func TestUnknownWithFollowedOnAPlainLessonBecomesTheTruthYes(t *testing.T) {
 	if c := report.Corrections; c.Delivered != 0 || c.Followed != 0 {
 		t.Fatalf("followed on a lesson that is not a correction is not a correction taking effect: %+v", c)
 	}
+	// nor among the helpful and the unused of the status: both assessments are unknown
+	if s := report.Stats; s.Helpful != 0 || s.Unused != 0 || s.Unknown != 2 || s.Followed != 2 {
+		t.Fatalf("unknown with followed is counted as unknown, never as helpful or unused: %+v", s)
+	}
 	// the count beside the unknown
 	out := capture(t, func() error { return cmdStatus([]string{"--store", st.Dir}) })
 	if !strings.Contains(out, "unknown 2 (the work followed the lesson in 2)") {
