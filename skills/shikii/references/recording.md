@@ -200,9 +200,12 @@ sources with current behavior, retain still-valid knowledge, correct obsolete
 conditions, classify superseded procedures as history, and consolidate duplicates
 through ordinary source-preserving edits/replaces. Preserve explicit preferences
 and historical human decisions. Review the latest returned maintenance ref after
-an edit; reading alone never advances progress. Review one batch per ordinary task,
-then resume on the next task; durable progress survives restarts. An explicit request
-to finish the upgrade may continue batches, renewing context at its article limit. Unavailable
+an edit; reading alone never advances progress. When the person asks to update memory
+(Japanese: 記憶の更新), optimize memory (記憶の最適化), or finish the memory upgrade, run
+the whole upgrade in that same turn, with no wake-up loop and no split into separate
+turns (see "Memory upgrade in one turn" below). Otherwise review one batch per ordinary
+task, then resume on the next task; durable progress survives restarts. Renew context
+at the article limit when batches continue. Unavailable
 sources stay blocked and must not be deleted to claim completion. Hosts running
 assigned child agents do not automatically schedule this project-wide migration.
 
@@ -212,6 +215,37 @@ edited article itself still needs review. New evidence, changed premises and the
 30-day review remain active; older checkpoints without comparison evidence keep
 the previous exact-version behavior. Review submissions still require the latest
 revision and key, including current related revisions.
+
+### Memory upgrade in one turn
+
+When the person asks to update memory (記憶の更新), to optimize memory (記憶の最適化), or
+to finish the memory upgrade, do all of it in the current turn. Do not schedule
+wake-ups, and do not split the work into separate turns or batches for the person.
+For the optimization request, tidy each page before reviewing it, as tidy.md describes.
+
+1. Prepare with the current receipt and `query: memory-upgrade`. If a record or
+   prepare is refused with "a newer request has started", the receipt belongs to an
+   earlier request: prepare again with the ids of the latest hook notice, and
+   reuse the `carried` pages and sources it lists instead of rereading them. The
+   reviews of the refused batch are not carried; review and record them again
+   under the new receipt.
+2. For each page the preparation returns, in order: for the optimization request, tidy it first;
+   then review it against its original sources and current behavior. Check what you
+   actually checked; name anything you did not check (for example, sources not
+   read) in the reason. Reading alone is not review.
+3. Save any necessary edit, read the saved page, then record each reviewed page's
+   maintenance with its latest `maintenance_ref` and a checked reason. A no-change
+   review uses the original ref. Several record calls in one turn are fine.
+4. Prepare again with the same receipt and `query: memory-upgrade` for the next
+   pages, and repeat from step 2 until `memory_upgrade.status` is no longer
+   `upgrading`, `reviewed` reaches `total`, or only blocked pages remain.
+5. A page whose original evidence cannot be read or does not support it is declared
+   blocked, not reviewed: record its `maintenance` item with `"blocked": true` and a
+   reason that says what blocks it (never delete material to finish). The batch then
+   moves on past that page; it returns when its revision changes. Record the turn's
+   result once under the receipt: `result` names the pages reviewed, what was checked,
+   and what remains, including the blocked refs. Stop early only when the person stops
+   the work, or when only blocked pages remain (`status` is `blocked`).
 
 ## Keep records relevant
 

@@ -1,7 +1,9 @@
 # Tidy shikii's wiki
 
 Use when the person asks to tidy shikii or clean up its wiki's overstatement and
-repetition. The request authorizes supported wiki edits through the ordinary
+repetition. It is also the first step of 記憶の最適化 (memory optimization): each page of the
+memory upgrade is tidied before its review, in the same turn, so the whole wiki is
+covered without a wake-up loop or a split into separate turns. The request authorizes supported wiki edits through the ordinary
 workflow. It does not ask for repository refactoring, new policies or changes to
 original sources. Reuse the current preparation and record the result once.
 
