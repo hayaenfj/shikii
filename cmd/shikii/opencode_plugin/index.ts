@@ -7,6 +7,10 @@
 //   - the end of a turn             -> shikii hook stop (a block makes OpenCode continue the turn with the reason). It runs in OpenCode's
 //     experimental.idle hook, inside the execution: opencode run exits as soon as the execution ends, and ends the private server it
 //     started (--standalone, or no background service running) with it, before a stop started from session.execution.succeeded can run
+//   - a subagent's task             -> shikii hook subagent-start, with the parent's session, the subagent's own session as agent_id and
+//     the task as prompt (its additionalContext goes on the task's message)
+//   - a subagent going idle         -> shikii hook subagent-stop, with its last message: shikii reads what the subagent says it did with
+//     the lessons it was given. Its answer is not read and the subagent is never continued
 // A turn is what this plugin saw start: the person's request, a continuation it sent itself, or a subagent's report that wakes the
 // session. An execution that no turn of those started (a summary the person asked for) runs no stop, and neither does a turn that was
 // interrupted or failed (Claude Code runs no Stop for those); a turn the person interrupts while its stop runs is not continued. One
@@ -25,6 +29,8 @@ const SHIKII: string = "__SHIKII_BIN__"
 const TIMEOUT_MS: Record<string, number> = { "user-prompt-submit": 15_000, "session-start": 15_000, stop: 20_000 }
 const CONTINUE_KEY = "stop-continue" // metadata of a turn this plugin started: the next stop is stop_hook_active
 const CONTINUE_MAX = 8 // a safety net: after this many continuations in a row for one request, the plugin stops continuing
+// measured on 2.3.0: OpenCode puts this line before the task the parent gave a subagent. shikii picks lessons by the task alone
+const SUBAGENT_PREFACE = "You are a subagent spawned by another session.\n"
 
 // run starts `shikii hook <event>` in the project's folder (cwd; as Claude Code and Codex run their hooks), passes input as JSON on
 // stdin and returns the JSON it prints (undefined when it prints none, fails or times out).
@@ -71,7 +77,10 @@ export default Plugin.define({
     const generation = new Map<string, number>()
     const running = new Set<string>() // sessionIDs with a turn this instance saw start and has not stopped yet
     const seen = new Set<string>() // sessionIDs this instance saw a request of
-    const sessions = new Map<string, { child: boolean; dir?: string; busy: boolean }>() // what ctx.session.get said (busy: a turn runs); forgotten when the session moves
+    // what ctx.session.get said (parent: the session a subagent's session was started from; busy: a turn runs); forgotten when the session moves
+    const sessions = new Map<string, { child: boolean; parent?: string; agent?: string; dir?: string; busy: boolean }>()
+    const briefed = new Set<string>() // subagents' sessionIDs whose task went to shikii hook subagent-start
+    const working = new Set<string>() // subagents' sessionIDs with a turn this instance saw start: its end goes to shikii hook subagent-stop once
     const ends = new Map<string, number>() // sessionID -> executions seen ending (any folder's)
     const inherited = new Set<string>() // sessions moved here while a turn of the old folder ran: that turn ends there, a report joining it wakes nothing here
     // the text of the assistant message a turn ended with, from session.text.ended: a summary in the middle of a turn takes the turn's
@@ -81,21 +90,40 @@ export default Plugin.define({
     // Known limit: a turn is only in this instance's memory. When OpenCode reloads the plugins (a file under plugins/ changed) the turns
     // that were running get no stop. Keeping them in ctx.storage is not done: whether it is per project has not been checked.
 
-    // a session of this plugin's own project that is not a subagent's: Claude Code runs no UserPromptSubmit or Stop for a subagent's
-    // session, and a session of another folder belongs to the plugin instance of that folder. When unsure, add nothing.
-    const mine = async (sessionID: string): Promise<boolean> => {
+    // what OpenCode says of a session, asked once. undefined when it cannot be asked, or when the session is another folder's: that
+    // one belongs to the plugin instance of that folder.
+    const here = async (sessionID: string) => {
       try {
         let s = sessions.get(sessionID)
         if (!s) {
           const got: any = await ctx.session.get({ sessionID } as any)
-          s = { child: Boolean(got?.parentID), dir: got?.location?.directory, busy: (got?.time?.busy ?? 0) > (got?.time?.idle ?? 0) }
+          s = {
+            child: Boolean(got?.parentID),
+            parent: typeof got?.parentID === "string" ? got.parentID : undefined,
+            agent: typeof got?.agent === "string" ? got.agent : undefined,
+            dir: got?.location?.directory,
+            busy: (got?.time?.busy ?? 0) > (got?.time?.idle ?? 0),
+          }
           sessions.set(sessionID, s)
         }
-        const here = cwd()
-        return !s.child && (!here || !s.dir || s.dir === here)
+        const dir = cwd()
+        return !dir || !s.dir || s.dir === dir ? s : undefined
       } catch {
-        return false
+        return undefined
       }
+    }
+
+    // a session of this plugin's own project that is not a subagent's: Claude Code runs no UserPromptSubmit or Stop for a subagent's
+    // session. When unsure, add nothing.
+    const mine = async (sessionID: string): Promise<boolean> => {
+      const s = await here(sessionID)
+      return s !== undefined && !s.child
+    }
+
+    // a subagent's session of this plugin's own project: the session it was started from and the agent it runs as
+    const subagentOf = async (sessionID: string): Promise<{ parent: string; agent: string } | undefined> => {
+      const s = await here(sessionID)
+      return s?.child && s.parent ? { parent: s.parent, agent: s.agent ?? "" } : undefined
     }
 
     // the one way a hook is run: shikii gets the session and the folder, plus what the event adds
@@ -116,10 +144,49 @@ export default Plugin.define({
     const turnNumber = (sessionID: string): number => generation.get(sessionID) ?? 0
     const bump = (sessionID: string) => generation.set(sessionID, turnNumber(sessionID) + 1)
 
+    // The task of a subagent goes to shikii hook subagent-start under the parent's session (as Claude Code's SubagentStart does), and
+    // what shikii gives goes on the task's message. Only the first message of a subagent's session is its task; a later one (the
+    // parent steering it) starts another turn of the same subagent, whose end is reported again.
+    const subagentPrompt = async (sessionID: string, sub: { parent: string; agent: string }, e: any) => {
+      working.add(sessionID)
+      if (briefed.has(sessionID)) return
+      briefed.add(sessionID)
+      const given: string = e.prompt?.text ?? ""
+      const task = given.startsWith(SUBAGENT_PREFACE) ? given.slice(SUBAGENT_PREFACE.length) : given
+      const out = await hook("subagent-start", sub.parent, { agent_id: sessionID, agent_type: sub.agent, prompt: task })
+      const id = typeof e.messageID === "string" ? e.messageID : ""
+      current.set(sessionID, id)
+      const text = additional(out)
+      if (text) notes.set(sessionID, new Map([[id, { text, seen: false }]]))
+    }
+
+    // the end of a subagent's turn: its last message goes to shikii hook subagent-stop, which answers nothing. The subagent is never
+    // continued, so the report its parent gets is the one it wrote.
+    const subagentStop = async (sessionID: string) => {
+      try {
+        if (!sessionID || !working.delete(sessionID)) return
+        const sub = await subagentOf(sessionID)
+        if (!sub) return
+        const messages: any = await ctx.session.context({ sessionID })
+        const list: any[] = Array.isArray(messages) ? messages : []
+        const last = [...list].reverse().find((m) => m?.type === "assistant")
+        const reply = (last?.content ?? [])
+          .filter((part: any) => part?.type === "text")
+          .map((part: any) => part.text)
+          .join("\n")
+        if (reply) await hook("subagent-stop", sub.parent, { agent_id: sessionID, agent_type: sub.agent, last_assistant_message: reply })
+      } catch {
+        // add nothing
+      }
+    }
+
     ctx.session.hook("prompt", async (e: any) => {
       try {
         const sessionID: string = e.sessionID
-        if (!sessionID || !(await mine(sessionID))) return
+        if (!sessionID) return
+        const sub = await subagentOf(sessionID)
+        if (sub) return await subagentPrompt(sessionID, sub, e)
+        if (!(await mine(sessionID))) return
         seen.add(sessionID)
         // a message the person sends while a turn that moved here still runs joins that execution: the old folder runs its one stop
         if (!inherited.has(sessionID)) running.add(sessionID)
@@ -227,6 +294,7 @@ export default Plugin.define({
     try {
       const added: any = ctx.session.hook("experimental.idle", async (e: any) => {
         try {
+          await subagentStop(e?.sessionID)
           await stop(e?.sessionID)
         } catch {
           // add nothing
@@ -251,6 +319,7 @@ export default Plugin.define({
     // alone, the prompt hook of that message may already have marked the new turn.
     const ended = (sessionID: string) => {
       running.delete(sessionID) // continued is read at the next stop only: the next request and a woken turn set it again
+      working.delete(sessionID) // a subagent's turn that did not succeed reports nothing
       texts.delete(sessionID) // the reply of a turn that did not succeed is no turn's reply
       bump(sessionID) // a stop still running in the idle hook does not continue the turn the person stopped
     }
@@ -258,7 +327,7 @@ export default Plugin.define({
     // a deleted session is gone for good: nothing of it is kept, so the tables do not grow with every session the server ever had
     const forget = (sessionID: string) => {
       for (const table of [brief, notes, current, continued, chain, generation, sessions, ends, texts]) table.delete(sessionID)
-      for (const set of [running, seen, inherited]) set.delete(sessionID)
+      for (const set of [running, seen, inherited, briefed, working]) set.delete(sessionID)
     }
 
     const onEvent = async (ev: any) => {
@@ -270,7 +339,10 @@ export default Plugin.define({
           ends.set(sid, (ends.get(sid) ?? 0) + 1)
           inherited.delete(sid) // the execution that was the old folder's turn is over
         }
-        if (ev.type === "session.execution.succeeded") await stop(sid) // a turn whose stop the idle hook did not run
+        if (ev.type === "session.execution.succeeded") {
+          await subagentStop(sid) // a turn whose end the idle hook did not see (both are for one session at most: working or running has it)
+          await stop(sid)
+        }
         else if (ev.type === "session.execution.failed" || (ev.type === "session.execution.interrupted" && ev.data?.reason !== "superseded")) ended(sid)
         else if (ev.type === "session.inbox.enqueued" && ev.data?.item?.type === "synthetic" && ev.data.item.payload?.metadata?.source === "subagent") await woken(sid)
         else if (ev.type === "session.moved") {

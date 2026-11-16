@@ -29,7 +29,7 @@ Implementation: `cmd/shikii/project.go`, `cmd/shikii/init.go`, `internal/store/p
 
 ## 2. Connect before a request and after the work
 
-Automatic connection uses the Claude Code and Codex hooks (before a request and after the work; for Claude Code, also when a subagent starts). There is no processing on every tool call.
+Automatic connection uses the Claude Code and Codex hooks (before a request and after the work; for Claude Code, also when a subagent starts and ends) and the OpenCode 2.x plugin, which runs the same commands. There is no processing on every tool call.
 
 | When | What happens |
 |---|---|
@@ -37,7 +37,7 @@ Automatic connection uses the Claude Code and Codex hooks (before a request and 
 | When the turn closes | Records the request, the file changes and the last reply. Asks the decision model about scope and completion. Applies the active guards (guards/) to the changed files, added lines and commits, and if one is hit, stops and has the agent fix it. Gives any needed guidance and runs the periodic checks |
 | Just before a file edit or a command | Delivers at most 1 lesson whose title, lesson, applies_to or a code span of its body names that file or command (PreToolUse for Edit / Write / MultiEdit / NotebookEdit / Bash, only in Claude Code. Words pick the candidates and the decision model is asked lesson-applies once for the one about to go out, a trusted no skipping it; context only; a deny comes only from a forbidden-commands guard the person enabled) |
 | Just before a subagent starts | Keeps a copy of the task text handed to the child (only PreToolUse for Agent / Task, only in Claude Code. It outputs nothing and does not stop the tool) |
-| When a subagent starts | Hands over lessons close to the saved task text, in the same form. Without a saved copy, only this project's rules whose scene is "always" (only in Claude Code. The parent's copies are left unchanged, except that the copy of the task given to the child that used it is removed) |
+| When a subagent starts | Hands over lessons close to the saved task text, in the same form. Without a saved copy, only this project's rules whose scene is "always" (in Claude Code; in OpenCode 2.x the plugin passes the task with the start, so no copy is needed. The parent's copies are left unchanged, except that the copy of the task given to the child that used it is removed) |
 
 Decision questions are handled by the decision model (TypeSafe's Jev is recommended; without a key, a local model), and organizing conversations and provisional scoring with reasons are handled by the agent in use. Even when the decision model is down, recording conversations and looking up memories keep working in an initialized project. There is one page per project: the first request's hook starts it on a free port with `serve --store <project>/.shikii --port 0` (the mark is `~/.shikii/agent/pages/<id>.json`) and opens it in the browser. The shared entry `serve --store ~/.shikii/agent` runs only when started by hand. When you start `serve` by hand, the default is `:8095`.
 

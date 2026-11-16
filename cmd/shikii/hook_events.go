@@ -322,6 +322,7 @@ func isNotification(prompt string) bool {
 // The subagent's task text arrives in neither UserPromptSubmit nor SubagentStart. Since 0.9.1 the task text the parent passed to the Agent tool is
 // kept at PreToolUse (agent-task), and the oldest kept task of a child of the same type picks the lessons. Without one, only the rules that apply to every request (scene "いつも") are delivered.
 // Up to 0.9.0 lessons were picked by the parent's request, and lessons unrelated to the child's work arrived (measured: of 37 deliveries to children, 4 helped).
+// An agent that gives the child's task with the start itself (OpenCode: the plugin passes it as prompt) needs no kept task: that text picks the lessons.
 // Deliveries are recorded under an ID separate from the parent's (a hash of the turn and the subagent). Nothing is output if there is no parent request yet. No decisions (the 2 questions) are made.
 func hookSubagentStart(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
 	if snapshot.Request == "" || snapshot.Scope == "" || snapshot.TurnID == "" {
@@ -334,7 +335,9 @@ func hookSubagentStart(agent string, in *hookInput, snapshot *hookSession) (hook
 	// the kept task is picked and dropped inside the lock (picking from a copy outside the lock lets children of the same type started side by side use the same task. audit 0.9.1 mid-2)
 	var task subagentTask
 	var ok bool
-	if err := updateSession(agent, in.SessionID, func(s *hookSession) {
+	if given := strings.TrimSpace(in.Prompt); given != "" {
+		task, ok = subagentTask{Type: in.AgentType, Prompt: given}, true
+	} else if err := updateSession(agent, in.SessionID, func(s *hookSession) {
 		if task, ok = pickSubagentTask(s.SubagentTasks, in.AgentType, time.Now()); ok {
 			s.SubagentTasks = dropSubagentTask(s.SubagentTasks, task)
 		}

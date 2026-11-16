@@ -630,31 +630,117 @@ func TestOpenCodePluginStopsContinuingAfterEightAndOnAHalt(t *testing.T) {
 	}
 }
 
-// A subagent's session (it has a parent) is not the person's request: nothing is run, nothing is added, nothing is continued.
-func TestOpenCodePluginDoesNothingInASubagentsSession(t *testing.T) {
+// Measured on 2.3.0: a subagent's session has a parent and the agent it runs as, its prompt hook gets the task after one line of
+// OpenCode's, and its idle hook runs when it has nothing left to do. The task goes to shikii as the start of a subagent of the
+// parent's session, what shikii gives goes on the task's message, and the subagent's last message goes to subagent-stop. It is not
+// the person's request: no user-prompt-submit, no session-start and no stop run for it, and it is never continued.
+func TestOpenCodePluginGivesASubagentItsLessonsAndReportsItsLastMessage(t *testing.T) {
 	b := newPluginBox(t)
 	b.answer(t, "session-start", 0, additionalJSON("BRIEF"))
 	b.answer(t, "user-prompt-submit", 0, additionalJSON("TEXT"))
 	b.answer(t, "stop", 0, `{"decision":"block","reason":"R"}`)
+	b.answer(t, "subagent-start", 0, additionalJSON("FOR-THE-CHILD"))
+	b.answer(t, "subagent-stop", 0, `{"decision":"block","reason":"NEVER-CONTINUED"}`) // whatever it prints, the subagent is not continued
+	reply := []map[string]any{{"type": "assistant", "content": []map[string]any{{"type": "text", "text": "Done.\nshikii: lesson:0123456789abcdef:0123456789abcdef unused"}}}}
 	run, calls := b.play(t, map[string]any{
-		"sessions": map[string]any{"child": map[string]any{"id": "child", "parentID": "s1"}},
+		"sessions": map[string]any{"child": map[string]any{"id": "child", "parentID": "s1", "agent": "general"}},
+		"messages": map[string]any{"child": reply},
 		"steps": []map[string]any{
-			{"op": "prompt", "sid": "child", "text": "You are a subagent spawned by another session."},
+			{"op": "prompt", "sid": "child", "text": "You are a subagent spawned by another session.\nRead the notes and report."},
 			{"op": "context", "sid": "child"},
-			{"op": "succeeded", "sid": "child"},
+			{"op": "prompt", "sid": "child", "text": "the parent steers the subagent"}, // not a task: no second start
+			{"op": "context", "sid": "child"},
+			{"op": "idle", "sid": "child"},
 			{"op": "prompt", "sid": "s1", "text": "the person's request"},
 			{"op": "context", "sid": "s1"},
 		}})
 	if len(run.Errors) != 0 || len(run.Prompts) != 0 {
 		t.Fatalf("nothing is continued in the subagent's session: %+v", run)
 	}
+	var starts, stops []pluginCall
 	for _, c := range calls {
-		if c.Stdin["session_id"] == "child" {
-			t.Errorf("the subagent's session reaches shikii: %+v", c)
+		switch {
+		case c.Event == "subagent-start":
+			starts = append(starts, c)
+		case c.Event == "subagent-stop":
+			stops = append(stops, c)
+		case c.Stdin["session_id"] == "child":
+			t.Errorf("the subagent's session is no request of the person: %+v", c)
 		}
 	}
-	if len(run.Contexts) != 2 || len(run.Contexts[0]) != 1 || !slices.Contains(run.Contexts[1], "TEXT") {
-		t.Errorf("the subagent's model call gets nothing, the person's session gets its texts: %q", run.Contexts)
+	if len(starts) != 1 || starts[0].Stdin["session_id"] != "s1" || starts[0].Stdin["agent_id"] != "child" || starts[0].Stdin["agent_type"] != "general" || starts[0].Stdin["prompt"] != "Read the notes and report." || starts[0].Pwd != b.project {
+		t.Fatalf("the task starts one subagent of the parent's session, with the task alone: %+v", starts)
+	}
+	if len(stops) != 1 || stops[0].Stdin["session_id"] != "s1" || stops[0].Stdin["agent_id"] != "child" || stops[0].Stdin["last_assistant_message"] != "Done.\nshikii: lesson:0123456789abcdef:0123456789abcdef unused" {
+		t.Fatalf("the subagent's last message is reported once under the parent's session: %+v", stops)
+	}
+	if len(run.Contexts) != 3 || !slices.Contains(run.Contexts[0], "FOR-THE-CHILD") || !slices.Contains(run.Contexts[1], "FOR-THE-CHILD") || slices.Contains(run.Contexts[0], "BRIEF") || !slices.Contains(run.Contexts[2], "TEXT") || slices.Contains(run.Contexts[2], "FOR-THE-CHILD") {
+		t.Errorf("every model call of the subagent gets what shikii gave for its task, and only it: %q", run.Contexts)
+	}
+	if got := run.Requests[1].Messages; len(got) != 2 || !slices.Contains(got[0].Texts, "FOR-THE-CHILD") || slices.Contains(got[1].Texts, "FOR-THE-CHILD") {
+		t.Errorf("the text stays on the task's message: %+v", got)
+	}
+}
+
+// A subagent's turn that did not succeed reports nothing, a subagent of another folder's session belongs to that folder's instance,
+// and a subagent with nothing to say (no last message) is not reported.
+func TestOpenCodePluginReportsNoSubagentThatFailedOrIsNotItsOwn(t *testing.T) {
+	b := newPluginBox(t)
+	other := b.otherProject(t)
+	reply := []map[string]any{{"type": "assistant", "content": []map[string]any{{"type": "text", "text": "Done."}}}}
+	_, calls := b.play(t, map[string]any{
+		"sessions": map[string]any{
+			"failed": map[string]any{"id": "failed", "parentID": "s1"},
+			"far":    map[string]any{"id": "far", "parentID": "s2", "location": map[string]any{"directory": other}},
+			"silent": map[string]any{"id": "silent", "parentID": "s1"},
+		},
+		"messages": map[string]any{"failed": reply, "far": reply},
+		"steps": []map[string]any{
+			{"op": "prompt", "sid": "failed", "text": "a task"},
+			{"op": "event", "type": "session.execution.failed", "sid": "failed"},
+			{"op": "idle", "sid": "failed"},
+			{"op": "prompt", "sid": "far", "text": "a task in another folder"},
+			{"op": "idle", "sid": "far"},
+			{"op": "prompt", "sid": "silent", "text": "a task"},
+			{"op": "idle", "sid": "silent"},
+			{"op": "succeeded", "sid": "silent"},
+		}})
+	var events []string
+	for _, c := range calls {
+		events = append(events, c.Event+":"+fmt.Sprint(c.Stdin["agent_id"]))
+	}
+	if want := []string{"subagent-start:failed", "subagent-start:silent"}; !slices.Equal(events, want) {
+		t.Fatalf("shikii is started for %v, got %v", want, events)
+	}
+}
+
+// The subagent's report has two ways in, as the person's stop has: the idle hook, inside the execution (OpenCode waits for it), and
+// the end of the execution for an OpenCode that does not take that hook. Each alone reports the subagent once.
+func TestOpenCodePluginReportsASubagentFromTheIdleHookOrFromTheEndOfItsExecution(t *testing.T) {
+	reply := []map[string]any{{"type": "assistant", "content": []map[string]any{{"type": "text", "text": "Done."}}}}
+	for name, scenario := range map[string]map[string]any{
+		"the idle hook, the scenario ends before the event is heard": {"steps": []map[string]any{
+			{"op": "prompt", "sid": "child", "text": "a task"},
+			{"op": "idle", "sid": "child", "exit": true},
+		}},
+		"an OpenCode without the idle hook": {"idleHook": "throws", "steps": []map[string]any{
+			{"op": "prompt", "sid": "child", "text": "a task"},
+			{"op": "succeeded", "sid": "child"},
+		}},
+	} {
+		b := newPluginBox(t)
+		scenario["sessions"] = map[string]any{"child": map[string]any{"id": "child", "parentID": "s1"}}
+		scenario["messages"] = map[string]any{"child": reply}
+		_, calls := b.play(t, scenario)
+		n := 0
+		for _, c := range calls {
+			if c.Event == "subagent-stop" && c.Stdin["agent_id"] == "child" && c.Stdin["last_assistant_message"] == "Done." {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Errorf("%s: the subagent is reported once, got %d: %+v", name, n, calls)
+		}
 	}
 }
 

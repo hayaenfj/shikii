@@ -169,3 +169,37 @@ func TestSubagentStopAssessesTheDeliveryToTheReportingSubagent(t *testing.T) {
 		t.Fatalf("the second subagent assesses its own: %+v", second)
 	}
 }
+
+// An agent whose subagent start carries the task itself (OpenCode's plugin passes it as prompt) keeps no task at a tool call: the
+// task given with the start picks the lessons, a task kept for another child stays for that child, and the subagent's report is
+// saved the same way.
+func TestSubagentStartPicksLessonsByTheTaskGivenWithTheStart(t *testing.T) {
+	st, scope, _, draft, revision := memoryEffectFixture(t)
+	memoryEffectPrompt(t, scope, "s")
+	key := "lesson:" + draft.ID + ":" + revision
+	task := draft.Title + " " + draft.AppliesTo
+	if out := runHook(t, "agent-task", map[string]any{"session_id": "s", "cwd": scope, "tool_name": "Agent", "tool_input": map[string]any{"description": "d", "prompt": task, "subagent_type": "general"}}); out != "" {
+		t.Fatalf("keeping a task outputs nothing: %q", out)
+	}
+	start := func(agentID string, extra map[string]any) string {
+		in := map[string]any{"session_id": "s", "cwd": scope, "agent_id": agentID, "agent_type": "general"}
+		for k, v := range extra {
+			in[k] = v
+		}
+		return subagentContext(t, runHook(t, "subagent-start", in))
+	}
+	if ctx := start("agent-far", map[string]any{"prompt": "Count the words of an unrelated poem about the sea."}); strings.Contains(ctx, key) {
+		t.Fatalf("a task given with the start picks the lessons, not a task kept for another child: %s", ctx)
+	}
+	if ctx := start("agent-given", map[string]any{"prompt": "  " + task + "\n"}); !strings.Contains(ctx, key) || !strings.Contains(ctx, "shikii: <its key> unused") {
+		t.Fatalf("the task given with the start reaches its lesson and the way to report it: %s", ctx)
+	}
+	if ctx := start("agent-kept", nil); !strings.Contains(ctx, key) {
+		t.Fatalf("the kept task is still there for the child that brings none: %s", ctx)
+	}
+	subagentStop(t, "s", scope, "agent-given", "shikii: "+key+" helpful - Added the check step before the install command.")
+	got := subagentAssessments(t, st, scope, "agent-given")
+	if len(got) != 1 || got[0] == nil || got[0].Result != "helpful" || got[0].Phrase != "task" {
+		t.Fatalf("the report of a subagent started with its task is saved: %+v", got)
+	}
+}

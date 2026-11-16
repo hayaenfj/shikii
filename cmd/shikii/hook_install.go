@@ -18,11 +18,13 @@ import (
 )
 
 // hookEvents are 6: before thinking (UserPromptSubmit), after thinking (Stop), at the session's start and after a summary (SessionStart.
-// Both agents. 0.11), when a subagent starts (SubagentStart. Claude Code only),
+// Both agents. 0.11), when a subagent starts and ends (SubagentStart, SubagentStop. Claude Code only; OpenCode's plugin runs the same two commands),
 // right before a subagent is started (PreToolUse for Agent / Task only. Keeps the task text passed to the child. Claude Code only. 0.9.1),
 // and right before a file edit or a command (PreToolUse for the edit tools and Bash. One lesson naming that file or command. Claude Code
-// only: Codex's PreToolUse could not be shown to pass additionalContext to the model, and every change to hooks.json makes Codex users
-// trust the hooks again. 0.11).
+// only. 0.11). None of the Claude Code only ones is added to Codex. Measured on Codex 0.169.0: it has SubagentStart and SubagentStop, and
+// its PreToolUse passes additionalContext to the model (it could not be shown to in 0.11), but its subagent starts with a copy of the
+// parent's conversation and the task handed to it reaches the hooks encrypted, so there is nothing of shikii's own to deliver to it;
+// and every change to hooks.json makes Codex users trust the hooks again.
 // command is the current executable's absolute path + " hook <event>": it works even if the agent's shell PATH has no `shikii` (e.g. ~/go/bin right after go install).
 // If the executable moves, rerunning `shikii hook install --yes` removes the handlers with the old path and adds new ones.
 func hookEvents() []hookEvent {
@@ -107,7 +109,7 @@ func hookEventOf(command string) string {
 	return c[i+len(" hook "):]
 }
 
-// hookEventsFor is the hooks added per settings file. Codex has no SubagentStart, so it is left out.
+// hookEventsFor is the hooks added per settings file. The subagent and tool hooks are left out for Codex (see hookEvents).
 func hookEventsFor(who string) []hookEvent {
 	var evs []hookEvent
 	for _, ev := range hookEvents() {
