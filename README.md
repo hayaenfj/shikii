@@ -16,8 +16,6 @@ AI agents can carry context forward through memory. A project also needs to use 
 
 Version 0.34.1 lets the memory upgrade set aside a page whose original evidence cannot be read, counts a go-ahead message as a reply to the previous request, and asks the question about a decision in terms of what you wanted. Version 0.34.0 brought shikii's hooks to OpenCode 2.x: lessons reach the model before a request, and a missing record is asked for at the end of the work, as in Claude Code and Codex. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
 
-Update all writers sharing a project, refresh skills with `shikii --init` when using no hooks, then reopen agent sessions and restart the page and MCP. Existing records are retained; the agent receives source-preserving memory upgrade work with English progress. [Memory and learning](docs/memory-and-learning.md) explains what changes.
-
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
 <p align="center"><img src="docs/assets/shikii-hero.svg" alt="shikii: “I told you before”, “same mistake again”, “jumps straight in”, “where is the report?” and “probably 0.9” cross the threshold and become remembered, stopped and fixed, plans first, in handoff/, ask → act" width="100%"></p>
@@ -37,7 +35,7 @@ If you repeat the same explanations and corrections every time, there was little
 
 ## What grows
 
-Like someone who has worked on the project for a long time, the agent picks up five things.
+Like someone who has worked on the project for a long time, the agent picks up five things. What grows is the project's `.shikii/`, not the model.
 
 <p align="center"><img src="docs/assets/shikii-grows.svg" alt="five things cross the threshold into their places: wiki/, guards/, plan and reflect, handoff/, ask → act" width="60%"></p>
 
@@ -45,15 +43,15 @@ Like someone who has worked on the project for a long time, the agent picks up f
 |---|---|
 | It remembers what you said | Corrections and decisions become lessons with sources and arrive before similar work |
 | It never needs telling twice | Corrections a machine can check become guards that check the turn at its end, and refuse a command right before it runs |
-| It follows the routine | Before work it sums up the conversation and searches the wiki; before it ends it reflects. Skipping a step stops the turn |
+| It follows the routine | Before a request it gathers what the agent needs; before the agent ends, it has the result and what was learned saved. A missing step stops the turn |
 | It leaves a trail | Reports, release logs, diffs and screenshots go to work records you read on the page |
 | It earns room to act alone | As truths accumulate, a line is drawn above which the model is right often enough, and more decisions go ahead without asking |
 
-1. **It remembers what you said.** From the requests, replies and corrections of ordinary conversations, the agent writes lessons with sources into the wiki. Each lesson carries a kind (a rule decided in this project, a how-to, criteria for a choice, a fact or assumption, or history) and a scene written in the words of that work ("when committing", "when sending an invoice"). Before a lesson is saved, the decision model finds the page it belongs to and checks it against earlier lessons. Up to two relevant lessons arrive before similar requests. A subagent receives lessons close to the task it was given. History lessons are read only when searched for. Rules, tests and procedures the agent makes or changes itself also go into the wiki right away, without being asked.
-2. **It never needs telling twice.** Corrections a machine can check (“keep both changelogs in step”, “never use that word”, “write the original problem and the verification in the commit body”) become guards. When one fails, the agent cannot end the turn until it fixes the work.
-3. **It follows the routine.** Before it changes files, the agent sums up what was agreed and what is still open, and searches the wiki with topic words it picks. Before it ends, it reflects on the turn, grades its own work and saves what it learned. If it skips either step, the agent gets the exact command to run. Completion waits for saved results; partial progress gets another attempt, while no progress ends explicitly incomplete. These checks are built in and always on, also in projects without `CLAUDE.md` or `AGENTS.md`.
+1. **It remembers what you said.** From the requests, replies and corrections of ordinary conversations, the agent writes lessons with sources into the wiki. Each lesson carries a kind (a rule decided in this project, a how-to, criteria for a choice, a fact or assumption, or history) and a scene written in the words of that work ("when committing", "when sending an invoice"). Before a lesson is saved, the decision model finds the page it belongs to and checks it against earlier lessons. One topic stays in one page. Up to two relevant lessons arrive before similar requests. In Claude Code they also arrive right before the agent changes a file or runs a command that a lesson names, and a subagent receives lessons close to the task it was given. History lessons are read only when searched for. Rules, tests and procedures the agent makes or changes itself also go into the wiki right away, without being asked.
+2. **It never needs telling twice.** Corrections a machine can check (“keep both changelogs in step”, “never use that word”, “write the original problem and the verification in the commit body”) become guards. When one fails, the agent cannot end the turn until it fixes the work. A guard on commands, such as “no push until allowed”, refuses the command right before it runs in Claude Code.
+3. **It follows the routine.** When a request arrives, the hook gathers the request, what the conversation so far has agreed and left open, the relevant lessons and the pages waiting for review, and hands them to the agent. The agent reads them before it works, and when the topic moves it searches the wiki again with words it picks. Before it ends, it saves in one call the result, whether the delivered lessons helped, and what it learned. If it tries to end without saving, shikii returns the operation to run. When the remaining work shrinks, it is asked to continue; when it does not, the turn ends marked incomplete and automatic continuing stops. These checks are built in and always on, also in projects without `CLAUDE.md` or `AGENTS.md`.
 4. **It leaves a trail.** Audit reports, release steps, diffs and screenshots that the agent keeps editing go to `.shikii/handoff/<task>/`, and subagents are told to write their reports there too. They are not committed; you read them on the page under Knowledge → Work records.
-5. **It earns room to act alone.** A model returns a probability, “probably 0.9”. From the truths people and results supply, shikii measures how the model's confidence relates to how often it is right, and draws a line above which it may act on its own. Until the line exists, nothing is automatic. Every decision falls into a band: `act` proceeds automatically, `ask` goes to a person, `discard` does nothing, `abstain` means an input or an endpoint is missing. When a line is drawn, or when there are enough truths but no line can be drawn (only one answer so far, the answers cannot be separated, or the question was stopped because they cannot), you are told once at the end of a turn. Truths live apart from the model, so changing models does not start you over. Alternative wordings can be scored on the same truths and the better one kept: the agent checks that it still asks the same thing and translates both into your language when it is not English, the new wording is switched in, and you are told with the translations and can undo it (when the agent cannot decide, you are asked).
+5. **It earns room to act alone.** A model returns a probability, “probably 0.9”. From the truths people and results supply, shikii measures how the model's confidence relates to how often it is right, and draws a line above which it may act on its own. Until the line exists, nothing is automatic. Every decision falls into one of four bands: `act` proceeds automatically, `ask` goes to a person, `discard` does nothing, `abstain` means an input or an endpoint is missing. When a line is drawn, or when there are enough truths but no line can be drawn (only one answer so far, the answers cannot be told apart, or the question was stopped because they cannot), you are told once at the end of a turn. Truths live apart from the model, so changing models does not start you over. Alternative wordings can be scored on the same truths and the better one kept: the agent checks that it still asks the same thing and translates both into your language when it is not English, the new wording is switched in, and you are told with the translations and can undo it (when the agent cannot decide, you are asked).
 
 The AI part of the page and `shikii status` show whether it is working: whether delivered lessons helped, how many turns did the routine, how many turns guards stopped and how many were fixed, how many decisions wait for a person, and which lines have been drawn.
 
@@ -62,11 +60,12 @@ The AI part of the page and `shikii status` show whether it is working: whether 
 - **Correct your agent as usual.** “There is still English left” in an ordinary conversation is enough. The agent files it as a lesson and shikii keeps it next to the right page. When the correction can be checked by a machine, the agent also drafts a guard, disabled.
 - **Enable guards.** Run `shikii guard enable <id>` once. shikii first shows the guard stopping on a deliberately broken example and passing on a correct one, then enables it. Disabling is also your call.
 - **Answer some questions.** Under Answer on the page, the decisions the model was unsure about and 1 in 20 of the ones it acted on appear one card at a time. The count waiting is shown beside Answer. Read the conversation and press the button for what was actually true.
-- **Look up knowledge when you need it.** At the top of the page's Knowledge section, every rule decided in this project, by people or by the AI, is listed so none gets buried; "always" rules come first and new ones are marked. Below it, pick a scene to see the lessons for it grouped by kind, and press a title to read it. You do not need to check everything: "For you to look at" at the top shows only the exceptions, such as a lesson that did harm or a correction that was repeated.
-- **Edit or delete knowledge.** Open an article and choose Edit or Delete. Deletion removes it from search and delivery, while its sources and history remain.
+- **Look up knowledge when you need it.** At the top of the page's Knowledge section, "Always keep" lists the rules decided in this project, by people or by the AI, so none gets buried; new rules are marked "new". Below it, pick a scene to see the lessons for it grouped by kind, and press a title to read it. You do not need to check everything: "For you to look at" shows only the exceptions, such as a lesson that did harm or a correction that was repeated.
+- **Edit or delete knowledge.** Open an article and choose Edit or Delete. Deletion removes it from search and delivery, while its sources and history remain. Past answers of yours that the AI judged not useful are listed under "Past answers the AI judged not useful", where you can undo that.
 - **Read the work records when you want.** On the page, under Knowledge → Work records, you can read the agent's reports and see its screenshots.
-- **Now and then confirm a wording.** When a better way of asking is found, you check that it asks the same thing and press adopt or reject.
+- **Check a wording when it changes.** When the agent changes how a question is asked, a notice appears under Answer. Choose "Keep it" or "Undo". When the agent could not decide whether the meaning is the same, you choose there too.
 - **Ask for a tidy-up when you want.** Ask the agent to "tidy shikii": it checks the wiki's wording against its sources and corrects overstatement and repeated explanations, keeping meaning, conditions, exceptions and history.
+- **Ask for a memory optimization when you want.** Ask the agent to "optimize shikii" (optimize the memory): in that same turn it first tidies every wiki page waiting for the memory upgrade, then reviews each against its original sources for the current version's way of writing (the memory upgrade). A page whose sources cannot be read is skipped with the reason recorded. Ask to "tidy shikii" for the tidy-up alone, or to "upgrade the memory" for the upgrade alone.
 
 Everything else is the machine's job.
 
@@ -75,26 +74,26 @@ Everything else is the machine's job.
 | Use case | What you need |
 |---|---|
 | Learn from ordinary conversations and turn corrections into guards | Claude Code, Codex or OpenCode 2.x, shikii, and `shikii --init` in the projects you choose. Delivery to subagents is Claude Code only |
-| Answer the built-in questions | Recommended: TypeSafe Jev with `TYPESAFE_API_KEY` in the environment, nothing to download. Without a key: llama.cpp (`llama-server`) and Ternary-Bonsai-27B through `shikii up`, about 7.6 GB to download and 10 GB of memory while running |
+| Answer the built-in questions | Recommended: TypeSafe Jev with `TYPESAFE_API_KEY` in the environment, nothing to download. Without an API key: llama.cpp (`llama-server`) and Ternary-Bonsai-27B through `shikii up`, about 7.6 GB to download and 10 GB of memory while running |
 | Use another model for business decisions | Any System One endpoint from the table below |
 | Install | macOS or Linux (amd64 or arm64), sh, curl, tar, awk, and shasum or sha256sum (both systems have them). Go is not needed |
 | Install from source | Go 1.27 or newer, Git and sh. The page is bundled; Node.js is not needed |
 | Run the business API and page in containers | Docker with Compose, or Podman with a Compose provider ([setup](integrations/docker.md)) |
-| Try the whole loop without a key or GPU | Go 1.27 or newer and the included fake model (`scripts/demo.sh`) |
+| Try the whole loop without an API key or GPU | Go 1.27 or newer and the included fake model (`scripts/demo.sh`) |
 
 | Endpoint | What it needs |
 |---|---|
-| Jev (TypeSafe AI) | Recommended. `TYPESAFE_API_KEY`. The built-in questions and every business decision whose `send_to` allows `hosted` go here when the key is set. [Official API](https://docs.typesafe.ai/introduction/quickstart) |
-| llama.cpp | Without a key. Any chat GGUF through the included `shikii-readout` (the local standard is Ternary-Bonsai-27B; `shikii up` sets both up). Trained decision models such as OpenJev are passed through. Kev-4B is not supported. [Examples](integrations/readout.md) |
+| Jev (TypeSafe AI) | Recommended. `TYPESAFE_API_KEY`. The built-in questions and every business decision whose `send_to` allows `hosted` go here when the API key is set. [Official API](https://docs.typesafe.ai/introduction/quickstart) |
+| llama.cpp | Without an API key. Any chat GGUF through the included `shikii-readout` (the local standard is Ternary-Bonsai-27B; `shikii up` sets both up). Trained decision models such as OpenJev are passed through. Kev-4B is not supported. [Examples](integrations/readout.md) |
 | Ollama / LM Studio | Their `/v1/systemone` endpoints with a decision model, for business decisions. Not tested in this release |
 
 ## Get started
 
-### 1. Put a TypeSafe key in the environment (recommended)
+### 1. Put a TypeSafe API key in the environment (recommended)
 
-Get an API key from [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart) and put it in the environment of your shell and your agent (`export TYPESAFE_API_KEY=…`). Nothing is downloaded and an ordinary PC is enough. With the key, the hooks and the built-in questions go to Jev and no local model is started (`shikii up` does not start one either). The request text, the agent's reply and wiki lessons are sent to TypeSafe for the built-in questions; they also stay in the local records. `SHIKII_MODEL=local` keeps a local model even with a key; `SHIKII_MODEL=hosted` forces Jev.
+Get an API key from [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart) and put it in the environment of your shell and your agent (`export TYPESAFE_API_KEY=…`). Nothing is downloaded and an ordinary PC is enough. With the API key, the hooks and the built-in questions go to Jev and no local model is started (`shikii up` does not start one either). The request text, the agent's reply and wiki lessons are sent to TypeSafe for the built-in questions; they also stay in the local records. `SHIKII_MODEL=local` keeps a local model even with an API key; `SHIKII_MODEL=hosted` forces Jev.
 
-**Without a key: llama.cpp.** shikii then runs a local model. It is a 27B model that needs about 10 GB of memory while running, which can be heavy for an ordinary PC. On macOS with Homebrew:
+**Without an API key: llama.cpp.** shikii then runs a local model. It is a 27B model that needs about 10 GB of memory while running, which can be heavy for an ordinary PC. On macOS with Homebrew:
 
 ```sh
 brew install llama.cpp
@@ -135,11 +134,43 @@ In a project you want to enable, ask your agent:
 
 > Use shikii in this project.
 
-The agent runs `shikii --init` (you can run it yourself). Only initialized projects are enabled. The answer page is one per project: the first request's hook starts it on a free port and opens it in the browser (`shikii page` tells you the URL). For the first project on a machine, `shikii --init` also installs the hooks when none is there (what `shikii hook install --yes` does; without a TypeSafe key, and with `llama-server` installed, that starts the local model in the background). On a machine that already has projects and no hooks, it leaves them off and names the command that installs them. Initialization prepares the built-in questions, the wiki, the place for guards, the folder for work records, the MCP setup (it adds `.mcp.json` and `opencode.json` to the project and does not write into `AGENTS.md` or `CLAUDE.md`; only `.shikii/` is excluded from Git; for Codex, which reads MCP servers only from the shared `~/.codex/config.toml`, it writes one shared registration without a project, and each tool call names the agent's working folder as `project`; the registration carries `default_tools_approval_mode = "approve"`, so Codex runs shikii's tools without asking before each call; writing `"prompt"` there, or deleting the line, makes Codex ask again, and shikii does not add the line a second time) and the agent's instructions. `shikii doctor` checks the setup.
+The agent runs `shikii init` (the same as `shikii --init`; you can run it yourself). shikii works only in initialized projects.
+
+What `shikii init` does:
+
+- It creates `.shikii/` in the project, with the built-in questions, the wiki, the place for guards and the folder for work records. `.shikii/` holds private conversations, so it is excluded from Git.
+- It adds the MCP setup so the agent can call shikii. It adds `.mcp.json` and `opencode.json` to the project and does not write into `AGENTS.md` or `CLAUDE.md`. For Codex, which reads MCP servers only from the shared `~/.codex/config.toml`, it writes one shared registration without a project, and each tool call names the agent's working folder as `project`. The registration carries `default_tools_approval_mode = "approve"`, so Codex runs shikii's tools without asking before each call. Writing `"prompt"` there, or deleting the line, makes Codex ask again; shikii does not add the line a second time.
+- It puts the agent's instructions (the skill) in place.
+- For the first project on a machine, when none of shikii's hooks is installed, it installs them too (what `shikii hook install --yes` does; without a TypeSafe API key, and with `llama-server` installed, that starts the local model in the background). On a machine that already has projects and no hooks, it leaves them off and names the command that installs them.
+- Running it again gives the same result, and never removes settings or records you wrote.
+
+`shikii init` has nothing to choose, so it takes no arguments such as `--yes` (with one, it refuses and says no arguments are needed). `--yes` belongs to the commands that list their changes first.
+
+| Command | Without `--yes` | With `--yes` |
+|---|---|---|
+| `shikii hook install` | Only lists the hooks and plugin it would add | Installs them |
+| `shikii uninstall` | Only lists what it would remove | Removes it |
+
+The answer page is one per project: the first request's hook starts it on a free port and opens it in the browser (`shikii page` tells you the URL). `shikii doctor` checks the setup.
 
 **OpenCode.** OpenCode 2.x has no hook settings, so `shikii hook install --yes` (and the first `shikii --init` on a machine) puts a small plugin in `~/.config/opencode/plugins/shikii/` (under `$XDG_CONFIG_HOME/opencode/` when that is an absolute path). It runs the same hooks as for Claude Code and Codex: shikii's lessons reach the model before a request, and a required record continues the turn at its end. That end-of-turn check runs inside the turn, through an experimental OpenCode hook (OpenCode 2.3.0), so it runs in the TUI and in `opencode run` alike. An OpenCode that does not run that hook checks only after the turn ends, and `opencode run` with a private server (`--standalone`, or when no background service is running) has exited by then. A folder of yours with the same name is never overwritten and a link is not followed; shikii says so and leaves it. An OpenCode started with `OPENCODE_CONFIG_DIR` reads its plugins only from that folder's `plugins/`, so it does not read shikii's plugin; shikii does not write there, and `shikii doctor` says so. OpenCode 1.x does not read the folder and keeps using only the MCP setup and the skill. shikii's plugin adds no hook before a command, so guards that refuse a command do not run in OpenCode; the turn-end checks do. shikii's plugin does not show text to you either, so the messages shikii shows you in Claude Code and Codex (a guard's explanation, the number of answers waiting, a note that automatic continuing stopped) do not appear in OpenCode. Reopen OpenCode after installing.
 
 **OpenCode with `OPENCODE_CONFIG_DIR`.** To have an OpenCode started with it read shikii's plugin, link shikii's folder into that folder's `plugins/` yourself: `mkdir -p "$OPENCODE_CONFIG_DIR/plugins" && ln -s ~/.config/opencode/plugins/shikii "$OPENCODE_CONFIG_DIR/plugins/shikii"` (`shikii doctor` prints the command with your paths). The link is yours, so `shikii uninstall` leaves it; remove it yourself afterwards.
+
+### 4. Move an earlier memory into shikii (optional)
+
+If Claude Code's or Codex's memory already holds notes about this project, ask your agent:
+
+> Move the memory into shikii's wiki.
+
+One request is enough, and you do not need to sort the files first. The agent moves it like this:
+
+- It reads Claude Code's memory (`~/.claude/projects/<project>/memory/`) and the files of Codex's memory (`~/.codex/memories/`) that concern this project. It does not touch other projects' files. Secrets and raw conversation transcripts are left where they are.
+- It keeps each file's body, unchanged, as a source in the wiki.
+- From those it writes lessons with sources, merging into an existing page when one covers the same topic. For a rule a machine can check, such as a word never to use, it also drafts a guard, disabled.
+- It keeps every memory file and its body as they are, and only adds one line to each that names the wiki page it moved to. Rules that hold in every request (such as rules about words) also stay in the original index.
+
+While files remain unmoved, the hook says how many and names them, once per session.
 
 ### Updates
 
@@ -148,6 +179,8 @@ shikii update
 ```
 
 `shikii update` fetches the latest stable release, verifies its hashes and replaces shikii and readout. When any of shikii's hooks, or shikii's OpenCode plugin, runs the shikii it replaced, `shikii update` then runs `shikii hook install --yes` itself: it rewrites shikii's hooks for all three agents (Claude Code, Codex and OpenCode), so a hook you removed by hand comes back too, and it applies what the new version changes in your agents' settings and prints each change. If that step fails, update says so; run `shikii hook install --yes` then. From 0.31.0 it adds `default_tools_approval_mode = "approve"` to the Codex registration shikii wrote, so Codex runs shikii's tools without asking before each call. Without hooks, rerun `shikii --init` in an initialized project instead: it adds the same line and leaves the hooks off. **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again.** Earlier conversations, lessons, truths and calibration are removed; back up anything you want to keep. Updates from 0.7.0 onwards keep them. Restart the page and MCP afterwards.
+
+If other machines or processes write to the same project, update them all to the same version, and reopen your agent sessions after updating. Existing records are kept. When a new version changes how pages are written, work to review existing pages against their original sources (the memory upgrade) reaches the agent a little at a time at breaks in its work, with progress shown in English. [Memory and learning](docs/memory-and-learning.md) explains what changes.
 
 After updating to 0.28.0, update every writer of the same wiki, active session or assignment records, then reopen agent sessions and restart the page and MCP. Earlier writers do not preserve the new measured-delivery and reading-feedback progress. If you use MCP or skills without hooks, rerun `shikii --init` in the existing initialized project to refresh skills; this preserves data and leaves hooks disabled. Updates from 0.27.0 preserve project data and existing articles and outcomes. Condition-based outcome selection needs 0.25.0 or later; returning actual use and procedure results from chiten also needs a compatible chiten build, installed separately. Binaries older than 0.24 do not preserve assignment context or event receipt binding, and binaries older than 0.22 cannot read articles carrying learning. Back up `.shikii/` before updating if you need to restore the earlier binary and data together.
 
@@ -168,47 +201,34 @@ This removes what shikii put into your agents: its hooks in `~/.claude/settings.
 
 ## How it works
 
-Using the optional assignment API introduced in 0.24, version 0.25 connects chiten reports to records of actual knowledge use and procedure results. Inspected articles, knowledge that informed a decision, and executed procedures remain distinct, with their sources, read revisions and original conditions. Actual use and each result have separate evidence snapshots, so correcting a note or retrying an identical report does not duplicate an execution. This optional integration needs a separately installed chiten build that reports use and outcomes.
-
-Procedure reuse returns at most two candidate outcomes, prioritizing current condition terms and task or action terms, and retaining an earlier relevant failure. Ties prefer newer results; without relevant context, selection keeps the usual recency order. The agent still interprets each candidate: it is never automatic success, human truth or permission. These selection improvements and ordinary recording also work without chiten. See the [collective knowledge workflow](docs/guide.md#share-changes-and-compare-concurrent-work-0230).
-
-With the hooks installed, two moments of every turn are kept: the request before the agent starts, and the reply and the changed files after it ends. The next human message closes the pair. A message that only continues the previous request ("ok", "continue", "sounds good") is attached to it instead; the agent decides this in its pre-start organizing, and a fixed list of acknowledgements is the fallback. The agent writes lessons with sources from them, and shikii delivers relevant lessons before similar work. In reflection the agent reports whether a delivered lesson helped. Saved assessments also prioritize lessons for review: repeated unused deliveries at the same entry point, or a harmful delivery, bring the lesson back with the decisions and evidence. The agent checks its sources before changing it, and a no-change review also settles that evidence. Unknown and older-revision assessments do not count as negative feedback.
-
-In 0.34.0, `shikii hook install --yes` also installs a small plugin for OpenCode 2.x, so OpenCode gets shikii's hooks as Claude Code and Codex do. shikii's plugin does not show text to you or add a hook before a command, so guard explanations do not appear there and guards that refuse a command do not run. The [integration guide](integrations/claude-code.md) lists the cases where lessons do not arrive.
-
-In 0.33.0, the skill and the preparation reply link to a section of a long reference rather than the whole file, and the skill says how to read one section. Over MCP, `organize`, `reconcile`, `diagnose`, `consult` and `reuse` are left to the CLI, and checking an approach or reusing a procedure is done by adding `proposal` or `conditions` to the receipt of a prepared task. MCP runs only the operations its tool lists: calling a removed one returns the way to do it, and any other name returns the operations it takes.
-
-In 0.32.0, the request hook prepares and delivers context and evidence. The agent reads it and can save an ordinary result in one call. After editing an article, it checks the returned saved text and sources, then records that review. Without hooks, the agent still calls preparation and recording explicitly.
-
-In 0.30.5, history cleanup holds the same locks as record and answer appends until its replacement file is in place. This prevents concurrent saves from being lost; dry runs keep their existing behavior.
-
-In 0.30.4, each status request shares label calculations, source pagination avoids redundant encoding buffers, and limited history reads retain only the requested latest records. Small histories keep a direct sort. These local processing improvements preserve evidence, complete source recovery and existing decisions; they do not change model weights or establish a general answer-quality improvement.
-
-In 0.30.3, shared code keeps append locks, history reads, counts and wording actions consistent across entry points. A dedicated worktree changes code while the original project retains its wiki and work records. Existing data formats and the knowledge-delivery workflow are preserved.
-
-In 0.30.1, the complete shared MCP workflow is supplied once, and unchanged fixed explanations can reference an earlier delivery in the same task. Conditions, source revisions, missing material and full recovery remain available. Clients can read one complete result view while retaining error state and any additional content. See [MCP knowledge delivery](docs/mcp-knowledge.md).
-
-In 0.29.2, repeated reading notices share their original text within the same response when it becomes smaller. Related-page version lineage alone does not reopen a review when every stored content and evidence field is identical; edited articles, changed premises and new evidence still require review. Same-receipt excerpt reuse, exact-revision recovery and routine two-article memory-upgrade batches remain available. An explicit request to finish the memory upgrade can continue the remaining batches.
-
-In 0.20.0, `work prepare` brings together current knowledge and pending evidence. `work record` saves the agent's judgment, observations and notes using one receipt, retaining exact source and article references internally. Partial successes can be retried without duplicating saved evidence. Ambiguous placement returns content for the agent to reconcile; interpretation and save checks remain explicit. See the [recording workflow](skills/shikii/references/recording.md).
-
-In 0.20.0, preparation supplies focused, exact passages; the same receipt can add search, consult and reuse during the work. Record procedure conditions, failures, corrections and results with cited evidence for comparison in the next task. No extra human input or automatic success labels are added. See the [recording workflow](skills/shikii/references/recording.md).
-
-Since 0.18.0, consult gathers conditions, rationale and linked exceptions for an approach; reuse supplies howtos and recent validation for the current conditions. Evidenced manual discoveries can link a recorded non-delivery to ordinary maintenance. Exact excerpts reduce repeated reading, while the host agent retains responsibility for interpreting the evidence. Existing precise edits, diagnosis and read-only historical comparisons remain available.
-
-In 0.22.0, the agent can connect separate experiences with exact quotes and revisions, record a small probe and its observations, and reuse conditional practices through the same preparation and recording flow. `wiki organize` previews source-preserving splits or merges; destinations are saved before guarded source edits. No extra person scoring is needed. See the [guide](docs/guide.md#grow-connected-experience-into-checks-and-practices-0220) for the workflow, limits and shared-writer update requirement.
-
-In 0.27.0, record an expected observation before a check, then return the actual result to the judgment. Current unresolved checks can supply a small next step, and two matched executions can keep before/after measurements. Reading depth adjusts supplied context while preserving required reviews and exact-source recovery. Enabled publication guards inspect supported calls in Claude Code's Bash hook; Codex retains turn-end checks and OpenCode uses MCP/skills. See the [guide](docs/guide.md#connect-an-expectation-to-the-next-decision-0270).
-
-Since 0.16.0, an agent can record when a manually retrieved article actually helped a decision, with evidence. That context helps retrieve the same revision later; reading alone never counts as usefulness. Articles can carry the reasons for a choice and rejected alternatives, plus up to four project files to recheck when their hashes change. A changed premise asks for review, without declaring the knowledge wrong. Pending reflection can be handled in the same planning query and submit, with item-level save results and retries.
-
 <p align="center"><img src="docs/assets/shikii-conversation.svg" alt="every turn: read before work, keep a trail while working, reflect at the end; lessons arrive with the next request" width="100%"></p>
 
-Two steps of every turn are checked: planning before work and reflection before ending. Missing work returns concrete commands to the agent before completion is judged. A later stop checks saved results: all done permits completion, fewer remaining items lets the agent continue, and no decrease ends automatic continuation with an explicit incomplete notice. Verification or recovery-state save errors also end incomplete. The page records which steps were done. A short message that is not a plain acknowledgement also requires the agent to submit whether it continues the previous request. Even at the next request, unfinished required work is not given a completion judgment.
+### One request, start to finish
 
-The decision model answers the built-in questions about the agent's own work (what kind of request this is, whether to agree on an approach first, whether the changes stayed in scope, whether the request was completed) and, for new lessons, where they belong and whether they contradict a page, and, for a lesson about to be delivered, whether it applies right now (`lesson-applies`). The truths for these come from what happens next: a change undone during the next request, a request repeated, a lesson merged or replaced, a delivered lesson found helpful or unused in the reflection. Only questions that results cannot answer wait for a person, and the page shows how many.
+With the hooks installed, shikii treats one request from a person, together with the agent's work and reply to it, as one turn, and acts at these moments.
 
-**Guards** are fixed rules, not the decision model. At the end of a turn they are applied to the changed files, the added lines and the commits of that turn; a `forbidden-commands` guard also refuses a command right before it runs (0.11). There are four kinds.
+1. **Before the request.** It keeps the request, and hands the agent the request, the conversation so far, the relevant lessons and the pages waiting for review. A message that only continues the previous request ("ok", "continue", "sounds good") is attached to it; the agent decides whether it continues, and a fixed list of acknowledgements is the fallback. The decision model is asked whether to agree on an approach before starting. At the start of a session, the agent receives the rules for every request and where the work stands.
+2. **During the work.** In Claude Code, right before the agent changes a file or runs a command, the lessons that name it are handed over, and an enabled guard on commands refuses the command there. A subagent receives, when it starts, the lessons close to the task it was given. When the topic moves or it is unsure, the agent can search the wiki again or ask the decision model.
+3. **At the end.** shikii checks that the result is saved, the delivered lessons are reviewed, the pages are classified and the reply is in the right language, and applies the guards to the files changed, the lines added and the commits made in the turn. Anything missing comes back to the agent as a concrete operation. Once everything is in place, it asks the decision model whether the changes stayed in scope and whether the request was completed, and records the answers.
+4. **At the next request.** The earlier answers get truths from what happened afterwards: a change undone before the next request, a request repeated, a lesson merged or replaced, a lesson the reflection found helpful or unused. Only the questions that results cannot settle wait for a person, and the page shows how many.
+
+### What the decision model is asked
+
+The decision model writes no text; it returns only the probability of yes/no or of each choice. Jev from TypeSafe is recommended, and Ternary-Bonsai-27B runs locally when you cannot put an API key in place. shikii comes with these questions about the agent's own work.
+
+| Question | When it is asked |
+|---|---|
+| Should the approach be agreed with a person before starting? (`needs-plan`) | Before the request |
+| Does the lesson about to be delivered apply to the work right now? (`lesson-applies`) | Before a lesson is delivered |
+| Which page does a new lesson belong to, and does it contradict an earlier lesson? | Before a lesson is saved |
+| Did the changed files stay within the request? (`changes-in-scope`) | At the end |
+| Was the request completed? (`done-as-asked`) | At the end |
+
+These answers reach the agent as advice only once a line has been drawn. None of them ever stops the agent's tools from running.
+
+### Guards
+
+Guards are fixed rules, not the decision model. At the end of a turn they are applied to the files changed, the lines added and the commits made in that turn; a guard on commands also refuses a command right before it runs in Claude Code. There are four kinds.
 
 | Kind | Stops when | Example |
 |---|---|---|
@@ -217,7 +237,22 @@ The decision model answers the built-in questions about the agent's own work (wh
 | `commit-body` | a commit made in the turn lacks a required word in its body | “original problem”, “after the change”, “verification” |
 | `forbidden-commands` | a command matches a rule before it runs | `git push` until publication is allowed |
 
-The agent drafts a guard from a correction (`shikii guard add`, disabled) and a person enables it (`shikii guard enable <id>`). Before enabling, shikii shows the guard stopping on a deliberately broken example and passing on a correct one. A turn that trips a guard cannot end until the work is fixed; each guard stops a turn at most once, and after its own stop it only records whether the work was fixed.
+The agent drafts a guard from a correction (`shikii guard add`, disabled) and a person enables it (`shikii guard enable <id>`). Before enabling, shikii shows the guard stopping on a deliberately broken example and passing on a correct one. A turn that trips a guard cannot end until the agent fixes the work. Each guard stops a turn at most once; after its own stop it does not stop again and only records whether the work was fixed.
+
+### Tending the knowledge
+
+A lesson is not finished when it is written; it is revised as it gets used.
+
+- **Lessons that do not help stop being delivered.** A lesson repeatedly unused in the same situation, or one that got in the way of a decision, goes back for review with the decisions and evidence. The agent checks the sources before changing it, and can also record that no change is needed. Unknown assessments and assessments of an older revision do not count against it.
+- **The same goes for your past answers.** A past answer of yours shown before a similar request stops being shown when it does not help, and is listed on the page under "Past answers the AI judged not useful", where you can undo that.
+- **Experience grows into procedures.** A procedure used before is read with its conditions, failures and fixes from that time, and compared with the conditions now. An earlier success is not taken as this time's success.
+- **Agents share it.** Claude Code, Codex and OpenCode connected to the same project use the same wiki. What one finds reaches the others, gets checked under other conditions, and returns to the same knowledge.
+- **How much to read, and how to proceed, are chosen from results.** How much reading is enough and how an investigation proceeds are chosen again from actual results. A change is adopted after it is checked on two other tasks, and rolled back when things get worse.
+- **Review when the version changes.** When the way pages are written changes, existing pages are reviewed against their original sources, a little at a time at breaks in the work.
+
+With chiten, a separate tool, the actual use of knowledge and the procedure results that chiten reports go into the same records (optional). See [memory and learning](docs/memory-and-learning.md) and the [guide](docs/guide.md).
+
+### Who does what
 
 | Work | Usually done by | Your part |
 |---|---|---|
@@ -247,29 +282,29 @@ shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…
 #   → band=act   with a record (how many truths, how many checked by a person, the precision of the act side)
 ```
 
-| Band | What to do |
+| Decision | What to do |
 |---|---|
 | `act` | Proceed automatically under the calibrated conditions |
 | `ask` | Check with a person |
 | `discard` | Do not act |
 | `abstain` | Supply the missing input or an available endpoint |
 
-Calibration belongs to one question and one model; change either and it is measured again. `shikii tune` scores alternative wordings on the stored truths; `shikii drift` and `shikii check` catch a model that drifted or a line that was weakened. To try this without a key or GPU, run `scripts/demo.sh` in the checkout.
+Calibration belongs to one question and one model; change either and it is measured again. `shikii import` takes truths from a table of past cases (CSV), and `shikii judge` asks a larger model the same question and adds its answers as truths only when they agree well with the truths people gave. `shikii tune` scores alternative wordings on the stored truths; `shikii drift` and `shikii check` catch a model that drifted or a line that was weakened. To try this without an API key or GPU, run `scripts/demo.sh` in the checkout.
 
 - [Ready-made decisions](decisions/README.md) · [A business example](docs/examples/inquiry-route.md) · [Every command and the HTTP API](docs/guide.md) · [MCP](integrations/mcp.md) · [Measured numbers](docs/bench.md)
 
 ## Memory belongs to a project
 
-Conversations, lessons, provisional assessments, truths, calibration, guards and work records live in that project's `.shikii/`. Unrelated projects stay apart. The shared `~/.shikii/agent` holds the templates, the tools and the list of projects. Because `.shikii/` contains private conversations, initialization keeps it out of Git's untracked files.
+Conversations, lessons and their sources, provisional assessments, truths, lines, guards and work records live in that project's `.shikii/`. Unrelated projects stay apart. Working in a worktree still uses the original project's wiki and work records. The shared `~/.shikii/agent` holds the templates, the tools and the list of projects. Because `.shikii/` contains private conversations, initialization keeps it out of Git's untracked files.
 
 <p align="center"><img src="docs/assets/shikii-architecture-en.svg" alt="an initialized project's .shikii/ keeps what the agent learns (records, wiki, guards, handoff) apart from the questions, truths and lines used to delegate decisions" width="100%"></p>
 
 ```text
 .shikii/
-  decisions/  questions for the decision model
+  decisions/  questions for the decision model, and the lines drawn
   wiki/       lessons, conditions, earlier revisions
   guards/     checks made from your corrections
-  records/    conversations, decisions, assessments, deliveries, observations, guard results
+  records/    conversations, decisions, assessments, deliveries, observations, guard results, and the sources of lessons
   labels/     truths from people and from results
   sessions/   per-session notes (lessons delivered, notices given, files changed)
   handoff/    work records: audit reports, release steps, diffs, screenshots (read on the page)
