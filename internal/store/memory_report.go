@@ -262,6 +262,10 @@ func (s Store) MemoryReportWithFeedback(scope string, read func() ([]Feedback, e
 				}
 			}
 			if a == nil {
+				if d.Agent != "" {
+					r.Stats.Subagent++ // only the subagent can tell whether it used the lesson: the parent's reflection does not owe it
+					continue
+				}
 				r.Stats.Pending++
 				if conversation := d.ID; !observed[conversation] && !(d.Parent != "" && observed[d.Parent]) {
 					r.Stats.AwaitingFeedback++

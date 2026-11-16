@@ -10,7 +10,32 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// auditGHeavyView builds a store whose first pending conversation started many subagents; every subagent got an always rule that
+// auditOwnDeliveries gives the turn of session as many deliveries of its own as its subagents received: every quote delivered to
+// a subagent of that turn is saved again as a delivery to the conversation's own agent right before a tool call. A lesson delivered
+// to a subagent is assessed by the subagent, so only these are listed for the conversation's reflection.
+func auditOwnDeliveries(t *testing.T, st store.Store, scope, session string) {
+	t.Helper()
+	turn := loadSession(st.Dir, session).TurnID
+	deliveries, err := st.MemoryDeliveries(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, d := range deliveries {
+		if d.Agent == "" || d.Parent != turn {
+			continue
+		}
+		for _, q := range d.Quotes {
+			n++
+			own := store.MemoryDelivery{ID: fmt.Sprintf("%016x", 0xa0000+n), Scope: scope, Request: d.Request, Quotes: []store.MemoryQuote{q}, Parent: turn, Tool: fmt.Sprintf("Bash step-%d", n), Phrase: "go test"}
+			if err := st.SaveMemoryDelivery(own); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+// auditGHeavyView builds a store whose first pending conversation has many deliveries of its own to assess (auditOwnDeliveries); each is an always rule that
 // carries a correction (so each delivery must be answered with correction_result). It returns the view with that conversation
 // first, the handler, and the number of its deliveries.
 func auditGHeavyView(t *testing.T, subagents int) (reflectView, func(map[string]any) map[string]any, int) {
@@ -32,6 +57,7 @@ func auditGHeavyView(t *testing.T, subagents int) (reflectView, func(map[string]
 	for i := 0; i < subagents; i++ {
 		startSubagent(t, "s1", scope, fmt.Sprintf("agent-%d", i), "general-purpose", prompt)
 	}
+	auditOwnDeliveries(t, st, scope, "s1")
 	memoryEffectComplete(t, st, scope, "s1")
 	for i := 0; i < 4; i++ {
 		session := fmt.Sprintf("p%d", i)
@@ -49,7 +75,7 @@ func auditGHeavyView(t *testing.T, subagents int) (reflectView, func(map[string]
 		}
 	}
 	if heavy < 0 {
-		t.Fatalf("precondition: the conversation with %d subagents is pending", subagents)
+		t.Fatalf("precondition: the conversation with the deliveries of %d subagents saved as its own is pending", subagents)
 	}
 	first := view
 	first.Sources = append([]reflectSource{}, view.Sources[heavy:]...)

@@ -52,12 +52,14 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 		return err
 	}
 	delivered, correction := false, false
+	deliveredTo := ""          // the subagent the memory was delivered to, empty for the conversation's own agent
 	conversation := a.SourceID // the conversation id. For a delivery to a subagent, the parent turn
 	for _, d := range deliveries {
 		for _, q := range d.Quotes {
 			if d.ID == a.SourceID && q.Key == a.Key {
 				delivered = true
 				correction = q.Correction != nil
+				deliveredTo = d.Agent
 				a.Phrase = d.Phrase // the door, kept with the assessment (0.12)
 				if d.Parent != "" {
 					conversation = d.Parent
@@ -67,6 +69,9 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 	}
 	if !delivered {
 		return errors.New("name a memory actually delivered to this request")
+	}
+	if a.Agent != "" && a.Agent != deliveredTo {
+		return errors.New("a subagent assesses only a memory delivered to itself")
 	}
 	if !correction && a.CorrectionResult != "" {
 		// A lesson that is not a correction takes one behaviour observation: followed, the work went the way the lesson says. With
@@ -83,16 +88,20 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 	if correction && a.CorrectionResult == "" {
 		a.CorrectionResult = "unknown"
 	}
-	feedback, err := s.RecentFeedback(scope)
-	if err != nil {
-		return err
-	}
-	observed := false
-	for _, f := range feedback {
-		observed = observed || f.ID == conversation
-	}
-	if !observed {
-		return errors.New("review only after checking the reply to the request and the person's next message")
+	// A subagent reports what it did with a lesson when it ends, inside the parent's turn: it does not wait for the person's next
+	// message, which is about the parent's reply, not about the subagent's work.
+	if a.Agent == "" {
+		feedback, err := s.RecentFeedback(scope)
+		if err != nil {
+			return err
+		}
+		observed := false
+		for _, f := range feedback {
+			observed = observed || f.ID == conversation
+		}
+		if !observed {
+			return errors.New("review only after checking the reply to the request and the person's next message")
+		}
 	}
 	old, err := s.memoryAssessment(scope, a.SourceID, a.Key)
 	replace := errors.Is(err, errAssessmentBroken) // a file whose content cannot be read is replaced by this assessment (the query lists the delivery as not yet assessed; confirmation audit 2 of 0.12)

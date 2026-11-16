@@ -81,6 +81,7 @@ func TestAuditFReflectQueryWithManySubagentDeliveries(t *testing.T) {
 	for i := 0; i < subagents; i++ {
 		startSubagent(t, "s1", scope, fmt.Sprintf("agent-%d", i), "general-purpose", prompt)
 	}
+	auditOwnDeliveries(t, st, scope, "s1") // a subagent assesses its own deliveries: the turn's own deliveries are what its reflection lists
 	memoryEffectComplete(t, st, scope, "s1")
 	view, err := reflectQueryWith(st.Dir, scope, reflectHeadsMax)
 	if err != nil {
@@ -94,7 +95,7 @@ func TestAuditFReflectQueryWithManySubagentDeliveries(t *testing.T) {
 		}
 	}
 	if heavy < 0 {
-		t.Fatalf("precondition: the turn that started %d subagents has their deliveries to assess", subagents)
+		t.Fatalf("precondition: the turn has as many deliveries of its own to assess as its %d subagents received", subagents)
 	}
 	// (1) as the hooks leave it: an older conversation is still pending, so the heavy one can wait
 	t.Chdir(scope)

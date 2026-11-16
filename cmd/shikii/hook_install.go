@@ -32,6 +32,7 @@ func hookEvents() []hookEvent {
 		{"SessionStart", hookCommand(exe, "session-start"), hookTimeout, false, ""}, // the project's brief at the start and right after a summary (source compact). Both agents read its additionalContext (0.11)
 		{"Stop", hookCommand(exe, "stop"), hookTimeout + 5, false, ""},
 		{"SubagentStart", hookCommand(exe, "subagent-start"), hookTimeout, true, ""},          // deliver lessons to subagents too (0.7.3)
+		{"SubagentStop", hookCommand(exe, "subagent-stop"), hookTimeout, true, ""},            // the child's own report of what it did with its lessons
 		{"PreToolUse", hookCommand(exe, "agent-task"), hookTimeout, true, "Agent|Task"},       // keep the task text passed to the child (0.9.1)
 		{"PreToolUse", hookCommand(exe, "tool-lesson"), hookTimeout, true, toolLessonMatcher}, // a lesson naming the file or command, right before it (0.11)
 	}

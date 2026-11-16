@@ -47,7 +47,7 @@ submit does not limit the number of conversations and items (provisional scores,
 }
 ```
 
-Use `source_id` and `key` exactly as query returned them in `memories[]`: for a lesson delivered to a subagent, `source_id` is the delivery's own id, not the conversation's. `result` is one of these 4.
+Use `source_id` and `key` exactly as query returned them in `memories[]`: for a lesson delivered right before a command or a file, `source_id` is the delivery's own id, not the conversation's. A lesson delivered to a subagent is not listed: the subagent assesses it at the end of its final report (`shikii: <key> helpful - <what it did>` or `shikii: <key> unused`) and the SubagentStop hook saves that. `result` is one of these 4.
 
 | value | meaning | what to record |
 |---|---|---|

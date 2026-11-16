@@ -58,7 +58,7 @@ func runHookEvent(event string) error {
 		}
 		return err
 	}
-	if event != "agent-task" && event != "tool-lesson" {
+	if event != "agent-task" && event != "tool-lesson" && event != "subagent-stop" {
 		ensureModel(common) // start it in the background if missing (this turn just gets no record; do not wait). Not started when only keeping a task for a child or matching a lesson to a tool call
 	}
 	if event == "user-prompt-submit" {
@@ -99,6 +99,8 @@ func runHookEvent(event string) error {
 		muts = append(muts, func(s *hookSession) { summary = stopSummary(agent, s) }) // the waiting-answers summary is counted on the record after this turn's decisions are added
 	case "subagent-start":
 		out, muts, err = hookSubagentStart(agent, &in, snapshot) // the parent's record only drops the used task for the child
+	case "subagent-stop":
+		hookSubagentStop(agent, &in, snapshot) // saves what the child reported about its lessons; outputs nothing and never keeps the child working
 	case "agent-task":
 		muts = hookAgentTask(&in) // output nothing (do not stop the tool)
 	case "tool-lesson":
@@ -292,6 +294,8 @@ func hookEventName(event string) string {
 		return "UserPromptSubmit"
 	case "subagent-start":
 		return "SubagentStart"
+	case "subagent-stop":
+		return "SubagentStop"
 	case "agent-task", "tool-lesson":
 		return "PreToolUse"
 	case "session-start":
@@ -351,11 +355,13 @@ func hookSubagentStart(agent string, in *hookInput, snapshot *hookSession) (hook
 	if err != nil {
 		return hookOut{}, muts, err
 	}
-	// the report location is delivered to subagents too (do not scatter audit and investigation reports inside the repo. 0.8.1)
+	// the report location is delivered to subagents too (do not scatter audit and investigation reports inside the repo. 0.8.1), and
+	// how the child reports what it did with a lesson: a lesson may still reach it right before a command or a file
+	notices := joinLines(subagentHandoffNotice, subagentAssessNotice)
 	if context == "" {
-		return hookOut{Context: subagentHandoffNotice}, muts, nil
+		return hookOut{Context: notices}, muts, nil
 	}
-	return hookOut{Context: joinLines(joinLines(head, context), subagentHandoffNotice)}, muts, nil
+	return hookOut{Context: joinLines(joinLines(head, context), notices)}, muts, nil
 }
 
 // hookAgentTask, at PreToolUse (only the Agent / Task tools), adds the task text and type passed to the child agent to the parent's record. The tool is not stopped

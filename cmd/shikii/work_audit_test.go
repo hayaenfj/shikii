@@ -65,7 +65,7 @@ func TestAuditWorkNoteReportsRemainingPreparedReview(t *testing.T) {
 func TestAuditWorkMemoryKeepsActualDeliveryContext(t *testing.T) {
 	st, scope, _ := reviewFixture(t)
 	parent, _ := reviewSeed(t, st, scope, 1)
-	delivery := store.MemoryDelivery{ID: "0000000000000999", Scope: scope, Request: "CHILD_REQUEST_MARKER verify invoice routing", Parent: parent, Agent: "synthetic-worker", Tool: "Edit TOOL_CONTEXT_MARKER/invoice.go", Phrase: "invoice.go", At: time.Now(), Quotes: []store.MemoryQuote{{ID: "0000000000000888", Key: "feedback:0000000000000888", Request: "Earlier policy request", Summary: "Earlier policy action", Reply: "Preserve tenant checks"}}}
+	delivery := store.MemoryDelivery{ID: "0000000000000999", Scope: scope, Request: "CHILD_REQUEST_MARKER verify invoice routing", Parent: parent, Tool: "Edit TOOL_CONTEXT_MARKER/invoice.go", Phrase: "invoice.go", At: time.Now(), Quotes: []store.MemoryQuote{{ID: "0000000000000888", Key: "feedback:0000000000000888", Request: "Earlier policy request", Summary: "Earlier policy action", Reply: "Preserve tenant checks"}}}
 	if err := st.SaveMemoryDelivery(delivery); err != nil {
 		t.Fatal(err)
 	}

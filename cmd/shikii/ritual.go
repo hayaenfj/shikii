@@ -226,7 +226,7 @@ func reflectLeft(root, scope string, asked []string, viewer string) ([]reflectLe
 	for _, id := range asked {
 		want[id] = true
 	}
-	// A lesson delivered to a subagent is assessed under the delivery's own source_id; the view gathers it under the parent conversation.
+	// A lesson delivered right before a tool call is assessed under the delivery's own source_id; the view gathers it under its conversation.
 	deliveries, err := (store.Store{Dir: root}).MemoryDeliveries(scope)
 	if err != nil {
 		return nil, err

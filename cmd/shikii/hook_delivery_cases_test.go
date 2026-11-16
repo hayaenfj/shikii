@@ -400,7 +400,7 @@ func TestSubagentWithoutItsTaskGetsOnlyAlwaysRules(t *testing.T) {
 }
 
 // Audit (2026-10-23): deliveries to subagents can be assessed in reflection alongside the parent's conversation, and are not silent on a restart after the lesson's version changed.
-func TestSubagentDeliveriesAreAssessedWithTheParentAndSurviveRevisions(t *testing.T) {
+func TestSubagentDeliveriesSurviveRevisionsAndAreNotOwedByTheParent(t *testing.T) {
 	st, scope, h, draft, _ := memoryEffectFixture(t)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "sub2", "cwd": scope, "prompt": "README の導入手順を更新してください"})
 	parent := loadSession(st.Dir, "sub2").TurnID
@@ -424,25 +424,28 @@ func TestSubagentDeliveriesAreAssessedWithTheParentAndSurviveRevisions(t *testin
 	if !strings.Contains(out, "変更後も確認する") {
 		t.Fatalf("delivered on a restart after the version changed: %q", out)
 	}
-	// reflection: the parent's conversation (once the reply and the next message are there) also lists the delivery to the subagent
+	// reflection: the parent's conversation (once the reply and the next message are there) does not list the delivery to the
+	// subagent. Only the subagent can tell whether it used the lesson (hook subagent-stop saves what it reports).
 	runHook(t, "stop", map[string]any{"session_id": "sub2", "cwd": scope, "last_assistant_message": "更新しました。"})
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "sub2", "cwd": scope, "prompt": "次は画面の色を直して。"})
 	q := reflectCall(t, h, map[string]any{"operation": "query"})
 	sources, _ := q["sources"].([]any)
-	found := 0
+	listed, own := false, 0
 	for _, s := range sources {
 		src := s.(map[string]any)
 		if src["source_material"].(map[string]any)["id"] != parent {
 			continue
 		}
+		listed = true
 		for _, m := range src["memories"].([]any) {
-			if m.(map[string]any)["parent"] == parent {
-				found++
+			if m.(map[string]any)["agent"] == "agent-x" || m.(map[string]any)["source_id"] == sub.ID {
+				t.Fatalf("a delivery to a subagent is not listed for the parent's reflection: %v", m)
 			}
+			own++
 		}
 	}
-	if found < 1 {
-		t.Fatalf("the delivery to the subagent shows up for assessment alongside the parent's conversation: %v", q["sources"])
+	if !listed || own != 1 {
+		t.Fatalf("the parent's conversation lists its own delivery only: listed=%v own=%d %v", listed, own, q["sources"])
 	}
 }
 
@@ -466,9 +469,10 @@ func TestSubagentDeliveryCanBeAssessedByItsOwnSourceID(t *testing.T) {
 		t.Fatal("there is a delivery to the subagent")
 	}
 	key := "lesson:" + draft.ID + ":" + revision
-	// before assessment: the parent's conversation is complete, so the delivery to the subagent is waiting for assessment, not for the "next request" (audit R3)
-	if rep, err := st.MemoryReport(scope); err != nil || rep.Stats.Pending != 2 || rep.Stats.AwaitingFeedback != 0 {
-		t.Fatalf("once the parent's conversation is complete, the delivery to the subagent is not waiting for the next request either: %+v %v", rep.Stats, err)
+	// before assessment: the parent's own delivery is waiting for assessment; the delivery to the subagent is counted apart (only
+	// the subagent can assess it) and neither is waiting for the "next request" (audit R3)
+	if rep, err := st.MemoryReport(scope); err != nil || rep.Stats.Pending != 1 || rep.Stats.Subagent != 1 || rep.Stats.AwaitingFeedback != 0 {
+		t.Fatalf("the parent's delivery is pending and the subagent's is counted apart: %+v %v", rep.Stats, err)
 	}
 	// even with one more delivery from another session, the parent's and the subagent's deliveries can be assessed at once (up to 0.9.0 this checked that parent and subagent fold into "at most 2 conversations". audit R3)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "other", "cwd": scope, "prompt": "README の導入手順を更新してください"})
@@ -484,7 +488,7 @@ func TestSubagentDeliveryCanBeAssessedByItsOwnSourceID(t *testing.T) {
 		t.Fatalf("the parent's and the subagent's deliveries can be assessed at once as the same conversation (2 conversations with one other added): %v", out)
 	}
 	rep, err := st.MemoryReport(scope)
-	if err != nil || rep.Stats.Pending != 0 || rep.Stats.AwaitingFeedback != 0 || rep.Stats.Helpful != 2 || rep.Stats.Unused != 1 {
+	if err != nil || rep.Stats.Pending != 0 || rep.Stats.Subagent != 0 || rep.Stats.AwaitingFeedback != 0 || rep.Stats.Helpful != 2 || rep.Stats.Unused != 1 {
 		t.Fatalf("once assessed they leave the observation queue: %+v %v", rep.Stats, err)
 	}
 }

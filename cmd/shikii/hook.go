@@ -65,7 +65,7 @@ func agentHome() (string, error) {
 }
 
 func cmdHook(args []string) error {
-	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | user-prompt-submit | stop | subagent-start | session-start | agent-task | tool-lesson | plan query | plan submit | variants submit\n  install/uninstall: Claude Code and Codex hooks, and a plugin for OpenCode 2.x, that measure the agent's own thinking before and after each turn (shown first; --yes does it)\n  the event hooks, plan query/submit and variants submit are run by the agent and read JSON on stdin; not for typing by hand\n"
+	const usage = "usage: shikii hook install [--yes] | uninstall [--yes] | user-prompt-submit | stop | subagent-start | subagent-stop | session-start | agent-task | tool-lesson | plan query | plan submit | variants submit\n  install/uninstall: Claude Code and Codex hooks, and a plugin for OpenCode 2.x, that measure the agent's own thinking before and after each turn (shown first; --yes does it)\n  the event hooks, plan query/submit and variants submit are run by the agent and read JSON on stdin; not for typing by hand\n"
 	if len(args) == 0 {
 		return errors.New(strings.TrimSpace(usage))
 	}
@@ -82,7 +82,7 @@ func cmdHook(args []string) error {
 		return cmdHookPlan(args[1:])
 	case "variants":
 		return cmdHookVariants(args[1:])
-	case "user-prompt-submit", "stop", "subagent-start", "agent-task", "tool-lesson":
+	case "user-prompt-submit", "stop", "subagent-start", "subagent-stop", "agent-task", "tool-lesson":
 		// the hook never stops the work: exit 0 no matter what. The reason goes to hook.log
 		if err := runHookEvent(args[0]); err != nil {
 			hookLog(err.Error())
@@ -98,7 +98,7 @@ func cmdHook(args []string) error {
 		// an event an older version left in settings. Do nothing, silently (the next `shikii hook install --yes` removes it)
 		return nil
 	}
-	return fmt.Errorf("hook: unknown event %q (install | uninstall | user-prompt-submit | stop | subagent-start | session-start | agent-task | tool-lesson)", args[0])
+	return fmt.Errorf("hook: unknown event %q (install | uninstall | user-prompt-submit | stop | subagent-start | subagent-stop | session-start | agent-task | tool-lesson)", args[0])
 }
 
 // ---------------------------------------------------------------- Claude Code / Codex JSON

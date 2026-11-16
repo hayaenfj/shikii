@@ -37,8 +37,8 @@ func TestAudit011DocsMatchTheHooksAndTheGuards(t *testing.T) {
 		return string(b)
 	}
 	claude, codex := len(hookEventsFor("Claude Code")), len(hookEventsFor("Codex"))
-	if claude != 6 || codex != 3 {
-		t.Fatalf("precondition: 6 hooks for Claude Code and 3 for Codex, got %d and %d", claude, codex)
+	if claude != 7 || codex != 3 {
+		t.Fatalf("precondition: 7 hooks for Claude Code and 3 for Codex, got %d and %d", claude, codex)
 	}
 	if n := strings.Count(guardKinds, "|") + 1; n != 4 {
 		t.Fatalf("precondition: 4 kinds of guard, got %d", n)

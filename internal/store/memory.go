@@ -48,6 +48,9 @@ type MemoryAssessment struct {
 	Decision         string    `json:"decision"`
 	Evidence         string    `json:"evidence"`
 	At               time.Time `json:"at"`
+	// Agent is the subagent that assessed a lesson delivered to itself, from its own final report. Empty for the reflection of the
+	// conversation: only the one a lesson was delivered to can tell whether it was used.
+	Agent string `json:"agent,omitempty"`
 }
 
 type MemoryStats struct {
@@ -58,6 +61,7 @@ type MemoryStats struct {
 	Unknown          int `json:"unknown"`
 	Followed         int `json:"followed"` // of Unknown, those whose work went the way the lesson says (correction_result followed): the lesson applied, its effect is not shown
 	Pending          int `json:"pending"`
+	Subagent         int `json:"subagent"` // delivered to a subagent and not assessed by it: not owed by the parent's reflection, which cannot see how the subagent worked
 	AwaitingFeedback int `json:"awaiting_feedback"`
 	Answers          int `json:"answers"`         // of Delivered, the person's past answers (decision:<trace>, 0.11)
 	AnswersHelpful   int `json:"answers_helpful"` // of Answers, those the reflection found helpful
