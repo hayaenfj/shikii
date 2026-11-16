@@ -17,8 +17,8 @@ func TestMemoryUpgradeReviewsEveryExistingPageAndResumes(t *testing.T) {
 	if err != nil || u.Status != "upgrading" || u.Total != 3 || u.Reviewed != 0 || len(u.Tasks) != 2 {
 		t.Fatal("all existing knowledge must enter bounded upgrade work", u, err)
 	}
-	if u.Message != "Upgrading memory…" {
-		t.Fatal("the progress message must be English", u.Message)
+	if u.Message != "\u8a18\u61b6\u3092\u66f4\u65b0\u3057\u3066\u3044\u307e\u3059\u2026" {
+		t.Fatal("the progress message the person sees must be Japanese", u.Message)
 	}
 	first := u.Tasks[0]
 	if _, err := b.Maintain(MaintenanceReview{first.PageID, first.Revision, first.Key, "Checked current policy and original evidence; retained applicable knowledge."}); err != nil {
@@ -146,5 +146,15 @@ func TestMemoryUpgradeRetainsBlockedSourcesAndRechecksDependencies(t *testing.T)
 	u, err = b.MemoryUpgrade()
 	if err != nil || len(u.Blocked) != 0 || len(u.Tasks) != 2 {
 		t.Fatal("recover without changing the original source", u, err)
+	}
+}
+
+// The completion message is shown to the person, so it is Japanese, with and without deleted targets.
+func TestUpgradeCompletionMessageIsJapanese(t *testing.T) {
+	if got := upgradeCompletionMessage(MemoryUpgrade{Reviewed: 2}); got != "\u8a18\u61b6\u306e\u66f4\u65b0\u304c\u5b8c\u4e86\u3057\u307e\u3057\u305f\u3002" {
+		t.Fatal("completion without deleted targets must be Japanese:", got)
+	}
+	if got := upgradeCompletionMessage(MemoryUpgrade{Withdrawn: 1, Reviewed: 2}); got != "\u8a18\u61b6\u306e\u66f4\u65b0\u304c\u5b8c\u4e86\u3057\u307e\u3057\u305f\u3002\u524a\u9664\u5bfe\u8c61\u3092\u9664\u5916: 1 \u4ef6\u3001\u898b\u76f4\u3057: 2 \u4ef6\u3002" {
+		t.Fatal("completion with deleted targets must be Japanese:", got)
 	}
 }

@@ -118,7 +118,7 @@ func saveMemoryUpgrade(dir string, c memoryUpgradeCheckpoint) error {
 // another upgrade; regular maintenance still watches their current conditions.
 func (b Book) MemoryUpgrade() (MemoryUpgrade, error) {
 	b = b.scopedRead()
-	u := MemoryUpgrade{Epoch: MemoryUpgradeEpoch, Status: "upgrading", Message: "Upgrading memory…", Policy: MemoryUpgradePolicy}
+	u := MemoryUpgrade{Epoch: MemoryUpgradeEpoch, Status: "upgrading", Message: "\u8a18\u61b6\u3092\u66f4\u65b0\u3057\u3066\u3044\u307e\u3059\u2026", Policy: MemoryUpgradePolicy}
 	dir, err := b.directory(true, "pages")
 	if err != nil {
 		return u, err
@@ -291,7 +291,7 @@ func sourceIssuesReason(issues []Issue) string {
 
 func upgradeCompletionMessage(u MemoryUpgrade) string {
 	if u.Withdrawn == 0 {
-		return "Memory upgrade complete."
+		return "\u8a18\u61b6\u306e\u66f4\u65b0\u304c\u5b8c\u4e86\u3057\u307e\u3057\u305f\u3002"
 	}
-	return fmt.Sprintf("Memory upgrade complete. Deleted targets excluded: %d; reviewed: %d.", u.Withdrawn, u.Reviewed)
+	return fmt.Sprintf("\u8a18\u61b6\u306e\u66f4\u65b0\u304c\u5b8c\u4e86\u3057\u307e\u3057\u305f\u3002\u524a\u9664\u5bfe\u8c61\u3092\u9664\u5916: %d \u4ef6\u3001\u898b\u76f4\u3057: %d \u4ef6\u3002", u.Withdrawn, u.Reviewed)
 }
