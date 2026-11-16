@@ -68,6 +68,16 @@ func TestAudit011DocsMatchTheHooksAndTheGuards(t *testing.T) {
 		{"docs/guide.md", "Codex retains turn-end checks without this command", "Codex has the command hook from 0.36.0"},
 		{"docs/guide.ja.md", "\u3053\u306e\u30b3\u30de\u30f3\u30c9\u7528hook\u3092\u767b\u9332\u305b\u305a", "Codex has the command hook from 0.36.0"},
 		{"README.md", "right before it runs in Claude Code.", "a guard on commands refuses in Codex too"},
+		{"docs/guide.ja.md", "\u4eca\u307e\u3067\u3069\u304a\u308a Stop \u3060\u3051\u3067\u52d5\u304f", "the word guards also run before a publication command"},
+		{"docs/guide.md", "for `forbidden-commands`, right before the command)", "the file and commit-body guards also refuse a publication command"},
+		{"docs/guide.ja.md", "`forbidden-commands` \u306f\u30b3\u30de\u30f3\u30c9\u306e\u76f4\u524d\u306b\u76f4\u3055\u305b\u308b", "the file and commit-body guards also refuse a publication command"},
+		{"docs/architecture.md", "runs the first three of these", "the plugin runs the hooks of a session's start, a request, a stop and a subagent"},
+		{"docs/architecture.ja.md", "\u6700\u521d\u306e3\u3064\u3092\u52d5\u304b\u3059", "the plugin runs the hooks of a session's start, a request, a stop and a subagent"},
+		{"docs/architecture.md", "which runs only those before a request", "the plugin runs the session's start too"},
+		{"docs/architecture.ja.md", "\u30b5\u30d6\u30a8\u30fc\u30b8\u30a7\u30f3\u30c8\u306e\u958b\u59cb\u3068\u7d42\u4e86\u3060\u3051\u3092\u52d5\u304b\u3059", "the plugin runs the session's start too"},
+		{"CHANGELOG.md", "reaches the model right before the command runs", "the agent reads the lesson with the call's result"},
+		{"CHANGELOG_ja.md", "\u6559\u8a13\u304c\u30e2\u30c7\u30eb\u306b\u5c4a\u304f\u3088\u3046\u306b\u306a\u308a\u307e\u3057\u305f", "the agent reads the lesson with the call's result"},
+		{"docs/readme/README_ja.md", "\u76f4\u524d\u306b\u3082\u5c4a\u304d\u3001\u30b5\u30d6\u30a8\u30fc\u30b8\u30a7\u30f3\u30c8\u306b\u306f\u3001\u983c\u307e\u308c\u305f\u4ed5\u4e8b\u306e\u6587\u306b\u8fd1\u3044\u6559\u8a13\u304c\u5c4a\u304d\u307e\u3059", "a Codex subagent gets no lesson chosen by its task"},
 		{"skills/shikii/references/guards.md", "Codex retains its turn-end checks", "Codex has the command hook from 0.36.0"},
 		{"skills/shikii/references/guards.md", "OpenCode uses MCP and skills without automatic hooks", "shikii's OpenCode plugin runs the hooks of a request, a stop and a subagent"},
 		{"docs/guide.ja.md", "Claude Code \u304c\u30b3\u30de\u30f3\u30c9\u3092\u6d41\u3059\u76f4\u524d(Bash", "a forbidden-commands guard runs in Codex too"},
@@ -126,6 +136,11 @@ func TestAudit011DocsMatchTheHooksAndTheGuards(t *testing.T) {
 	says = append(says,
 		claim{"integrations/claude-code.md", fmt.Sprintf("Timeouts are %d seconds for Stop and %d seconds for every other hook.", stopTimeout, otherTimeout), "the timeouts of the hooks"},
 		claim{"integrations/claude-code.ja.md", fmt.Sprintf("timeout \u306f Stop \u304c %d \u79d2\u3001\u307b\u304b\u306e hook \u306f\u5168\u90e8 %d \u79d2\u3002", stopTimeout, otherTimeout), "the timeouts of the hooks"},
+	)
+	// how much of a subagent's report is read, from the limits themselves
+	says = append(says,
+		claim{"docs/guide.md", fmt.Sprintf("wherever they stand in the last %d KiB of that report, for up to %d lessons", subagentReportMax>>10, subagentAssessMax), "the part of a subagent's report that is read"},
+		claim{"docs/guide.ja.md", fmt.Sprintf("\u305d\u306e\u5831\u544a\u306e\u672b\u5c3e %d KiB \u306e\u3069\u3053\u306b\u3042\u3063\u3066\u3082\u305d\u306e\u884c\u3092\u4fdd\u5b58\u3059\u308b(\u6559\u8a13 %d \u4ef6\u307e\u3067)", subagentReportMax>>10, subagentAssessMax), "the part of a subagent's report that is read"},
 	)
 	for _, c := range says {
 		if !strings.Contains(read(c.file), c.text) {

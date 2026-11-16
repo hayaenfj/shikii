@@ -537,7 +537,7 @@ In the same order as `shikii --help`. For all the flags, run `shikii <command> -
 | `shikii handoff list` / `read` / `write` / `append` | Reading and writing work records |
 | `shikii guard list` / `add` / `enable` / `disable` / `try` | Guards |
 | `shikii review query` / `submit` | Provisional assessments from conversations and results (usually done together in reflection) |
-| `shikii reflect query` / `place` / `submit` | Reflection before ending (`place` shows where a draft lesson could go; with the targets a hook's text gives on standard input, `query` lists only what that session is asked) |
+| `shikii reflect query` / `place` / `submit` | Reflection before ending (`place` shows where a draft lesson could go; `query session_id=<id>`, as a hook's text writes it, lists only what that session is asked) |
 | `shikii check <spec>...` | For CI: fails on lines whose wording changed, hand-written lines, lines with too little precision and lines that lift an option no truth confirmed |
 | `shikii drift <spec> --model M` | Checks whether a line has worsened on recent truths |
 | `shikii bias <spec>` | Measures whether the order of options changes the answer |

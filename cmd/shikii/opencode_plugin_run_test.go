@@ -193,7 +193,9 @@ for (const step of scenario.steps) {
       // the model call right after a move is made in this window
       sessions[step.sid] = { ...(sessions[step.sid] ?? { id: step.sid }), location: { directory: step.dir } }
     } else if (step.op === "say") {
-      ;((scenario.messages ??= {})[step.sid] ??= []).push({ type: "assistant", content: [{ type: "text", text: step.text }] })
+      ;((scenario.messages ??= {})[step.sid] ??= []).push({ ...(step.id ? { id: step.id } : {}), type: "assistant", content: [{ type: "text", text: step.text }] })
+    } else if (step.op === "drop") {
+      ;(scenario.messages?.[step.sid] ?? []).shift() // a summary: the earliest message leaves the context
     } else if (step.op === "settle") {
       await settle()
     } else if (step.op === "release") {

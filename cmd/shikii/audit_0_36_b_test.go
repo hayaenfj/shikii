@@ -3,12 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"io"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // P1: the Stop tells the agent to run `shikii reflect query` with targets; through the CLI.
@@ -18,11 +17,11 @@ func TestAudit036ConfirmCLIQueryNarrowsToTheSessionOfTheStopsTargets(t *testing.
 	stop := runHook(t, "stop", map[string]any{"session_id": "other", "cwd": scope, "last_assistant_message": "Adjusted the size of the screen text."})
 	targets := stopTargets(t, stop)
 	b, _ := json.Marshal(map[string]any{"session_id": targets.SessionID, "sources": targets.Sources})
-	if reason, _ := stopReason(t, stop); !strings.Contains(reason, "reflect query (targets "+string(b)+" on standard input") {
-		t.Fatalf("the Stop's reason says where the CLI query takes the targets: %s", reason)
+	// the command the Stop writes carries the session, so the agent that copies it asks as that session
+	if reason, _ := stopReason(t, stop); !strings.Contains(reason, " reflect query session_id=other (or query of shikii_reflect; targets ") {
+		t.Fatalf("the Stop's reason names the CLI query with the session: %s", reason)
 	}
-	var out string
-	withStdin(t, string(b), func() { out = capture(t, func() error { return cmdReflect([]string{"query"}) }) })
+	out := capture(t, func() error { return cmdReflect([]string{"query", "session_id=" + targets.SessionID}) })
 	var view reflectView
 	if err := json.Unmarshal([]byte(out), &view); err != nil {
 		t.Fatalf("%v: %.300s", err, out)
@@ -316,6 +315,13 @@ func TestAudit036ConfirmPatchTargetAtTheLimit(t *testing.T) {
 	if got := patchTarget(p, "/work"); got != "/work/version.go" {
 		t.Errorf("4) the header and its CR are inside, the LF is past the limit: %q", got)
 	}
+	// 4b) the header is inside, its CR is the first byte past the limit
+	head4b := "*** Begin Patch\r\n"
+	line4b := "*** Update File: version.go"
+	pad4b := patchMax - len(head4b) - len(line4b)
+	if got := patchTarget(head4b+strings.Repeat("x", pad4b-2)+"\r\n"+line4b+"\r\n+a\r\n", "/work"); got != "/work/version.go" {
+		t.Errorf("4b) the header is inside, its CRLF is the first thing past the limit: %q", got)
+	}
 	// 5) the first header is read however long the patch is
 	if got := patchTarget("*** Begin Patch\r\n*** Update File: version.go\r\n"+strings.Repeat("+a\r\n", patchMax), "/work"); got != "/work/version.go" {
 		t.Errorf("5) %q", got)
@@ -383,19 +389,15 @@ func TestAudit036ConfirmOnlyTheEndOfALongReportIsRead(t *testing.T) {
 	}
 }
 
-// The CLI query also runs with nothing piped to it, and does not wait for a standard input that stays open without a byte.
-func TestAudit036ConfirmCLIQueryDoesNotWaitForAnOpenStandardInput(t *testing.T) {
+// The CLI query reads nothing from standard input: it also runs inside a script whose standard input is the script itself
+// (bash <<EOF, sh -s, a while read loop), and must not eat the lines after it. The session comes as its one argument.
+func TestAudit036ConfirmCLIQueryLeavesStandardInputAlone(t *testing.T) {
 	_, _, turn, _ := sessionDelivery(t)
-	r, w := io.Pipe() // never written, never closed
-	defer w.Close()
-	oldIn, oldWait := stdin, pipedInputWait
-	stdin, pipedInputWait = r, time.Millisecond
-	defer func() { stdin, pipedInputWait = oldIn, oldWait }()
-	start := time.Now()
+	rest := strings.NewReader("echo second-command\necho third-command\n")
+	old := stdin
+	stdin = rest
+	defer func() { stdin = old }()
 	out := capture(t, func() error { return cmdReflect([]string{"query"}) })
-	if waited := time.Since(start); waited > 5*time.Second {
-		t.Fatalf("the query waited %s for a standard input that never closes (the wait is set to %s)", waited, pipedInputWait)
-	}
 	var view reflectView
 	if err := json.Unmarshal([]byte(out), &view); err != nil {
 		t.Fatalf("%v: %.300s", err, out)
@@ -403,10 +405,56 @@ func TestAudit036ConfirmCLIQueryDoesNotWaitForAnOpenStandardInput(t *testing.T) 
 	if listed, n := listedMemory(view, turn); !listed || n != 1 {
 		t.Fatalf("a plain query lists the conversation with its delivery, got listed=%v deliveries=%d", listed, n)
 	}
-	// JSON that cannot be read is told, not taken for a plain query
-	var err error
-	withStdin(t, `{"session_id":`, func() { _, err = captureErr(func() error { return cmdReflect([]string{"query"}) }) })
-	if err == nil {
-		t.Fatal("targets that cannot be read are refused")
+	if rest.Len() != len("echo second-command\necho third-command\n") {
+		t.Fatalf("the query read %d bytes of the standard input it was started with", len("echo second-command\necho third-command\n")-rest.Len())
+	}
+	// the argument is session_id=<id> and nothing else: an id alone, an empty one and one a shell would read are refused
+	for _, arg := range []string{"0123456789abcdef", "session_id=", "session_id=a b", "session_id=$(id)", "session_id=-x", "other"} {
+		if _, err := captureErr(func() error { return cmdReflect([]string{"query", arg}) }); err == nil {
+			t.Errorf("reflect query %s must be refused", arg)
+		}
+	}
+}
+
+// A real model writes commands in code spans when it says what it did (seen with OpenCode 2.3.0 on 2026-11-17: the line was not
+// saved). What it did may hold code spans; a line that is itself wrapped in one code span is read without the wrapping.
+func TestAudit036ConfirmWhatTheSubagentDidMayHoldCodeSpans(t *testing.T) {
+	for _, c := range []struct{ name, line, did string }{
+		{"code spans inside", "shikii: %s helpful - I ran `sh deploy.sh` before editing deploy.sh (it printed \"deploying\", exit 0).", "I ran `sh deploy.sh` before editing deploy.sh (it printed \"deploying\", exit 0)."},
+		{"ends with a code span", "shikii: %s helpful - Before the edit I ran `sh deploy.sh`", "Before the edit I ran `sh deploy.sh`"},
+		{"the whole line in one code span", "`shikii: %s helpful - Ran the smoke test first.`", "Ran the smoke test first."},
+		{"a list item, wrapped, CRLF", "- `shikii: %s helpful - Ran the smoke test first.`\r", "Ran the smoke test first."},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			st, scope, key, _, _ := subagentStopFixture(t, "s", "agent-1")
+			subagentStop(t, "s", scope, "agent-1", "Done.\n\n"+fmt.Sprintf(c.line, key)+"\n")
+			got := subagentAssessments(t, st, scope, "agent-1")
+			if len(got) != 1 || got[0] == nil {
+				t.Fatalf("the line is saved: %+v", got)
+			}
+			if got[0].Result != "helpful" || got[0].Decision != c.did {
+				t.Errorf("saved %q %q, want helpful %q", got[0].Result, got[0].Decision, c.did)
+			}
+		})
+	}
+	// a wrapped line with no words after the result
+	st, scope, key, _, _ := subagentStopFixture(t, "s", "agent-1")
+	subagentStop(t, "s", scope, "agent-1", "`shikii: "+key+" unused`")
+	if got := subagentAssessments(t, st, scope, "agent-1"); len(got) != 1 || got[0] == nil || got[0].Result != "unused" {
+		t.Fatalf("a wrapped line of an unused lesson is saved: %+v", got)
+	}
+}
+
+// The agent reads a lesson delivered at a tool call together with that call's result (the call is already written when the
+// hook runs), so the text does not speak of a call that is still to come.
+func TestAudit036ConfirmTheToolLessonSpeaksOfTheCallItCameWith(t *testing.T) {
+	_, scope, _, ids := toolLessonFixture(t)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": scope, "prompt": toolPrompt})
+	out := runHook(t, "tool-lesson", map[string]any{"session_id": "s", "cwd": scope, "hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": map[string]any{"file_path": filepath.Join(scope, "cmd", "shikii", "version.go")}})
+	if !strings.Contains(out, ids["version"]) {
+		t.Fatalf("precondition: the lesson is delivered: %s", out)
+	}
+	if strings.Contains(out, "about to") || !strings.Contains(out, "names the file this call changes (") {
+		t.Errorf("the text names the file of the call it came with: %s", out)
 	}
 }

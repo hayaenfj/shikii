@@ -17,8 +17,9 @@ import (
 const subagentAssessNotice = "shikii: Only you can tell whether a lesson shikii delivers to you (here, or right before a command or a file) was used. End your final report with one line for each such lesson: `shikii: <its key> helpful - <what you did because of it>`, or `shikii: <its key> unused`. Leave out a lesson you cannot judge."
 
 // subagentAssessLine is one such line: the exact key of a lesson revision, one of the three results a subagent can observe and, after
-// " - ", what it did. Anything else in the report is not read. A line may end with CRLF.
-var subagentAssessLine = regexp.MustCompile("(?m)^[ \\t]*(?:[-*][ \\t]+)?`?shikii: (lesson:[0-9a-f]{16}:[0-9a-f]{16}) (helpful|unused|harmful)(?:[ \\t]+-[ \\t]+([^`\\r\\n]*))?`?[ \\t\\r]*$")
+// " - ", what it did (which may hold code spans: a model writes its commands in them). A line wrapped whole in one code span is read
+// without the wrapping. Anything else in the report is not read. A line may end with CRLF.
+var subagentAssessLine = regexp.MustCompile("(?m)^[ \\t]*(?:[-*][ \\t]+)?(`?)shikii: (lesson:[0-9a-f]{16}:[0-9a-f]{16}) (helpful|unused|harmful)(?:[ \\t]+-[ \\t]+([^\\r\\n]*)|`)?[ \\t\\r]*$")
 
 // subagentAssessMax is how many lessons one report assesses (a child receives two lessons at its start and one per tool call), and
 // subagentReportMax how much of the end of a report is read for their lines.
@@ -58,7 +59,10 @@ func hookSubagentStop(agent string, in *hookInput, snapshot *hookSession) {
 	}
 	seen := map[string]bool{}
 	for _, line := range lines {
-		key, result, did := line[1], line[2], strings.TrimSpace(line[3])
+		key, result, did := line[2], line[3], strings.TrimSpace(line[4])
+		if line[1] != "" {
+			did = strings.TrimSpace(strings.TrimSuffix(did, "`")) // the whole line stood in one code span
+		}
 		if len(seen) >= subagentAssessMax {
 			break
 		}

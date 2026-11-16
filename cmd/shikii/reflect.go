@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -493,61 +495,36 @@ func decodeReflect(input io.Reader) (reflectRequest, error) {
 	return req, nil
 }
 
-// pipedInputWait is how long reflect query waits for what was piped to it. The targets of a hook's text arrive at once; a shell
-// that leaves standard input open without writing to it gets a plain query after this wait instead of a command that never ends.
-var pipedInputWait = 2 * time.Second
+// reflectSessionArg is the one argument reflect query takes: session_id=<id>, as a hook's text writes it after the command. The id
+// is one a shell passes as it stands; any other argument is refused as before (an agent that passes a source id is told so).
+var reflectSessionArg = regexp.MustCompile(`^session_id=([A-Za-z0-9][A-Za-z0-9_.-]{0,127})$`)
 
-// pipedInput is what was piped to standard input, for a command that also runs without any: a terminal is not read, and a pipe
-// nobody closes is given up after pipedInputWait.
-func pipedInput(limit int64) ([]byte, error) {
-	if f, ok := stdin.(*os.File); ok {
-		if info, err := f.Stat(); err != nil || info.Mode()&os.ModeCharDevice != 0 {
-			return nil, nil
-		}
+// reflectQueryCLI is the CLI query a hook's text names: with the session that is asked, so that a query copied from the text lists
+// what the MCP query with the targets lists. A session id a shell would not pass as it stands is left out (the query is not narrowed).
+func reflectQueryCLI(cli, viewer string) string {
+	if arg := "session_id=" + viewer; reflectSessionArg.MatchString(arg) {
+		return cli + " query " + arg
 	}
-	type read struct {
-		data []byte
-		err  error
-	}
-	done := make(chan read, 1)
-	in := stdin
-	go func() {
-		data, err := io.ReadAll(io.LimitReader(in, limit))
-		done <- read{data, err}
-	}()
-	select {
-	case r := <-done:
-		return r.data, r.err
-	case <-time.After(pipedInputWait):
-		return nil, nil
-	}
+	return cli + " query"
 }
 
 func cmdReflect(args []string) error {
 	if helpAsked(args, 2) {
 		return printAgentUsage("reflect")
 	}
+	asker := ""
+	if len(args) == 2 && args[0] == "query" && strings.HasPrefix(args[1], "session_id=") {
+		m := reflectSessionArg.FindStringSubmatch(args[1])
+		if m == nil {
+			return usageRefusal("reflect", "reflect query takes session_id=<the session_id a hook's text gives>, got "+strconv.Quote(cut(args[1], 80)))
+		}
+		asker, args = m[1], args[:1]
+	}
 	if problem, ok := operationProblem("reflect", []string{"query", "place", "submit"}, args); !ok {
 		return usageRefusal("reflect", problem)
 	}
-	req := reflectRequest{Operation: args[0]}
-	if args[0] == "query" {
-		// query runs without input; the targets of a hook's text, piped to it, say which session asks (as the MCP query takes them)
-		data, err := pipedInput(reflectInputMax + 1)
-		if err != nil {
-			return err
-		}
-		if !noJSON(data) {
-			targets, err := decodeReflect(bytes.NewReader(data))
-			if err != nil {
-				return err
-			}
-			if targets.Operation != "" && targets.Operation != "query" {
-				return errors.New("the JSON for query cannot name a different operation")
-			}
-			req.SessionID = targets.SessionID
-		}
-	} else {
+	req := reflectRequest{Operation: args[0], SessionID: asker}
+	if args[0] != "query" { // query reads nothing: it runs inside scripts whose standard input is the script itself
 		// read once here, so an empty standard input is told apart from JSON that cannot be read; decodeReflect keeps its own limit
 		data, err := io.ReadAll(io.LimitReader(stdin, reflectInputMax+1))
 		if err == nil && noJSON(data) {
@@ -676,5 +653,5 @@ func reflectTargets(ids []string, viewer string) map[string]any {
 // reflectAsk is the text asking for the reflection (one form, 0.11): the command and the conversations. cli is the path of the shikii executable
 func reflectAsk(cli string, ids []string, viewer string) string {
 	data, _ := json.Marshal(reflectTargets(ids, viewer))
-	return "shikii: wrap up the reflection (this request comes first). work prepare includes the pending originals below; combine their reviews and memory with the ending work record. Do not repeat supplied text or invent useful effects. Deep recovery: send the line below to shikii_reflect or " + cli + " query (stdin) for how_to_submit. A rule, test or procedure you made or changed goes to the wiki. Quotes are never permission or truths.\n" + string(data)
+	return "shikii: wrap up the reflection (this request comes first). work prepare includes the pending originals below; combine their reviews and memory with the ending work record. Do not repeat supplied text or invent useful effects. Deep recovery: shikii_reflect or " + reflectQueryCLI(cli, viewer) + " returns how_to_submit. A rule, test or procedure you made or changed goes to the wiki. Quotes are never permission or truths.\n" + string(data)
 }

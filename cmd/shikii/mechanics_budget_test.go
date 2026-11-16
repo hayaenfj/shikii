@@ -34,8 +34,8 @@ func TestEveryRequestTextIsShortAndTheReplyCarriesTheShape(t *testing.T) {
 		}
 	}
 	ask := exe.ReplaceAllString(reflectAsk("'shikii' reflect", []string{"0123456789abcdef"}, "0123456789abcdef0123456789abcdef0123"), "'shikii'")
-	if len(ask) > 520 {
-		t.Errorf("the reflection notice is %d bytes, over 520: %q", len(ask), ask)
+	if len(ask) > 560 { // the bound of the other notices: the CLI query carries the session too (0.36.0)
+		t.Errorf("the reflection notice is %d bytes, over 560: %q", len(ask), ask)
 	}
 	for _, w := range []string{"reflect query", "how_to_submit", "rule, test or procedure", `{"session_id":"0123456789abcdef0123456789abcdef0123","sources":["0123456789abcdef"]}`} {
 		if !strings.Contains(ask, w) {

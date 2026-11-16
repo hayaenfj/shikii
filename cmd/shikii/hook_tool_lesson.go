@@ -37,7 +37,8 @@ const patchMax = 1 << 20
 func patchTarget(patch, cwd string) string {
 	if len(patch) > patchMax {
 		// the line the limit falls in is not read: a header cut inside its name would name a file the patch does not touch
-		whole := patch[patchMax] == '\n' // the last line read ends right at the limit
+		// the last line read ends right at the limit (LF, or CRLF, is the first thing past it)
+		whole := patch[patchMax] == '\n' || strings.HasPrefix(patch[patchMax:], "\r\n")
 		patch = patch[:patchMax]
 		if !whole {
 			patch = patch[:strings.LastIndexByte(patch, '\n')+1]
@@ -709,9 +710,10 @@ func namedDoors(p notebook.Page, target toolTarget) []string {
 // deliverToolLesson records one quote delivered at a tool call (its own delivery id, under the turn as parent, so the reflection
 // assesses it with that turn's conversation) and returns the text for the agent. phrase is the door it came through (recorded, 0.12).
 func deliverToolLesson(agent string, s *hookSession, q memoryQuote, target toolTarget, phrase, agentID, sessionID string) (string, error) {
-	what := "the file you are about to change"
+	// the call is already written when the hook runs, and the agent reads this with the call's result
+	what := "the file this call changes"
 	if target.file == "" {
-		what = "the command you are about to run"
+		what = "the command this call runs"
 	}
 	prefix := "shikii: a lesson from this project's wiki that names " + what + " (" + target.label + "). It is a hypothesis with sources: check its condition, put this request and the rules first, and do not treat it as permission to act.\n"
 	for budget := 400; budget >= 25; budget /= 2 {
