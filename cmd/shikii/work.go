@@ -65,8 +65,9 @@ type workMemory struct {
 	CorrectionResult string `json:"correction_result,omitempty"`
 }
 type workMaintenance struct {
-	Ref    string `json:"ref"`
-	Reason string `json:"reason"`
+	Ref     string `json:"ref"`
+	Reason  string `json:"reason"`
+	Blocked bool   `json:"blocked,omitempty"`
 }
 type workDiscovery struct {
 	Ref      string `json:"ref"`

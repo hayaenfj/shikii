@@ -65,6 +65,13 @@ func (b *workRecordBatch) recordReflection(noteSources []string) {
 			add(workItem{Ref: m.Ref, Kind: "maintenance", Error: "unknown prepared maintenance reference"})
 			continue
 		}
+		if m.Blocked {
+			// A page the agent cannot check is declared blocked, not reviewed: the batch moves on past it.
+			if e := book.BlockMemoryUpgrade(review.PageID, review.Revision, review.Key, m.Reason); e != nil {
+				add(workItem{Ref: m.Ref, Kind: "maintenance", Error: e.Error()})
+			}
+			continue
+		}
 		review.Reason = m.Reason
 		reflection.Maintenance = append(reflection.Maintenance, review)
 	}

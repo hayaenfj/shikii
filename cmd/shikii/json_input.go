@@ -298,7 +298,7 @@ type unknownFieldError struct {
 // maintenance task in work.maintenance[], was told page_id is a field of maintenance (the argument of another operation, maintain),
 // and reviewed the page through that operation instead of the task prepare had given it (2026-11-15).
 var objectHints = map[reflect.Type]string{
-	reflect.TypeOf(workMaintenance{}): "ref is the ref of a maintenance task in the prepare reply, such as maintenance1; the page and revision of that task come with it, so send only ref and reason",
+	reflect.TypeOf(workMaintenance{}): "ref is the ref of a maintenance task in the prepare reply, such as maintenance1; the page and revision of that task come with it, so send only ref and reason; send blocked: true with the reason when the page's original evidence cannot be read or does not support it, and the batch then moves on past that page",
 }
 
 func (e *unknownFieldError) Error() string {

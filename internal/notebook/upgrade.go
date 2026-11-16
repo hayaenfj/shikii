@@ -29,11 +29,12 @@ type MemoryUpgrade struct {
 }
 
 type memoryUpgradeCheckpoint struct {
-	Withdrawn map[string]string `json:"withdrawn,omitempty"`
-	Epoch     string            `json:"epoch"`
-	Targets   map[string]string `json:"targets"`
-	Reviews   map[string]string `json:"reviews"`
-	Complete  bool              `json:"complete"`
+	Withdrawn map[string]string             `json:"withdrawn,omitempty"`
+	Blocked   map[string]memoryUpgradeBlock `json:"blocked,omitempty"`
+	Epoch     string                        `json:"epoch"`
+	Targets   map[string]string             `json:"targets"`
+	Reviews   map[string]string             `json:"reviews"`
+	Complete  bool                          `json:"complete"`
 }
 
 func memoryUpgradePath(dir string) string {
@@ -71,6 +72,11 @@ func readMemoryUpgrade(dir string) (memoryUpgradeCheckpoint, error) {
 	for id, revision := range c.Withdrawn {
 		if c.Targets[id] == "" || !idPattern.MatchString(revision) {
 			return c, errors.New("invalid withdrawn memory upgrade target")
+		}
+	}
+	for id, mark := range c.Blocked {
+		if c.Targets[id] == "" || !idPattern.MatchString(mark.Revision) || mark.Reason == "" {
+			return c, errors.New("invalid blocked memory upgrade target")
 		}
 	}
 	return c, nil
@@ -187,6 +193,12 @@ func (b Book) MemoryUpgrade() (MemoryUpgrade, error) {
 				continue
 			}
 		}
+		// A page declared blocked at its current revision holds no batch slot. Its revision changes
+		// when it is edited, and then it returns to review.
+		if mark, ok := c.Blocked[id]; ok && mark.Revision == p.Revision {
+			u.Blocked = append(u.Blocked, id)
+			continue
+		}
 		if task, ok := byID[id]; ok && len(u.Tasks) < 2 {
 			task.Reasons = append([]string{"memory-upgrade"}, task.Reasons...)
 			task.NextAction = MemoryUpgradePolicy
@@ -228,6 +240,7 @@ func recordMemoryUpgradeReview(dir string, review MaintenanceReview) error {
 		return nil
 	}
 	c.Reviews[review.PageID] = review.Key
+	delete(c.Blocked, review.PageID)
 	if err := saveMemoryUpgrade(dir, c); err != nil {
 		return fmt.Errorf("save memory upgrade progress: %w", err)
 	}
