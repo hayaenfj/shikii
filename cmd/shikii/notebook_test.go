@@ -227,7 +227,7 @@ func TestNotebookHookOffersBoundedAutomaticIngest(t *testing.T) {
 	if len(view["pending_sources"].([]any)) != 0 || len(view["lessons"].([]any)) != 0 {
 		t.Fatalf("there is no need to invent a lesson from every message: %v", view)
 	}
-	ctx, _, err := reflectContext(agent, feedbackScope(repo))
+	ctx, _, err := reflectContext(agent, feedbackScope(repo), "")
 	if err != nil || ctx != "" {
 		t.Fatalf("sorted conversations are not passed again and again: %s %v", ctx, err)
 	}
@@ -237,7 +237,7 @@ func TestNotebookHookOffersBoundedAutomaticIngest(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ctx, _, err = reflectContext(agent, feedbackScope(repo))
+	ctx, _, err = reflectContext(agent, feedbackScope(repo), "")
 	// The size of the text asking for reflection is not limited (0.9.1; every added ritual sentence turned into a fight over space). What is kept is passing only source IDs, without repeating the conversation's raw text
 	if err != nil || ctx == "" || strings.Contains(ctx, strings.Repeat("\x01", 100)) || strings.Contains(ctx, strings.Repeat("\x02", 100)) || !utf8.ValidString(ctx) {
 		t.Fatalf("the wiki quote does not repeat the conversation's raw text either: bytes=%d err=%v", len(ctx), err)

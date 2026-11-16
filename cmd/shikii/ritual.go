@@ -129,7 +129,7 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 	}
 	// Reflection: conversations listed before the request are still waiting for reflection (provisional scores, wiki or assessments of delivered lessons not done)
 	if len(snapshot.ReflectAsked) > 0 && snapshot.ReflectAskedTurn == snapshot.TurnID {
-		left, err := reflectLeft(root, scope, snapshot.ReflectAsked)
+		left, err := reflectLeft(root, scope, snapshot.ReflectAsked, in.SessionID)
 		if err != nil {
 			return hookOut{}, err
 		}
@@ -217,8 +217,8 @@ type reflectLeftItem struct {
 	items             []reflectReceipt // the deliveries still to assess (source_id and key), as the agent sends them in memory (0.12)
 }
 
-func reflectLeft(root, scope string, asked []string) ([]reflectLeftItem, error) {
-	view, rest, err := reflectPending(root, scope, 0) // every pending conversation: what is left is worked out for the ones named, beyond any cap on heads
+func reflectLeft(root, scope string, asked []string, viewer string) ([]reflectLeftItem, error) {
+	view, rest, err := reflectPending(root, scope, 0, viewer) // every pending conversation: what is left is worked out for the ones named, beyond any cap on heads
 	if err != nil {
 		return nil, err
 	}

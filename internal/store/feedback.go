@@ -22,6 +22,17 @@ type Feedback struct {
 	Reply   string         `json:"reply"` // what the person said next. Whether it is a correction or an addition is not decided
 	At      time.Time      `json:"at"`
 	Targets []ReviewTarget `json:"targets,omitempty"`
+	// Session is the agent session the conversation took place in. The lessons delivered in it are listed for assessment to that
+	// session only: another session never saw how they were used and could only answer unknown, which is then final. Empty for
+	// older records, which stay listed for every session. It is not part of a wiki source's hash (WithoutSession).
+	Session string `json:"session,omitempty"`
+}
+
+// WithoutSession is the conversation as a wiki source keeps and hashes it: the session is who assesses its deliveries, not what
+// was said, and a shikii from before the field reads the record without it.
+func (f Feedback) WithoutSession() Feedback {
+	f.Session = ""
+	return f
 }
 
 type ReviewTarget struct {

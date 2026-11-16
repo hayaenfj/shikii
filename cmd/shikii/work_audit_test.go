@@ -27,7 +27,7 @@ func TestAuditWorkNoteReportsRemainingPreparedReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	left, err := reflectLeft(st.Dir, scope, []string{id})
+	left, err := reflectLeft(st.Dir, scope, []string{id}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

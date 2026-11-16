@@ -65,7 +65,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	pendingNow := snapshot.Pending // the previous request's pending (a copy). Only these traces are settled inside the lock (pending added by an overlapping Stop or the next request is left alone)
 	muts := []func(*hookSession){
 		func(s *hookSession) {
-			if ferr := observeFeedback(agent, s, snapshot, scope, req); ferr != nil {
+			if ferr := observeFeedback(agent, in.SessionID, s, snapshot, scope, req); ferr != nil {
 				hookLog("feedback: " + ferr.Error())
 			}
 			handover := interruptedHandover(s, scope, agent, previous) // read before the request below replaces this one

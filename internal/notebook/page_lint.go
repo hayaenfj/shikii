@@ -154,7 +154,7 @@ func (b Book) ReadSources(ids []string) (map[string]any, error) {
 			if !ok {
 				return nil, errors.New("wiki source does not belong to this project")
 			}
-			data, readErr = json.Marshal(f)
+			data, readErr = json.Marshal(f.WithoutSession())
 		}
 		if readErr != nil {
 			return nil, readErr

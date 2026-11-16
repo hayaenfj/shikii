@@ -41,7 +41,7 @@ func TestStopCheckSeesEveryObservationTheNoticeNamed(t *testing.T) {
 	}
 	leftIDs := func() []string {
 		t.Helper()
-		left, err := reflectLeft(root, scope, asked)
+		left, err := reflectLeft(root, scope, asked, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -75,7 +75,7 @@ func TestStopCheckSeesEveryObservationTheNoticeNamed(t *testing.T) {
 		t.Fatalf("after sorting both named observations nothing asked is left: %v", got)
 	}
 	// the ones the notice did not name wait for the next notice
-	_, next, err := reflectContext(root, scope)
+	_, next, err := reflectContext(root, scope, "")
 	t.Logf("after both are sorted, left of the asked ones: none; the next notice names %v", next)
 	if err != nil || fmt.Sprint(next) != fmt.Sprint([]string{third, fourth}) {
 		t.Fatalf("the next notice names the next two pending observations: %v %v", next, err)

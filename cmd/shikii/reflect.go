@@ -23,6 +23,8 @@ type reflectRequest struct {
 	Memory      []memoryAssessmentRequest    `json:"memory,omitempty"`
 	Maintenance []notebook.MaintenanceReview `json:"maintenance,omitempty"`
 	Discoveries []notebook.Discovery         `json:"discoveries,omitempty"`
+
+	viewer string // the session that submits, when the caller knows it (a work record, the hook's organizing): what is left is worked out for it. Never decoded from input
 }
 
 type memoryAssessmentRequest struct {
@@ -67,17 +69,26 @@ func reflectQuery(root, scope string) (reflectView, error) {
 	return reflectQueryWith(root, scope, reflectHeadsMax)
 }
 
+// reflectQueryAs is reflectQuery for a caller that names its session (viewer): the deliveries of another session's conversations
+// are left for that session (reflectQueryParts).
+func reflectQueryAs(root, scope, viewer string) (reflectView, error) {
+	if eventPages != nil {
+		return reflectQueryBook(wikiBook(root, scope), reflectHeadsMax, viewer)
+	}
+	return reflectQueryBook((notebook.Book{Root: root, Scope: scope}).ReadView(), reflectHeadsMax, viewer)
+}
+
 // reflectQueryWith is reflectQuery with the number of heads bounded by headsMax (0: every pending conversation, for working out what is
 // left of the ones a submit named).
 func reflectQueryWith(root, scope string, headsMax int) (reflectView, error) {
 	if eventPages != nil {
-		return reflectQueryBook(wikiBook(root, scope), headsMax)
+		return reflectQueryBook(wikiBook(root, scope), headsMax, "")
 	}
-	return reflectQueryBook((notebook.Book{Root: root, Scope: scope}).ReadView(), headsMax)
+	return reflectQueryBook((notebook.Book{Root: root, Scope: scope}).ReadView(), headsMax, "")
 }
 
-func reflectQueryBook(book notebook.Book, headsMax int) (reflectView, error) {
-	v, _, err := reflectQueryParts(book, headsMax, false)
+func reflectQueryBook(book notebook.Book, headsMax int, viewer string) (reflectView, error) {
+	v, _, err := reflectQueryParts(book, headsMax, false, viewer)
 	return v, err
 }
 
@@ -86,17 +97,22 @@ func reflectQueryBook(book notebook.Book, headsMax int) (reflectView, error) {
 // maintenance tasks; rest runs exactly those steps and returns their error. A hook calls rest before it asks for the reflection or
 // stops the turn on it, so those answers still fail when the full query would. When nothing is asked and nothing is left, the hook
 // skips them: a wiki whose maintenance cannot be read no longer turns a finished reflection into an error.
-func reflectPending(root, scope string, headsMax int) (v reflectView, rest func() error, err error) {
+func reflectPending(root, scope string, headsMax int, viewer string) (v reflectView, rest func() error, err error) {
 	book := wikiBook(root, scope)
 	if eventPages == nil {
 		book = book.ReadView()
 	}
-	return reflectQueryParts(book, headsMax, true)
+	return reflectQueryParts(book, headsMax, true, viewer)
 }
 
 // reflectQueryParts is the reflection query. With pendingOnly, the lessons near the conversations that come with their raw text and
 // the maintenance tasks are left out of the view, and rest computes them for their error (rest is nil otherwise).
-func reflectQueryParts(book notebook.Book, headsMax int, pendingOnly bool) (reflectView, func() error, error) {
+//
+// viewer is the session that asks (a hook's session_id, the session of a work receipt). A lesson delivered in a conversation is
+// assessed by the session the conversation took place in: for another viewer its deliveries are not listed, and a conversation
+// with nothing else pending is not listed at all, so it waits for its own session's next request. A caller that names no session
+// (a plain reflect query) and a conversation recorded without one (older records) are not narrowed.
+func reflectQueryParts(book notebook.Book, headsMax int, pendingOnly bool, viewer string) (reflectView, func() error, error) {
 	root, scope := book.Root, book.Scope
 	var lessonQueries []string // the searches pendingOnly leaves to rest, in the order the full query runs them
 	v := reflectView{HowToSubmit: reflectHowToSubmit, Sources: []reflectSource{}, Lessons: []notebook.Page{}}
@@ -146,14 +162,17 @@ func reflectQueryParts(book notebook.Book, headsMax int, pendingOnly bool) (refl
 	seen := map[string]bool{}
 	for i := len(recent) - 1; i >= 0; i-- {
 		source := recent[i]
-		if len(targets[source.ID]) == 0 && !wiki[source.ID] && len(memories[source.ID]) == 0 {
+		m := memories[source.ID]
+		if viewer != "" && source.Session != "" && source.Session != viewer {
+			m = nil // delivered to another session: only that session saw how the lessons were used
+		}
+		if len(targets[source.ID]) == 0 && !wiki[source.ID] && len(m) == 0 {
 			continue
 		}
 		t := targets[source.ID]
 		if t == nil {
 			t = []reviewTarget{}
 		}
-		m := memories[source.ID]
 		if m == nil {
 			m = []store.MemoryObservation{}
 		}
@@ -428,7 +447,7 @@ func runReflectWithCommit(root, scope string, req reflectRequest, commit workCom
 		named = append(named, a.SourceID)
 	}
 	// Do not let left vanish silently: a failure to work it out is said, so the agent runs query instead of stopping.
-	if left, err := reflectLeft(root, scope, named); err != nil {
+	if left, err := reflectLeft(root, scope, named, req.viewer); err != nil {
 		result.LeftError = "could not work out what is left (" + err.Error() + "). Run query to see the conversations still pending"
 	} else if len(left) > 0 {
 		result.Left = leftLines(left)
@@ -525,8 +544,9 @@ func (s *server) handleReflect(w http.ResponseWriter, r *http.Request) {
 	writeReplyJSON(w, 200, result)
 }
 
-func reflectContext(root, scope string) (string, []string, error) {
-	view, rest, err := reflectPending(root, scope, reflectHeadsMax)
+// reflectContext asks the session (viewer) to reflect on the conversations that wait for it.
+func reflectContext(root, scope, viewer string) (string, []string, error) {
+	view, rest, err := reflectPending(root, scope, reflectHeadsMax, viewer)
 	if err != nil || len(view.Sources)+len(view.Observations) == 0 {
 		return "", nil, err
 	}

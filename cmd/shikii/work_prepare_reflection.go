@@ -6,6 +6,15 @@ import (
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
+// workViewer is the session a prepared work reflects as: the hook's session, or none for a preparation made without a hook (its
+// session id is made up for the receipt, so it is no session a conversation took place in and nothing is narrowed for it).
+func workViewer(w *workState, session string) string {
+	if w.Standalone {
+		return ""
+	}
+	return session
+}
+
 func prepareWorkReflection(book notebook.Book, w *workState, reflection reflectView) (pending, evidence, maintenance []any) {
 	pending = []any{}
 	reviewN, memoryN := 0, 0

@@ -12,7 +12,7 @@ func TestReflectReadBoundsDuplicateHistoryAllocation(t *testing.T) {
 	book, _ := reflectionHistoryFixture(t, 20000)
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
-	v, err := reflectQueryBook(book.ReadSnapshot(), reflectHeadsMax)
+	v, err := reflectQueryBook(book.ReadSnapshot(), reflectHeadsMax, "")
 	if err != nil {
 		t.Fatal(err)
 	}

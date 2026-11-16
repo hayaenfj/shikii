@@ -587,7 +587,7 @@ func prepareWork(root, scope string, req workRequest) (out any, err error) {
 			knowledge = append(knowledge, map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "body_included": true, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}})
 		}
 	}
-	reflection, err := reflectQueryBook(book, reflectHeadsMax)
+	reflection, err := reflectQueryBook(book, reflectHeadsMax, workViewer(w, req.SessionID))
 	if err != nil {
 		return nil, err
 	}

@@ -57,7 +57,7 @@ func TestReflectPendingListsWhatTheFullQueryLists(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		pending, rest, err := reflectPending(root, scope, headsMax)
+		pending, rest, err := reflectPending(root, scope, headsMax, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -82,11 +82,11 @@ func TestReflectPendingListsWhatTheFullQueryLists(t *testing.T) {
 func TestReflectLeftFailsOnlyWhenItWouldStopTheTurn(t *testing.T) {
 	root, scope, oldest := pendingReflection(t)
 	breakMaintenance(t, root, scope)
-	left, err := reflectLeft(root, scope, []string{"ffffffffffffffff"}) // asked about a conversation that is no longer pending
+	left, err := reflectLeft(root, scope, []string{"ffffffffffffffff"}, "") // asked about a conversation that is no longer pending
 	if err != nil || len(left) != 0 {
 		t.Fatalf("nothing is left and nothing fails: %v %v", left, err)
 	}
-	if left, err := reflectLeft(root, scope, []string{oldest}); err == nil {
+	if left, err := reflectLeft(root, scope, []string{oldest}, ""); err == nil {
 		t.Fatalf("a conversation is left, so the full query's failure is returned: %v", left)
 	}
 }
@@ -95,12 +95,12 @@ func TestReflectLeftFailsOnlyWhenItWouldStopTheTurn(t *testing.T) {
 // the turn records no asked conversations, as before.
 func TestReflectContextStillFailsWhenTheQueryItAsksForWould(t *testing.T) {
 	root, scope, oldest := pendingReflection(t)
-	context, ids, err := reflectContext(root, scope)
+	context, ids, err := reflectContext(root, scope, "")
 	if err != nil || context == "" || len(ids) == 0 || ids[0] != oldest {
 		t.Fatalf("a healthy wiki with pending conversations asks for the reflection, oldest first: %q %v %v", context, ids, err)
 	}
 	breakMaintenance(t, root, scope)
-	if context, ids, err := reflectContext(root, scope); err == nil || context != "" || ids != nil {
+	if context, ids, err := reflectContext(root, scope, ""); err == nil || context != "" || ids != nil {
 		t.Fatalf("with an unreadable review log nothing is asked and the failure is returned: %q %v %v", context, ids, err)
 	}
 }

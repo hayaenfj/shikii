@@ -77,7 +77,7 @@ func TestOperationsOpenWhenOutcomeEvidenceIsUnreadable(t *testing.T) {
 	} else {
 		check("reflect query", reflection.Maintenance)
 	}
-	if _, _, err = reflectContext(b.Root, b.Scope); err != nil {
+	if _, _, err = reflectContext(b.Root, b.Scope, ""); err != nil {
 		t.Errorf("the reflection notice before a request fails: %v", err)
 	}
 	if _, err = workCall(t, b, "prepare", map[string]any{"query": "commit order", "request": "Check the commit order"}); err != nil {

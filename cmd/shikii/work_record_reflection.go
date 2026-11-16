@@ -9,7 +9,7 @@ import (
 func (b *workRecordBatch) recordReflection(noteSources []string) {
 	root, scope, req, w, book := b.root, b.scope, b.req, b.w, b.book
 	resolveSources, save, commit, add, result := b.resolve, b.save, b.commit, b.add, b.result
-	reflection := reflectRequest{Operation: "submit"}
+	reflection := reflectRequest{Operation: "submit", viewer: workViewer(w, b.token.Session)}
 	if len(noteSources) > 0 {
 		reflection.Wiki = append(reflection.Wiki, notebook.Draft{Sources: uniqueWorkStrings(noteSources)})
 	}

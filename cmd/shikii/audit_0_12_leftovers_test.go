@@ -42,7 +42,7 @@ func TestTheReflectionNoticeUsesTheOldestObservation(t *testing.T) {
 	}
 	// nothing else is pending: with two observations the notice comes at once, so remove one from the view by reviewing it... instead
 	// check the age the notice uses: one observation only, two days old, must trigger the notice on its own
-	ctx, ids, err := reflectContext(st.Dir, scope)
+	ctx, ids, err := reflectContext(st.Dir, scope, "")
 	if err != nil {
 		t.Fatal(err)
 	}

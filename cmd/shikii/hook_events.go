@@ -164,7 +164,7 @@ func runHookEvent(event string) error {
 					hookLog("memory: " + uerr.Error())
 				}
 			}
-			context, ids, rerr := reflectContext(agent, current.Scope)
+			context, ids, rerr := reflectContext(agent, current.Scope, in.SessionID)
 			if rerr != nil {
 				hookLog("reflect: " + rerr.Error())
 				ids = nil // a turn where asking failed does not stop on the previous turn's leftovers (audit R5)

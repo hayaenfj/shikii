@@ -41,7 +41,7 @@ func reflectionHistoryFixture(t *testing.T, count int) (notebook.Book, store.Sto
 func TestReflectReadRejectsChangedHistoryBeforeCommit(t *testing.T) {
 	book, st := reflectionHistoryFixture(t, 5)
 	view := book.ReadSnapshot()
-	if _, err := reflectQueryBook(view, reflectHeadsMax); err != nil {
+	if _, err := reflectQueryBook(view, reflectHeadsMax, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := view.ValidateRead(); err != nil {

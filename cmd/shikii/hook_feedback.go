@@ -28,14 +28,15 @@ func feedbackScope(path string) string {
 }
 
 // observeFeedback, inside the session lock, links the person's next message to the reply just before it.
-// Additions before the reply, other work and old Stops are not linked. No truth label is ever written.
-func observeFeedback(agent string, s, snapshot *hookSession, scope, reply string) error {
+// Additions before the reply, other work and old Stops are not linked. No truth label is ever written. The record names the
+// session, so the lessons delivered in the conversation are assessed by the session that received them.
+func observeFeedback(agent, session string, s, snapshot *hookSession, scope, reply string) error {
 	c := linkedCompletion(s, snapshot, scope)
 	if c == nil {
 		return nil
 	}
 	return (store.Store{Dir: agent}).AppendFeedback(scope, store.Feedback{
-		ID: c.TurnID, Request: c.Request, Summary: c.Summary, Reply: reply, Targets: c.Targets,
+		ID: c.TurnID, Request: c.Request, Summary: c.Summary, Reply: reply, Targets: c.Targets, Session: session,
 	})
 }
 

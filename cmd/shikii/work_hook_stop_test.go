@@ -117,7 +117,7 @@ func TestHookResultCannotBypassPendingReflection(t *testing.T) {
 	if err != nil || result["complete"] != true || loopObject(t, result["storage"])["status"] != "saved" {
 		t.Fatal("the current result must be saved independently of earlier reflection", result, err)
 	}
-	if left, err := reflectLeft(root, b.Scope, sources); err != nil || len(left) != len(sources) {
+	if left, err := reflectLeft(root, b.Scope, sources, ""); err != nil || len(left) != len(sources) {
 		t.Fatal("saving a result must not consume the required reflection", left, err)
 	}
 	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": session, "cwd": repo, "last_assistant_message": "\u65e2\u5b58\u306e\u6761\u4ef6\u3092\u8aac\u660e\u3057\u3001\u7d50\u679c\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f\u3002"})

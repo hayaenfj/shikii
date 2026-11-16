@@ -185,7 +185,7 @@ func TestReviewHookCollectsTargetsAndKeepsBoundaries(t *testing.T) {
 	if err != nil || len(observed) != 1 || len(observed[0].Targets) != 2 {
 		t.Fatalf("a repeated Stop keeps the original scoring targets: %+v %v", observed, err)
 	}
-	ctx, _, err := reflectContext(agent, feedbackScope(repo))
+	ctx, _, err := reflectContext(agent, feedbackScope(repo), "")
 	if err != nil || ctx != "" {
 		t.Fatalf("with only one conversation, reflection is not asked for yet (the size of the guidance is not limited; 0.9.1): %q %v", ctx, err)
 	}
@@ -193,7 +193,7 @@ func TestReviewHookCollectsTargetsAndKeepsBoundaries(t *testing.T) {
 	if _, err := runReview(otherStore, feedbackScope(gitRepo(t)), reviewRequest{Operation: "submit", SourceID: observed[0].ID, TraceID: observed[0].Targets[0].TraceID, Truth: "no", Reason: "別の仕事"}); err == nil {
 		t.Fatal("conversations of another project are not scored")
 	}
-	if ctx, _, err := reflectContext(otherStore, feedbackScope(gitRepo(t))); err != nil || ctx != "" {
+	if ctx, _, err := reflectContext(otherStore, feedbackScope(gitRepo(t)), ""); err != nil || ctx != "" {
 		t.Fatal("scoring context is not carried to another project")
 	}
 	st := store.Store{Dir: agent}
@@ -207,7 +207,7 @@ func TestReviewHookCollectsTargetsAndKeepsBoundaries(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	ctx, _, err = reflectContext(agent, feedbackScope(repo))
+	ctx, _, err = reflectContext(agent, feedbackScope(repo), "")
 	// The size of the text asking for reflection is not limited (0.9.1). What is kept is passing only source IDs without repeating the conversation's raw text, and keeping the JSON boundary
 	if err != nil || len(ctx) == 0 || strings.Contains(ctx, strings.Repeat("\x02", 100)) || strings.Contains(ctx, strings.Repeat("\x03", 100)) || !json.Valid([]byte(ctx[strings.LastIndex(ctx, "\n")+1:])) {
 		t.Fatal("does not repeat the raw text, and keeps the boundary between guidance and JSON")

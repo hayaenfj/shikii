@@ -261,7 +261,7 @@ func runPlanning(root, scope, operation string, req planningRequest) (any, error
 			return nil, err
 		}
 		reply := map[string]any{"session_id": req.SessionID, "turn_id": req.TurnID, "source_material": s.Planning.Sources, "context_notice": notice, "wiki_context": planningKnowledgeReply(knowledge), "how_to_submit": planningHowToSubmit}
-		reflection, err := reflectQuery(root, scope)
+		reflection, err := reflectQueryAs(root, scope, req.SessionID)
 		if err != nil {
 			return nil, err
 		}
@@ -302,7 +302,7 @@ func runPlanning(root, scope, operation string, req planningRequest) (any, error
 	// A saved decision keeps its original evidence. Reflection may already have
 	// updated that evidence; retry only the reflection, without judging again.
 	if s.Planning.Result != nil && s.Planning.Digest == key {
-		return planningReply(root, scope, s.Planning.Result, req.Reflection)
+		return planningReply(root, scope, req.SessionID, s.Planning.Result, req.Reflection)
 	}
 	knowledge := s.Planning.Knowledge
 	if knowledge == nil || knowledge.Query != req.Query || !slices.Equal(s.Planning.KnowledgePages, req.Pages) {
@@ -373,14 +373,15 @@ func runPlanning(root, scope, operation string, req planningRequest) (any, error
 	if err != nil {
 		return nil, err
 	}
-	return planningReply(root, scope, result, req.Reflection)
+	return planningReply(root, scope, req.SessionID, result, req.Reflection)
 }
 
-func planningReply(root, scope string, planning *planningReceipt, reflection *reflectRequest) (any, error) {
+func planningReply(root, scope, session string, planning *planningReceipt, reflection *reflectRequest) (any, error) {
 	result := *planning
 	if reflection != nil {
 		r := *reflection
 		r.Operation = "submit"
+		r.viewer = session
 		saved, err := runReflect(root, scope, r)
 		if err != nil {
 			result.Reflection = &reflectResult{Complete: false, LeftError: err.Error()}
