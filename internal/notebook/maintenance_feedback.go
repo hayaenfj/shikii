@@ -3,7 +3,9 @@ package notebook
 import (
 	"encoding/json"
 	"os"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/hayaenfj/shikii/internal/store"
 )
@@ -48,10 +50,13 @@ func (b Book) maintenanceTasks(pages []Page) ([]MaintenanceTask, error) {
 	if err != nil {
 		return nil, err
 	}
-	byQuote := map[string][]store.MemoryAssessment{}
+	// Delivery assessments are kept by article and entry point, not by revision: the relation between a lesson and the command, file
+	// or request it was delivered at does not depend on the lesson's wording, and an article that is edited often would otherwise
+	// lose its evidence with every edit and never be reviewed. A harmful assessment stays with its revision (an edit may have fixed it).
+	byPage := map[string][]store.MemoryAssessment{}
 	for _, a := range assessments {
-		if a.Result != "unknown" {
-			byQuote[a.Key] = append(byQuote[a.Key], a)
+		if id, _, ok := strings.Cut(strings.TrimPrefix(a.Key, "lesson:"), ":"); ok && a.Result != "unknown" && strings.HasPrefix(a.Key, "lesson:") {
+			byPage[id] = append(byPage[id], a)
 		}
 	}
 	for i := range tasks {
@@ -75,7 +80,7 @@ func (b Book) maintenanceTasks(pages []Page) ([]MaintenanceTask, error) {
 			task.BasisKey = digest(data)[:16]
 		}
 		task.ContentKey = task.Key
-		all := byQuote["lesson:"+task.PageID+":"+task.Revision]
+		all, current := byPage[task.PageID], "lesson:"+task.PageID+":"+task.Revision
 		counts := map[string]store.PairEffect{}
 		for _, a := range all {
 			c := counts[a.Phrase]
@@ -90,7 +95,7 @@ func (b Book) maintenanceTasks(pages []Page) ([]MaintenanceTask, error) {
 		feedback := []store.MemoryAssessment{}
 		for _, a := range all {
 			c := counts[a.Phrase]
-			if a.Result == "harmful" || (a.Result == "unused" && a.Phrase != "" && c.Unused >= 2 && c.Helpful == 0) {
+			if (a.Result == "harmful" && a.Key == current) || (a.Result == "unused" && a.Phrase != "" && c.Unused >= 2 && c.Helpful == 0) {
 				feedback = append(feedback, a)
 			}
 		}
@@ -115,6 +120,7 @@ func (b Book) maintenanceTasks(pages []Page) ([]MaintenanceTask, error) {
 			data, _ := json.Marshal(assessment)
 			task.FeedbackKeys = append(task.FeedbackKeys, digest(data)[:16])
 		}
+		task.deliveryKeys = slices.Clone(task.FeedbackKeys)
 		sort.Strings(task.FeedbackKeys)
 		task.FeedbackTotal = len(feedback)
 		// The key covers all evidence; show up to three examples, harmful first, then newest, without cutting their evidence.

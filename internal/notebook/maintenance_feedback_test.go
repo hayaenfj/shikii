@@ -197,3 +197,108 @@ func TestHelpfulFeedbackDoesNotReopenReviewedMixedEvidence(t *testing.T) {
 		t.Fatal("a new harmful assessment still reopens the lesson", tasks)
 	}
 }
+
+// editFeedbackPage saves a new revision of p with more words in its lesson.
+func editFeedbackPage(t *testing.T, b Book, p Page, more string) Page {
+	t.Helper()
+	d := draft(p.Sources[0].ID, p.Title)
+	d.ID, d.Lesson, d.ChangeReason = p.ID, p.Lesson+more, "Reworded from inspected evidence."
+	r, err := b.Ingest(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Page.Revision == p.Revision {
+		t.Fatal("the edit made no new revision")
+	}
+	return *r.Page
+}
+
+// The relation between a lesson and the entry point it was delivered at belongs to the article, not to the words of one revision:
+// rewording the lesson does not lose the evidence, a recorded review settles it, and a later edit does not ask about it again.
+func TestDeliveryFeedbackIsKeptByArticleAndDoorAcrossRevisions(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	p1 := feedbackPage(t, b)
+	assessLesson(t, b, p1, 10, "git diff", "unused")
+	p2 := editFeedbackPage(t, b, p1, " Only when releasing a binary.")
+	reviewFeedbackPage(t, b, p2.ID)
+	if tasks := feedbackTasks(t, b); len(tasks) != 0 {
+		t.Fatal("one unused delivery is not a pattern", tasks)
+	}
+	assessLesson(t, b, p2, 11, "git diff", "unused")
+	tasks := feedbackTasks(t, b)
+	if len(tasks) != 1 || tasks[0].Revision != p2.Revision || !slices.Contains(tasks[0].Reasons, "delivery-feedback") || tasks[0].FeedbackTotal != 2 || len(tasks[0].Feedback) != 2 {
+		t.Fatal("unused at one door on two revisions of an article reopens the review of its current revision", tasks)
+	}
+	revisions := []string{tasks[0].Feedback[0].Key, tasks[0].Feedback[1].Key}
+	if !slices.Contains(revisions, "lesson:"+p1.ID+":"+p1.Revision) || !slices.Contains(revisions, "lesson:"+p2.ID+":"+p2.Revision) {
+		t.Fatal("the task shows the evidence of both revisions", revisions)
+	}
+	// a no-change review settles the evidence
+	if _, err := b.Maintain(MaintenanceReview{tasks[0].PageID, tasks[0].Revision, tasks[0].Key, "Kept: the lesson names this command on purpose."}); err != nil {
+		t.Fatal(err)
+	}
+	if tasks := feedbackTasks(t, b); len(tasks) != 0 {
+		t.Fatal("a recorded review settles the evidence", tasks)
+	}
+	// an edit asks for a review of the new revision, not about the settled deliveries again
+	p3 := editFeedbackPage(t, b, p2, " Checked again.")
+	tasks = feedbackTasks(t, b)
+	if len(tasks) != 1 || tasks[0].Revision != p3.Revision || slices.Contains(tasks[0].Reasons, "delivery-feedback") || tasks[0].FeedbackTotal != 0 || len(tasks[0].Feedback) != 0 {
+		t.Fatal("settled evidence is not asked about again after an edit", tasks)
+	}
+	if _, err := b.Maintain(MaintenanceReview{tasks[0].PageID, tasks[0].Revision, tasks[0].Key, "Read the new revision; no supported edit."}); err != nil {
+		t.Fatal("the review is recorded with the key the task shows:", err)
+	}
+	if tasks := feedbackTasks(t, b); len(tasks) != 0 {
+		t.Fatal("the reviewed revision is not asked about again", tasks)
+	}
+	// new evidence at that door reopens it, with all of the door's evidence
+	assessLesson(t, b, p3, 12, "git diff", "unused")
+	tasks = feedbackTasks(t, b)
+	if len(tasks) != 1 || !slices.Contains(tasks[0].Reasons, "delivery-feedback") || tasks[0].FeedbackTotal != 3 {
+		t.Fatal("a new unused delivery at the door reopens the review with the door's whole evidence", tasks)
+	}
+}
+
+// A door where the lesson helped on an earlier revision is one the lesson belongs to: unused there is not reported as a pattern.
+// Every other door of the article is still counted on its own, over all revisions.
+func TestHelpfulOnAnEarlierRevisionKeepsTheDoor(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	p1 := feedbackPage(t, b)
+	assessLesson(t, b, p1, 10, "git diff", "helpful")
+	p2 := editFeedbackPage(t, b, p1, " Only when releasing a binary.")
+	reviewFeedbackPage(t, b, p2.ID)
+	assessLesson(t, b, p2, 11, "git diff", "unused")
+	assessLesson(t, b, p2, 12, "git diff", "unused")
+	if tasks := feedbackTasks(t, b); len(tasks) != 0 {
+		t.Fatal("unused at a door where the lesson helped before is not a pattern", tasks)
+	}
+	assessLesson(t, b, p2, 13, "go test", "unused")
+	assessLesson(t, b, p1, 14, "go test", "unused")
+	tasks := feedbackTasks(t, b)
+	if len(tasks) != 1 || !slices.Contains(tasks[0].Reasons, "delivery-feedback") || tasks[0].FeedbackTotal != 2 {
+		t.Fatal("another door is counted on its own over the revisions", tasks)
+	}
+	for _, a := range tasks[0].Feedback {
+		if a.Phrase != "go test" {
+			t.Fatal("only the door with the pattern is shown", a.Phrase)
+		}
+	}
+}
+
+// A harmful assessment stays with the revision it was made on: an edit may have fixed what it reported, so it does not follow the
+// article the way the unused deliveries of a door do.
+func TestHarmfulOnAnEarlierRevisionDoesNotFollowTheArticle(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	p1 := feedbackPage(t, b)
+	assessLesson(t, b, p1, 10, "git diff", "harmful")
+	tasks := feedbackTasks(t, b)
+	if len(tasks) != 1 || !slices.Contains(tasks[0].Reasons, "delivery-feedback") || tasks[0].FeedbackTotal != 1 {
+		t.Fatal("harmful reopens the review of its revision", tasks)
+	}
+	p2 := editFeedbackPage(t, b, p1, " Only when releasing a binary.")
+	tasks = feedbackTasks(t, b)
+	if len(tasks) != 1 || tasks[0].Revision != p2.Revision || slices.Contains(tasks[0].Reasons, "delivery-feedback") || tasks[0].FeedbackTotal != 0 {
+		t.Fatal("harmful on the earlier revision is not carried to the new one", tasks)
+	}
+}

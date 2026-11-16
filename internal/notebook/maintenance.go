@@ -33,6 +33,7 @@ type MaintenanceTask struct {
 	ContentKey    string                   `json:"-"`
 	BasisKey      string                   `json:"-"`
 	FeedbackKeys  []string                 `json:"-"`
+	deliveryKeys  []string                 // the keys of the delivery assessments among FeedbackKeys
 	outcomeRefs   []ProcedureOutcome
 }
 type MaintenanceReview struct {
@@ -261,6 +262,11 @@ func (b Book) maintenance(ids []string, outcomesOnly bool) ([]MaintenanceTask, e
 			task.Reasons = []string{"periodic"}
 		default:
 			continue
+		}
+		if seen && !hasNewFeedback(task.deliveryKeys, previous.FeedbackKeys) {
+			// Every delivery assessment was settled by the recorded review. They are kept across revisions, so an edit or the periodic
+			// review would otherwise ask about the same evidence again; the key still covers them.
+			task.Feedback, task.FeedbackTotal = nil, 0
 		}
 		if task.FeedbackTotal > 0 {
 			task.Reasons = append([]string{"delivery-feedback"}, task.Reasons...)
