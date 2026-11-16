@@ -9,7 +9,7 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-2222%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2223%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.36.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -208,7 +208,7 @@ This removes what shikii put into your agents: its hooks in `~/.claude/settings.
 With the hooks installed, shikii treats one request from a person, together with the agent's work and reply to it, as one turn, and acts at these moments.
 
 1. **Before the request.** It keeps the request, and hands the agent the request, the conversation so far, the relevant lessons and the pages waiting for review. A message that only continues the previous request ("ok", "continue", "sounds good") is attached to it; the agent decides whether it continues, and a fixed list of acknowledgements is the fallback. The decision model is asked whether to agree on an approach before starting. At the start of a session, the agent receives the rules for every request and where the work stands.
-2. **During the work.** In Claude Code and Codex, right before the agent changes a file or runs a command, the lessons that name it are handed over, and an enabled guard on commands refuses the command there. In Claude Code and OpenCode 2.x, a subagent receives, when it starts, the lessons close to the task it was given. When the topic moves or it is unsure, the agent can search the wiki again or ask the decision model.
+2. **During the work.** In Claude Code and Codex, right before the agent changes a file or runs a command, the lessons that name it are handed over (the agent reads them together with the result of that call), and an enabled guard on commands refuses the command there. In Claude Code and OpenCode 2.x, a subagent receives, when it starts, the lessons close to the task it was given. When the topic moves or it is unsure, the agent can search the wiki again or ask the decision model.
 3. **At the end.** shikii checks that the result is saved, the delivered lessons are reviewed, the pages are classified and the reply is in the right language, and applies the guards to the files changed, the lines added and the commits made in the turn. Anything missing comes back to the agent as a concrete operation. Once everything is in place, it asks the decision model whether the changes stayed in scope and whether the request was completed, and records the answers.
 4. **At the next request.** The earlier answers get truths from what happened afterwards: a change undone before the next request, a request repeated, a lesson merged or replaced, a lesson the reflection found helpful or unused. Only the questions that results cannot settle wait for a person, and the page shows how many.
 

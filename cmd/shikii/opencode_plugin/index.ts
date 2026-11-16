@@ -176,8 +176,9 @@ export default Plugin.define({
           .map((part: any) => part.text)
           .join("\n")
         // a continued subagent that ends a turn without a new message has nothing to report: its last message is the one already sent
-        // (told apart by the message's id, so the same words in a new message are reported; without ids the words tell, and a
-        // summary that drops earlier messages changes nothing)
+        // (told apart by the message's id, so the same words in a new message are reported: measured on OpenCode 2.3.0, every
+        // assistant message here carries one, "msg_…". Were there none, the words would tell, and a summary that drops earlier
+        // messages changes nothing)
         const said = String(last?.id ?? "") + "\n" + reply
         if (!reply || reported.get(sessionID) === said) return
         reported.set(sessionID, said)

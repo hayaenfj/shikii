@@ -9,7 +9,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-2222%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2223%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.36.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -209,7 +209,7 @@ shikiiがエージェントに入れた物を外します。`~/.claude/settings.
 hookを入れると、shikiiは人の依頼1つと、それに対するエージェントの作業と返事を1回として、次の時に動きます。
 
 1. **依頼の前。** 依頼を控え、今回の依頼、それまでの会話、関係する教訓、見直しを待つ記事をそろえてエージェントに渡します。前の依頼の続きだけの発言(「ok」「続けて」「それでいこう」など)は前の依頼にまとめます。続きかどうかはエージェントが決め、決まった相づちの一覧は予備です。決定モデルには「始める前に進め方を合わせるべきか」を聞きます。セッションの始めには、どの依頼にも効く決まりと、進んでいる作業の様子を渡します。
-2. **作業の途中。** Claude CodeとCodexでは、ファイルを変える直前とコマンドを流す直前に、その名前が出てくる教訓を渡し、有効にしたコマンドの止める検査はその場で断ります。Claude CodeとOpenCode 2.xでは、サブエージェントを起こす時に、頼んだ仕事の文に近い教訓を渡します。エージェントは、話題が移った時や迷った時に、wikiを探し直したり、決定モデルに聞いたりできます。
+2. **作業の途中。** Claude CodeとCodexでは、ファイルを変える直前とコマンドを流す直前に、その名前が出てくる教訓を渡し(エージェントは、その呼び出しの結果と一緒に読みます)、有効にしたコマンドの止める検査はその場で断ります。Claude CodeとOpenCode 2.xでは、サブエージェントを起こす時に、頼んだ仕事の文に近い教訓を渡します。エージェントは、話題が移った時や迷った時に、wikiを探し直したり、決定モデルに聞いたりできます。
 3. **終える時。** 結果の保存、届いた教訓の振り返り、記事の分類、返事の言語がそろっているかを確かめ、止める検査をそのターンで変わったファイル・足した行・コミットに当てます。足りない物があれば、具体的な操作をエージェントへ返します。そろってから、決定モデルに「変更は範囲内か」「頼まれたことを終えたか」を聞いて記録します。
 4. **次の依頼の時。** 前の答えに、その後に起きたことから正解が付きます。次の依頼までに戻された変更、言い直された依頼、まとめられた・置き換えられた教訓、振り返りで役に立った・使われなかったと評価された教訓です。結果で答えが決まらない問いだけが、人の答えを待ち、その数は画面に出ます。
 

@@ -332,7 +332,7 @@ func TestAudit036ConfirmPatchTargetAtTheLimit(t *testing.T) {
 		"*** Update File: version.go\r\r\n":              "/work/version.go",
 		"*** Update File: version.go\r*** Move to: x.go": "",
 		"*** Update File: \r\n":                          "",
-		"\r*** Update File: version.go\r\n":              "",
+		"\r*** Update File: version.go\r\n":              "/work/version.go", // measured on Codex 0.169.0: the space before a first header is dropped
 	} {
 		if got := patchTarget(in, "/work"); got != want {
 			t.Errorf("6) %q: got %q want %q", in, got, want)

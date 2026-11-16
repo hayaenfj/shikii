@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
@@ -26,8 +27,24 @@ const toolLessonMatcher = "Edit|Write|MultiEdit|NotebookEdit|Bash"
 // tool_input.command, and every file change is one apply_patch whose tool_input.command is the patch.
 const toolLessonMatcherCodex = "^(Bash|apply_patch)$"
 
-// patchFile is a file header of an apply_patch patch: the file the patch adds, updates or deletes. A line may end with CRLF.
-var patchFile = regexp.MustCompile(`(?m)^\*\*\* (?:Add|Update|Delete) File: (.+?)[ \t\r]*$`)
+// patchFile is a file header of an apply_patch patch: the file the patch adds, updates or deletes.
+var patchFile = regexp.MustCompile(`^\*\*\* (Add|Update|Delete) File: (.+)$`)
+
+// patchHeader reads one line of a patch as Codex does (measured on 0.169.0, as its parser is written): the space at the end of a
+// line is dropped (a line may end with CRLF), and a header may be indented, except inside the section of an updated file, where an
+// indented line is a line of that file. updating says the line is inside such a section; it returns the header's file and whether
+// the header opens such a section.
+func patchHeader(line string, updating bool) (file string, update, ok bool) {
+	line = strings.TrimRightFunc(line, unicode.IsSpace)
+	if !updating {
+		line = strings.TrimLeftFunc(line, unicode.IsSpace)
+	}
+	m := patchFile.FindStringSubmatch(line)
+	if m == nil {
+		return "", false, false
+	}
+	return m[2], m[1] == "Update", true
+}
 
 // patchMax is how much of a patch is read for its file headers.
 const patchMax = 1 << 20
@@ -44,8 +61,14 @@ func patchTarget(patch, cwd string) string {
 			patch = patch[:strings.LastIndexByte(patch, '\n')+1]
 		}
 	}
-	for _, m := range patchFile.FindAllStringSubmatch(patch, -1) {
-		file := m[1]
+	for updating := false; patch != ""; {
+		var line string
+		line, patch, _ = strings.Cut(patch, "\n")
+		file, update, ok := patchHeader(line, updating)
+		if !ok {
+			continue
+		}
+		updating = update
 		if !distinctiveFileName(filepath.Base(file)) {
 			continue
 		}

@@ -25,6 +25,25 @@ func TestPatchTargetIsTheFirstNamedFileOfThePatch(t *testing.T) {
 	}
 }
 
+// Measured on Codex 0.169.0 (its apply_patch run on these patches): a file header may be indented, except inside the section of an
+// updated file, where an indented line is a line of that file. shikii reads a patch the same way, so the file it looks lessons up
+// for is the file Codex changes.
+func TestPatchHeadersAreReadAsCodexReadsThem(t *testing.T) {
+	for name, c := range map[string]struct{ patch, want string }{
+		"an indented first header":                {"*** Begin Patch\n  *** Update File: version.go\n@@\n-a\n+b\n*** End Patch", "/work/version.go"},
+		"an indented header after an added file":  {"*** Begin Patch\n*** Add File: notes\n+a\n  *** Update File: version.go\n@@\n-a\n+b\n*** End Patch", "/work/version.go"},
+		"a tab before a header after a delete":    {"*** Begin Patch\n*** Delete File: notes\n\t*** Update File: version.go\n@@\n-a\n+b\n*** End Patch", "/work/version.go"},
+		"an indented line of an updated file":     {"*** Begin Patch\n*** Update File: notes\n@@\n-a\n+b\n  *** Update File: version.go\n*** End Patch", ""},
+		"a header at the line's head ends it":     {"*** Begin Patch\n*** Update File: notes\n@@\n-a\n+b\n*** Add File: ab\n+a\n  *** Update File: version.go\n@@\n-a\n+b\n*** End Patch", "/work/version.go"},
+		"an indented header with CRLF":            {"*** Begin Patch\r\n  *** Update File: version.go  \r\n@@\r\n-a\r\n+b\r\n*** End Patch", "/work/version.go"},
+		"an indented line of an updated file, CR": {"*** Begin Patch\r\n*** Update File: notes\r\n@@\r\n-a\r\n+b\r\n  *** Update File: version.go\r\n*** End Patch", ""},
+	} {
+		if got := patchTarget(c.patch, "/work"); got != c.want {
+			t.Errorf("%s: got %q, want %q", name, got, c.want)
+		}
+	}
+}
+
 // The lesson that names a file arrives right before Codex patches that file, and right before a command through Codex's shell (it
 // is reported as Bash, with the command in tool_input.command, as in Claude Code). A tool this hook does not look at gets nothing.
 func TestToolLessonComesBeforeACodexPatchAndCommand(t *testing.T) {
