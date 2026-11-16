@@ -341,6 +341,9 @@ func runPlanning(root, scope, operation string, req planningRequest) (any, error
 	inputs := map[string]string{"request": cut(s.Planning.Sources["current_user"], requestMax), "agreed": agreed, "open": open}
 	if s.Planning.ReasoningOnly {
 		result.Reason = "The work context was saved without changing the existing planning question or making a planning judgment."
+	} else if req.ContinuesPrevious != nil && *req.ContinuesPrevious {
+		// the organizing says this message is a go-ahead that asks nothing new: the approach was judged with the previous request, so no question is asked for it
+		result.Reason = "The message continues the previous request and asks nothing new, so no needs-plan judgment is made for it."
 	} else if req.Agreed.Unknown && req.Open.Unknown {
 		result.Reason = "agreed and open are both unknown, so the decision was skipped. It does not count as the person's answer."
 	} else {
