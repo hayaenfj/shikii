@@ -914,9 +914,10 @@ func TestPlanningDisagreementWaitsForThePerson(t *testing.T) {
 		}
 		pair := map[string]any{"model": pairValue.Model, "agent": pairValue.Agent, "model_confidence": pairValue.ModelConfidence, "agent_reason": pairValue.AgentReason}
 
+		// the three-answer fake gives no and not_applicable the rest evenly, so the model's confidence in no is half of what is left
 		conf := c.p
 		if c.model == "no" {
-			conf = 1 - c.p
+			conf = (1 - c.p) / 2
 		}
 		if pair["model"] != c.model || pair["agent"] != c.agent || fmt.Sprintf("%.2f", pair["model_confidence"]) != fmt.Sprintf("%.2f", conf) {
 			t.Fatalf("p=%.1f: the card carries both answers: %v", c.p, pair)

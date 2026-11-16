@@ -172,8 +172,9 @@ func fakeAgentModelEdit(t *testing.T, p func(state string) float64, edit func(st
 				y := p(req.State)
 				probs := map[string]float64{"yes": y, "no": (1 - y) / 2, "not_applicable": (1 - y) / 2}
 				top := "yes"
-				for id, v := range probs {
-					if v > probs[top] {
+				// a fixed order: no and not_applicable tie below p, and the top must not depend on map order
+				for _, id := range []string{"yes", "no", "not_applicable"} {
+					if probs[id] > probs[top] {
 						top = id
 					}
 				}

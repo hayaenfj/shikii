@@ -98,6 +98,10 @@ func pairOf(specID string, rec store.Record, reviews map[string]store.Review) (a
 		if !rec.AgentPaired || open == "" || strings.TrimSpace(rec.Inputs["agreed"]) == "" {
 			return pair, false
 		}
+		if rec.Type == "choice" {
+			// the organizing answers only yes or no, so a choice is compared by the model's own top answer: not_applicable never matches it
+			pair.Model, pair.ModelConfidence = rec.Top, rec.P
+		}
 		if open == planningOpenUnknown {
 			pair.Agent = "no"
 		} else {

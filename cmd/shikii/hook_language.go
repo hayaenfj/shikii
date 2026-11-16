@@ -90,6 +90,10 @@ func hookOutcome(specID string, d *decide.Decision, l hookLoc) hookOut {
 	if d == nil || !d.IsCalibrated || d.Band == decide.Abstain || !agentReviewOnly(specID) {
 		return hookOut{}
 	}
+	// the review advice fits a yes answer (the person should have been asked); a no or not_applicable answer gets none
+	if specID == "needs-plan" && d.Top != "yes" {
+		return hookOut{}
+	}
 	if d.Band == decide.Ask || d.Band == decide.Discard && specID != "needs-plan" || specID == "needs-plan" && d.Band == decide.Act {
 		return hookOut{Context: fmt.Sprintf("shikii: internal review %s is %s (p=%.2f). Inspect the concrete task and evidence; correct any actual omission yourself. Ask the person only a specific task choice that requires their input. Do not request a score for this review.", specID, d.Band, d.P)}
 	}
