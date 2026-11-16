@@ -770,7 +770,7 @@ func TestHookIgnoresBackgroundNotificationsAsRequests(t *testing.T) {
 // with a variation selector is still one.
 func TestOnlyBareAcknowledgementsAreReplies(t *testing.T) {
 	for _, s := range []string{"y", "Y", "ok", "OK.", "okay", "yes", "go ahead", "continue", "lgtm", "next",
-		"\u306f\u3044", "\u7d9a\u3051\u3066", "\u6b21\u3078", "\u3084\u308a\u307e\u3057\u3087\u3046", "\u3067\u306f\u7d9a\u3051\u307e\u3057\u3087\u3046", "\u304a\u9858\u3044\u3057\u307e\u3059", "\u9032\u3081\u3066", "\u4e86\u89e3\u3002", "\u3044\u3044\u3088",
+		"\u306f\u3044", "\u7d9a\u3051\u3066", "\u6b21\u3078", "\u3084\u308a\u307e\u3057\u3087\u3046", "\u3067\u306f\u7d9a\u3051\u307e\u3057\u3087\u3046", "\u3067\u306f\u958b\u59cb\u3057\u307e\u3057\u3087\u3046", "\u958b\u59cb\u3057\u307e\u3057\u3087\u3046", "\u3067\u306f\u59cb\u3081\u307e\u3057\u3087\u3046", "\u59cb\u3081\u307e\u3057\u3087\u3046", "\u304a\u9858\u3044\u3057\u307e\u3059", "\u9032\u3081\u3066", "\u4e86\u89e3\u3002", "\u3044\u3044\u3088",
 		"ＯＫ", "ｏｋ！", "👍️", "✅", "了解しました", "わかった", "OK️"} {
 		if !isAckReply(s) {
 			t.Errorf("%q is a bare acknowledgement and is attached to the previous request", s)
