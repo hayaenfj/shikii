@@ -9,7 +9,7 @@ import (
 )
 
 // memoryUpgradeBlockedNext is the next action when only pages declared blocked remain: the upgrade stops and reports them, it does not send the agent back to review.
-const memoryUpgradeBlockedNext = "Only blocked pages remain: their original evidence cannot be read, or a review found that it does not support them. Stop the upgrade here and report the blocked refs and their reasons. Never delete material to finish; a blocked page returns for review when its text changes or when the person asks for an optimization."
+const memoryUpgradeBlockedNext = "Only blocked pages remain: their original evidence cannot be read, or a review found that it does not support them. Stop the upgrade here and report the blocked pages: their ids are in unavailable_sources and their reasons in unavailable_reasons. Never delete material to finish; a blocked page returns for review when its text changes or when the person asks for an optimization."
 
 // memoryOptimizeQuery is the query of a request to optimize the memory: every page is reviewed again, declarations included.
 const memoryOptimizeQuery = "memory-optimize"

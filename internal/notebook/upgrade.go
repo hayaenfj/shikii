@@ -236,7 +236,7 @@ func (b Book) MemoryUpgrade() (MemoryUpgrade, error) {
 	} else {
 		if len(u.Tasks) == 0 && len(u.Blocked) > 0 {
 			u.Status = "blocked"
-			u.Message = fmt.Sprintf("Memory upgrade blocked: %d of %d pages cannot be reviewed; see unavailable_reasons.", len(u.Blocked), u.Total)
+			u.Message = fmt.Sprintf("\u8a18\u61b6\u306e\u66f4\u65b0\u306f\u6b62\u307e\u3063\u3066\u3044\u307e\u3059: %d / %d \u30da\u30fc\u30b8\u306f\u898b\u76f4\u305b\u307e\u305b\u3093\uff08\u539f\u8cc7\u6599\u3092\u8aad\u3081\u306a\u3044\u304b\u3001\u898b\u76f4\u3057\u3067\u88cf\u4ed8\u3051\u3089\u308c\u306a\u3044\u305f\u3081\uff09\u3002\u7406\u7531\u306f\u3001\u30a8\u30fc\u30b8\u30a7\u30f3\u30c8\u3078\u306e\u8fd4\u7b54\u306b\u51fa\u307e\u3059\u3002", len(u.Blocked), u.Total)
 		}
 		if changed {
 			if err := saveMemoryUpgrade(dir, c); err != nil {
