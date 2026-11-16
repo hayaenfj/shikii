@@ -394,10 +394,10 @@ func seedAgentSpecs(dst string) (int, error) {
 			n++
 		}
 		if filepath.Base(p) == "needs-plan.yaml" {
-			// a copy still holding an earlier built-in text is brought to the current one (the question's answers changed)
-			if _, err := refreshNeedsPlanCopy(target, b); err != nil {
-				return err
-			}
+			// a copy still holding an earlier built-in text is brought to the current one (the question's answers changed). The refresh is best
+			// effort: a copy that cannot be read or written (permissions, a read-only folder) is kept, and the next seeding tries again. Seeding runs
+			// on every hook event, so a refresh error must not stop a hook.
+			_, _ = refreshNeedsPlanCopy(target, b)
 		}
 
 		return nil
