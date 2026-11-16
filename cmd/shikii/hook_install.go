@@ -393,6 +393,12 @@ func seedAgentSpecs(dst string) (int, error) {
 		if created {
 			n++
 		}
+		if filepath.Base(p) == "needs-plan.yaml" {
+			// a copy still holding an earlier built-in text is brought to the current one (the question's answers changed)
+			if _, err := refreshNeedsPlanCopy(target, b); err != nil {
+				return err
+			}
+		}
 
 		return nil
 	})

@@ -157,7 +157,8 @@ func fakeAgentModelEdit(t *testing.T, p func(state string) float64, edit func(st
 		var req struct {
 			State     string `json:"state"`
 			Questions map[string]struct {
-				Type string `json:"type"`
+				Type     string            `json:"type"`
+				Criteria map[string]string `json:"criteria"`
 			} `json:"questions"`
 		}
 		body, _ := readAll(r)
@@ -166,6 +167,17 @@ func fakeAgentModelEdit(t *testing.T, p func(state string) float64, edit func(st
 		for k, q := range req.Questions {
 			if q.Type == "noul" {
 				ans[k] = map[string]any{"type": "noul", "noul": p(req.State)}
+			} else if _, three := q.Criteria["not_applicable"]; three {
+				// needs-plan's three answers: yes gets p and the other two split what is left evenly, so the top (the band) is p when p is the largest, as noul's p(yes) is
+				y := p(req.State)
+				probs := map[string]float64{"yes": y, "no": (1 - y) / 2, "not_applicable": (1 - y) / 2}
+				top := "yes"
+				for id, v := range probs {
+					if v > probs[top] {
+						top = id
+					}
+				}
+				ans[k] = map[string]any{"type": "choice", "choice": top, "probabilities": probs, "confidence": y}
 			} else {
 				e := edit(req.State)
 				rest := (1 - e) / 10

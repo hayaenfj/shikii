@@ -18,8 +18,10 @@
 1 cmd/shikii/hook_tool_lesson_test.go
 5 cmd/shikii/hook_variants.go
 12 cmd/shikii/hook_variants_test.go
+4 cmd/shikii/legacy/needs-plan-0.34.0.yaml
+4 cmd/shikii/legacy/needs-plan-0.34.1-dev.yaml
 15 cmd/shikii/line_state.go
-14 cmd/shikii/line_state_test.go
+13 cmd/shikii/line_state_test.go
 1 cmd/shikii/memory.go
 26 cmd/shikii/memory_test.go
 2 cmd/shikii/new_test.go
@@ -48,7 +50,7 @@
 4 integrations/claude-code/specs/changes-in-scope.yaml
 4 integrations/claude-code/specs/done-as-asked.yaml
 4 integrations/claude-code/specs/lesson-applies.yaml
-4 integrations/claude-code/specs/needs-plan.yaml
+5 integrations/claude-code/specs/needs-plan.yaml
 7 integrations/claude-code/specs/prompt-kind.yaml
 4 integrations/claude-code/specs/wiki-conflict.yaml
 4 integrations/claude-code/specs/wiki-place.yaml

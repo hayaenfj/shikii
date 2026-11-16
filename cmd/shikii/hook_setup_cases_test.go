@@ -685,15 +685,20 @@ func TestHookSecondAuditRound(t *testing.T) {
 	}
 	// the wording changed (hash differs) → the previous 40 is not carried over, and it runs at 1 ≥ min_n(1)
 	b, _ = os.ReadFile(np)
-	if err := os.WriteFile(np, []byte(strings.Replace(string(b), "should the agent first agree", "must the agent first agree", 1)), 0o644); err != nil {
+	changed := strings.Replace(string(b), "should the agent first agree", "must the agent first agree", 1)
+	if changed == string(b) {
+		t.Fatal("fixture: the wording of needs-plan has no sentence to change")
+	}
+	if err := os.WriteFile(np, []byte(changed), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g2", "cwd": cwd, "prompt": "redesign the whole queue"})
 	recs, _ = (store.Store{Dir: agent}).Records("needs-plan", 0)
 	capture(t, func() error { return cmdLabel([]string{"--store", agent, "--source", "ui", recs[0].TraceID, "yes"}) })
 	runHook(t, "stop", map[string]any{"session_id": "g2", "cwd": cwd})
-	if lb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log")); strings.Contains(string(lb), "auto-tune needs-plan") {
-		t.Fatalf("a changed wording still needs contrasting truths:\n%s", lb)
+	// a choice question needs no contrasting truths (only noul does: contrastingTuneTruthsWith), so the changed wording tunes at one truth again
+	if lb, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), ".shikii", "agent", "hook.log")); !strings.Contains(string(lb), "auto-tune needs-plan") {
+		t.Fatalf("a changed wording of a choice question tunes again at one truth:\n%s", lb)
 	}
 }
 

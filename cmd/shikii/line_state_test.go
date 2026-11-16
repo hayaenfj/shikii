@@ -222,10 +222,15 @@ func TestLineNoticesUseTitlesAndPlainWords(t *testing.T) {
 	for _, id := range ids[:3] {
 		add(id, "m1", "no", load(id).Eval.MinN)
 	}
-	check("one answer", testLineSummaries(root), 6)
+	// needs-plan is a choice: a single kind of answer gives it no "only one answer" line (only noul has that state), so 4 lines, not 6
+	check("one answer", testLineSummaries(root), 4)
 	for _, id := range ids[:3] {
 		sp := load(id)
-		sp.Calibration = []spec.Calibration{{Model: "m1", SpecHash: sp.Hash(), Method: "platt", N: sp.Eval.MinN}}
+		method := "platt" // needs-plan is a choice: vector (its one-answer state does not exist, see lineStateWithCounts)
+		if sp.Type != spec.Noul {
+			method = "vector"
+		}
+		sp.Calibration = []spec.Calibration{{Model: "m1", SpecHash: sp.Hash(), Method: method, N: sp.Eval.MinN}}
 		if err := sp.Save(); err != nil {
 			t.Fatal(err)
 		}
@@ -286,10 +291,10 @@ func TestLineNoticeWordingModelChangeAndStopWiring(t *testing.T) {
 	if line := testLineSummaries(root); !strings.Contains(line, "Were the changed files all needed?") || !strings.Contains(line, "nothing is asked of you") || strings.Contains(line, "keeps asking") {
 		t.Fatalf("a question whose truth comes from results says it waits for results and does not say it keeps asking: %q", line)
 	}
-	// A question asked of people (needs-plan) says it keeps asking
+	// needs-plan is a choice: one kind of answer is no "only one answer" state, so it writes no line (the people's asking is decided per request by the band)
 	add("needs-plan", "m1", "no", mustLoad(t, filepath.Join(root, "decisions", "needs-plan.yaml")).Eval.MinN)
-	if line := testLineSummaries(root); !strings.Contains(line, "Should it have asked you first?") || !strings.Contains(line, "nothing is asked of you") {
-		t.Fatalf("a question people answer says it keeps asking: %q", line)
+	if line := testLineSummaries(root); strings.Contains(line, "Should it have asked you first?") {
+		t.Fatalf("a choice question with one kind of answer writes no line: %q", line)
 	}
 	// The text when a line is drawn also changes with the question: wiki questions do not ask people and are never replaced silently
 	sp := mustLoad(t, filepath.Join(root, "decisions", "wiki-place.yaml"))
@@ -401,7 +406,11 @@ func TestLineNoticeOutcomeCalibratedAndJapanese(t *testing.T) {
 	}
 	calibrate := func(id string) {
 		sp := mustLoad(t, filepath.Join(root, "decisions", id+".yaml"))
-		sp.Calibration = []spec.Calibration{{Model: "m1", SpecHash: sp.Hash(), Method: "platt", N: sp.Eval.MinN}}
+		method := "platt" // a noul question; a choice (needs-plan's three answers) is calibrated by vector
+		if sp.Type != spec.Noul {
+			method = "vector"
+		}
+		sp.Calibration = []spec.Calibration{{Model: "m1", SpecHash: sp.Hash(), Method: method, N: sp.Eval.MinN}}
 		if err := sp.Save(); err != nil {
 			t.Fatal(err)
 		}
@@ -424,8 +433,10 @@ func TestLineNoticeOutcomeCalibratedAndJapanese(t *testing.T) {
 	if l := pick(one, "changes-in-scope"); !strings.Contains(l, "答えが片方だけ") || !strings.Contains(l, "人に聞くことはありません") || strings.Contains(l, "今までどおり聞きます") {
 		t.Fatalf("a results question says it waits for results in Japanese too: %q", l)
 	}
-	if l := pick(one, "needs-plan"); !strings.Contains(l, "人に聞くことはありません") {
-		t.Fatalf("a question people answer says it keeps asking in Japanese too: %q", l)
+	// needs-plan is a choice now: one kind of answer does not stop a line from being drawn (the state is ready, not one answer, audit 0.8.3 L2),
+	// so no "only one answer" line is written for it, and nothing about it is shown to the person.
+	if l := pick(one, "needs-plan"); l != "" {
+		t.Fatalf("a choice question with one kind of answer writes no 'only one answer' line: %q", l)
 	}
 	for _, id := range []string{"changes-in-scope", "wiki-place", "needs-plan"} {
 		calibrate(id)
