@@ -447,7 +447,7 @@ func isAckReply(s string) bool {
 // groupedRequest is this message's request and page text, attached to the previous request (joined) or standing alone.
 func groupedRequest(snapshot *hookSession, req, prompt, scope string, joined bool) (string, string) {
 	request := req
-	if joined && snapshot.Request != "" {
+	if joined && snapshot.Request != "" && snapshot.Scope == scope { // a reply from another project is not a part of this project's request
 		request = cut(snapshot.Request+" / "+req, requestMax)
 	}
 	text := strings.TrimSpace(prompt)
