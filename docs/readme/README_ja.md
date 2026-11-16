@@ -12,9 +12,9 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 [![Tests](https://img.shields.io/badge/tests-2187%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.35.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.36.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.35.0では、記憶の更新が原資料の読めないページを飛ばせるようになり、記憶の最適化を頼むと飛ばしたページも見直し直します。「では開始しましょう」などの開始の合図を、前の依頼への返事として数えるようになりました。「始める前に確認してほしかったか」の問いは、答えが三つの選択式になりました。0.34.0では、OpenCode 2.x でも shikii の hook が働きます。Claude Code や Codex と同じように、依頼の前に教訓がモデルに届き、作業の終わりに足りない記録を促します。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
+0.36.0では、Codex でも、コマンドを流す直前とファイルを書き換える直前に教訓が届き、有効にした検査がコマンドを実行の前に断ります。サブエージェントに届いた教訓は、そのサブエージェントが自分で評価するようになりました(Claude Code・Codex・OpenCode 2.x)。0.35.0では、記憶の更新が原資料の読めないページを飛ばせるようになり、「始める前に確認してほしかったか」の問いは答えが三つの選択式になりました。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
 
 
 [困りごと](#困りごと) · [何が育つか](#何が育つか) · [人がすること](#人がすること) · [必要なもの](#必要なもの) · [始め方](#始め方) · [仕組み](#仕組み) · [業務の判定を任せる](#業務の判定を任せる) · [記憶はプロジェクトのもの](#記憶はプロジェクトのもの) · [もっと読む](#もっと読む)
@@ -109,7 +109,7 @@ macOS以外は[llama.cppの公式の手順](https://github.com/ggml-org/llama.cp
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 ```
 
-インストーラーは、GitHub Releasesからこの機械向け（macOSかLinux、amd64かarm64）の最新版を取ってきて、版の `SHA256SUMS` と照らしてから、`shikii` と `shikii-readout` を `~/.local/bin` に置きます。どれが最新版かをGitHubに聞くので、出したばかりの版もすぐ入り、Goは要りません。実行ファイル、hook（依頼の前・作業の後・サブエージェントを起こす時と始まる時）、エージェントの作法を入れ、PATHに足す必要があれば案内します。Codexでは `/hooks` でhookを信頼してください。hookの中身が変わるたび(実行ファイルを動かした時やshikiiを更新した時)にもう一度信頼が要り、それまでCodexはhookを飛ばします。
+インストーラーは、GitHub Releasesからこの機械向け（macOSかLinux、amd64かarm64）の最新版を取ってきて、版の `SHA256SUMS` と照らしてから、`shikii` と `shikii-readout` を `~/.local/bin` に置きます。どれが最新版かをGitHubに聞くので、出したばかりの版もすぐ入り、Goは要りません。実行ファイル、hook（依頼の前・作業の後・サブエージェントの始まりと終わり・ファイルの変更とコマンドの直前）、エージェントの作法を入れ、PATHに足す必要があれば案内します。Codexでは `/hooks` でhookを信頼してください。hookの中身が変わるたび(実行ファイルを動かした時やshikiiを更新した時)にもう一度信頼が要り、それまでCodexはhookを飛ばします。
 
 **Go 1.27以上がある場合。** 両方の実行ファイルを、Goの版を上げても残るフォルダへ直接入れられます。
 

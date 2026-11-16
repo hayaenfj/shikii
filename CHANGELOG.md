@@ -2,6 +2,26 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.36.0 — Lessons right before a command or a file edit in Codex; subagents assess the lessons they received
+
+### Highlights
+
+- In Codex, a lesson that names a command or a file now reaches the model right before the command runs or the file is changed, as in Claude Code. A guard you enabled that forbids a command now refuses it in Codex before it runs.
+- A lesson delivered to a subagent is now assessed by that subagent. It ends its final report with one line for each lesson, and shikii saves those lines. Before, the parent was asked, and it could not see how the subagent had used the lesson. This works in Claude Code, Codex and OpenCode 2.x.
+- In OpenCode 2.x, a subagent now gets lessons chosen by its task, the rules for every request, and where to write its report.
+
+### Fixes
+
+- The assessment of a delivered lesson is asked only of the session that received it. Before, a session that had not seen the work was also asked, and could only answer "unknown".
+- When the work followed a lesson but it is not clear that the lesson was the reason, the assessment can say so. shikii then counts that delivery as one where the lesson applied.
+- Lessons that go unused in the same situation are counted across the revisions of an article, so an article that is edited often still comes back for review.
+- `shikii status` shows how many lessons delivered to subagents were not assessed by them, apart from the other unassessed lessons.
+
+### Limits
+
+- Codex users: `~/.codex/hooks.json` changes with this version. Open `/hooks` in Codex once and trust the hooks again. shikii's hook now runs before every shell command and file change in Codex.
+- A Codex subagent gets the rules for every request, how to report, and lessons right before its commands and file changes. It gets no lesson chosen by its task, because Codex does not let a hook read the task.
+
 ## 0.35.0 — Memory review sets pages aside and optimizes them again; the question before starting has three answers
 
 ### Fixes

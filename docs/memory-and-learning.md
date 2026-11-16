@@ -115,6 +115,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.33.0 | Agents read only the section of a reference they need, and the MCP tool definition is smaller. |
 | 0.34.0 | OpenCode 2.x also gets lessons through hooks and is asked for the record at the end of the work. |
 | 0.35.0 | The memory upgrade can set aside a page whose original evidence cannot be read. Asking for a memory optimization reviews those pages again. A go-ahead message counts as a reply to the previous request. The question about a decision asks what you wanted, and has three answers. |
+| 0.36.0 | Codex gets lessons right before a command or a file change, and a guard can refuse a command there. A subagent assesses the lessons it received, in Claude Code, Codex and OpenCode 2.x. The assessment of a delivery is asked only of the session that received it. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -359,3 +360,13 @@ Asking for a memory optimization reviews every page again, including pages decla
 A go-ahead message, such as the Japanese phrase for "let's start," counts as a reply to the previous request when the organizing marks it as continuing that request (`continues_previous`); then the question about a decision is not asked, whatever its wording. Until the organizing comes, the fixed list of replies (ackReplies) joins a short go-ahead to the previous request provisionally; the organizing then decides.
 
 The question about a decision that should have been asked first now says what the person wanted, and it has three answers: it should have asked, it was fine to go ahead, and the question does not apply. A new project gets the new wording. A project whose copy under `.shikii/decisions/` still has the built-in wording of 0.9.2 through 0.34.0 (or the 0.34.1 development build), with no edit and no comment of the person's, gets the new wording on the next update. An edited copy or one with a comment keeps its old wording; a copy that cannot be read or written is kept and tried again at the next seeding. Stored answers are not converted, and the calibration starts again.
+
+### In 0.36.0, the one who used a lesson is the one who assesses it
+
+shikii asks whether a delivered lesson was used, and that answer decides whether the lesson is delivered again and whether its article comes back for review. Until this version the answer often came from someone who could not know. A lesson delivered to a subagent was assessed by its parent, which sees only the subagent's report. A lesson delivered in one session could be listed in the review of another session. In a project with 145 articles, more than half of the assessments of lessons delivered to subagents were "unknown".
+
+Now a subagent ends its final report with one line for each lesson it received, saying what it did because of the lesson or that it did not use it, and shikii saves those lines. shikii does not stop the subagent or change its report. The parent is no longer asked about those lessons, and a session is asked only about the lessons delivered to it. When the work followed a lesson but it is not clear that the lesson was the reason, the assessment can say so, and the delivery counts as one where the lesson applied.
+
+Codex now gets what Claude Code had: a lesson right before a command or a file change, a guard that refuses a command before it runs, and the subagent's own assessment. A Codex subagent gets no lesson chosen by its task, because Codex does not let a hook read the task. It gets the rules for every request, how to report, and lessons right before its commands and file changes.
+
+We ran real agents in a sandbox. In Codex, a subagent received a lesson right before its file change and reported it, and the report was saved; a forbidden command was refused before it ran. In Claude Code, a subagent received a lesson at its start and reported it as unused, and the report was saved. In OpenCode 2.x, a subagent received a lesson at its start and reported what it did, and the report was saved. These are single runs, so they show that the path works, not how often a model writes the line.

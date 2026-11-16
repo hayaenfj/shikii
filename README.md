@@ -12,9 +12,9 @@ AI agents can carry context forward through memory. A project also needs to use 
 [![Tests](https://img.shields.io/badge/tests-2187%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.35.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.36.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.35.0 lets the memory upgrade set aside a page whose original evidence cannot be read, lets a memory optimization review those pages again, counts a go-ahead message as a reply to the previous request, and asks the question about a decision with three answers, the third being "the question does not apply." Version 0.34.0 brought shikii's hooks to OpenCode 2.x: lessons reach the model before a request, and a missing record is asked for at the end of the work, as in Claude Code and Codex. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
+Version 0.36.0 brings lessons to Codex right before it runs a command or changes a file, lets a guard you enabled refuse a command in Codex before it runs, and has each subagent assess the lessons it received, in Claude Code, Codex and OpenCode 2.x. Version 0.35.0 let the memory upgrade set aside a page whose original evidence cannot be read, and gave the question about a decision three answers. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
 
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
@@ -108,7 +108,7 @@ For other systems, see [llama.cpp's installation guide](https://github.com/ggml-
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 ```
 
-The installer downloads the latest release for your machine (macOS or Linux, amd64 or arm64) from GitHub Releases, checks it against the release's `SHA256SUMS`, and puts `shikii` and `shikii-readout` in `~/.local/bin`. It asks GitHub which release is the latest, so it gets a release as soon as it is published, and it does not need Go. It adds the binaries, the hooks (before a turn, after it, and when a subagent is launched and starts) and the agent's instructions, and says when the binary directory must be added to PATH. In Codex, trust the hooks with `/hooks`, and again whenever they change (after moving the binary or updating shikii); until then Codex skips them.
+The installer downloads the latest release for your machine (macOS or Linux, amd64 or arm64) from GitHub Releases, checks it against the release's `SHA256SUMS`, and puts `shikii` and `shikii-readout` in `~/.local/bin`. It asks GitHub which release is the latest, so it gets a release as soon as it is published, and it does not need Go. It adds the binaries, the hooks (before a turn, after it, when a subagent starts and ends, and right before a file edit or a command) and the agent's instructions, and says when the binary directory must be added to PATH. In Codex, trust the hooks with `/hooks`, and again whenever they change (after moving the binary or updating shikii); until then Codex skips them.
 
 **With Go 1.27 or newer.** Install both binaries directly into a stable directory:
 
