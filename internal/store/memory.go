@@ -56,6 +56,7 @@ type MemoryStats struct {
 	Unused           int `json:"unused"`
 	Harmful          int `json:"harmful"`
 	Unknown          int `json:"unknown"`
+	Followed         int `json:"followed"` // of Unknown, those whose work went the way the lesson says (correction_result followed): the lesson applied, its effect is not shown
 	Pending          int `json:"pending"`
 	AwaitingFeedback int `json:"awaiting_feedback"`
 	Answers          int `json:"answers"`         // of Delivered, the person's past answers (decision:<trace>, 0.11)

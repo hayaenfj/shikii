@@ -4,7 +4,8 @@ package main
 // before this command or file in this request, does this lesson apply?". Word matching picks the candidates (cheap, no model); this
 // question is asked once for the one about to go out. Until a line is drawn the answer is only recorded (shadow). Once drawn, a
 // trusted "no" skips the lesson and the next candidate is looked at. The truth comes from the agent's own reflection on the delivery
-// (helpful = yes, unused or harmful = no, unknown = none): the person never answers, as with wiki-place. A model that fails or is down
+// (helpful = yes, unused or harmful = no, unknown = none, except unknown with correction_result followed = yes: the work went the way
+// the lesson says, so the lesson applied there although its effect is not shown): the person never answers, as with wiki-place. A model that fails or is down
 // changes nothing: the words decide, and a tool call is never held up for it.
 
 import (
@@ -60,7 +61,8 @@ func lessonApplies(agent, scope, request, target string, page notebook.Page) (tr
 }
 
 // labelLessonApplies turns the reflection's assessment of one delivered quote into the outcome truth of its lesson-applies decision:
-// helpful is yes, unused and harmful are no, anything else gives none. Each truth lands once (AppendLabelsOnce). A delivery without a
+// helpful is yes, unused and harmful are no, unknown with correction_result followed is yes (the question asks whether the lesson
+// applies, not whether it changed the work), anything else gives none. Each truth lands once (AppendLabelsOnce). A delivery without a
 // trace (an always rule, a person's answer, a record from before 0.12) gets nothing.
 func labelLessonApplies(st store.Store, scope string, a store.MemoryAssessment) error {
 	truth := ""
@@ -69,6 +71,11 @@ func labelLessonApplies(st store.Store, scope string, a store.MemoryAssessment) 
 		truth = "yes"
 	case "unused", "harmful":
 		truth = "no"
+	case "unknown":
+		if a.CorrectionResult != "followed" {
+			return nil
+		}
+		truth = "yes"
 	default:
 		return nil
 	}

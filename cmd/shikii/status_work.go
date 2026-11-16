@@ -98,14 +98,18 @@ func (w *personWork) add(o personWork) {
 
 // printMemoryEffect counts from real use "whether delivered lessons changed behavior" (0.7.3. A synthetic experiment showed no difference, so count in real use):
 // the number of quotes delivered (including delivery to subagents), the helpful / unused / harmful / unknown the reviews gave, and how many have no observation yet.
-// Delivery of corrections (followed / repeated) is printed separately. The last 7 days are counted by delivery time.
+// Of the unknown, those whose work went the way the lesson says are counted beside it. Delivery of corrections (followed / repeated) is printed separately. The last 7 days are counted by delivery time.
 func printMemoryEffect(out io.Writer, st store.Store, scope string, now time.Time) {
 	m, err := memoryEffectOf(st, scope, now)
 	if err != nil || m.Delivered == 0 {
 		fmt.Fprintln(out, "memory: no lessons delivered yet (lessons reach the agent before similar requests, and subagents when they start)")
 		return
 	}
-	fmt.Fprintf(out, "memory: %d quotes delivered; helpful %d, unused %d, harmful %d, unknown %d, not yet assessed %d (%d waiting for the next request)\n", m.Delivered, m.Helpful, m.Unused, m.Harmful, m.Unknown, m.Pending, m.AwaitingFeedback)
+	followed := "" // of the unknown, the work went the way the lesson says: the lesson applied, its effect is not shown
+	if m.Followed > 0 {
+		followed = fmt.Sprintf(" (the work followed the lesson in %d)", m.Followed)
+	}
+	fmt.Fprintf(out, "memory: %d quotes delivered; helpful %d, unused %d, harmful %d, unknown %d%s, not yet assessed %d (%d waiting for the next request)\n", m.Delivered, m.Helpful, m.Unused, m.Harmful, m.Unknown, followed, m.Pending, m.AwaitingFeedback)
 	fmt.Fprintf(out, "  last 7 days: delivered %d, helpful %d\n", m.RecentDelivered, m.RecentHelpful)
 	if m.Answers > 0 { // the person's own past answers on similar requests (0.11), counted inside the quotes above
 		fmt.Fprintf(out, "  of them your past answers %d (helpful %d)\n", m.Answers, m.AnswersHelpful)
@@ -130,6 +134,7 @@ func storeScope(storeDir string) string {
 // memoryEffectSummary is the "effect of delivered lessons" counts (the same for CLI status and the page's /v1/status).
 type memoryEffectSummary struct {
 	Delivered, Helpful, Unused, Harmful, Unknown, Pending, AwaitingFeedback int
+	Followed                                                                int // of Unknown, the work went the way the lesson says
 	RecentDelivered, RecentHelpful                                          int
 	Answers, AnswersHelpful                                                 int
 	AtTool, AtToolHelpful                                                   int // delivered right before an edit or a command (0.11)
@@ -143,7 +148,7 @@ func memoryEffectOf(st store.Store, scope string, now time.Time) (memoryEffectSu
 		return m, err
 	}
 	s := r.Stats
-	m.Delivered, m.Helpful, m.Unused, m.Harmful, m.Unknown, m.Pending, m.AwaitingFeedback = s.Delivered, s.Helpful, s.Unused, s.Harmful, s.Unknown, s.Pending, s.AwaitingFeedback
+	m.Delivered, m.Helpful, m.Unused, m.Harmful, m.Unknown, m.Followed, m.Pending, m.AwaitingFeedback = s.Delivered, s.Helpful, s.Unused, s.Harmful, s.Unknown, s.Followed, s.Pending, s.AwaitingFeedback
 	m.Corrections = r.Corrections
 	m.Answers, m.AnswersHelpful = s.Answers, s.AnswersHelpful
 	m.AtTool, m.AtToolHelpful = s.AtTool, s.AtToolHelpful
@@ -160,7 +165,7 @@ func memoryEffectOf(st store.Store, scope string, now time.Time) (memoryEffectSu
 }
 
 func (m memoryEffectSummary) json() map[string]any {
-	return map[string]any{"delivered": m.Delivered, "helpful": m.Helpful, "unused": m.Unused, "harmful": m.Harmful, "unknown": m.Unknown, "pending": m.Pending, "awaiting_feedback": m.AwaitingFeedback,
+	return map[string]any{"delivered": m.Delivered, "helpful": m.Helpful, "unused": m.Unused, "harmful": m.Harmful, "unknown": m.Unknown, "followed": m.Followed, "pending": m.Pending, "awaiting_feedback": m.AwaitingFeedback,
 		"recent_delivered": m.RecentDelivered, "recent_helpful": m.RecentHelpful, "answers": m.Answers, "answers_helpful": m.AnswersHelpful, "at_tool": m.AtTool, "at_tool_helpful": m.AtToolHelpful,
 		"corrections": map[string]any{"delivered": m.Corrections.Delivered, "followed": m.Corrections.Followed, "repeated": m.Corrections.Repeated, "not_applicable": m.Corrections.NotApplicable, "unknown": m.Corrections.Unknown, "pending": m.Corrections.Pending}}
 }

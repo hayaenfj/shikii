@@ -70,6 +70,9 @@ summarize its implication without repeating the complete result. No new knowledg
 means no wiki draft. Important corrections, failures and new procedures still
 need source-backed notes; short messages do not make them optional.
 
+For a prepared memory whose lesson the work followed, without evidence that the lesson changed the work, record
+`result:"unknown"` with `correction_result:"followed"` and the decision; `unused` means no decision followed the lesson.
+
 The host supplies project/session/turn and retains the receipt; never invent
 missing metadata or collect shell history, environment values or secret-bearing
 logs to fill it. Capture only checked, redacted evidence. Human quotations stay
@@ -585,7 +588,7 @@ The recorded revision is checked atomically. Other sections, citations and relat
 Use the prepared content to record:
 
 - `reviews:[{ref,answer:"yes|no|unknown",reason}]` for provisional scores. Read the original question, inputs, model answer and human reply. Each prepared memory also retains its actual delivery request, agent, tool, phrase and time; distinguish these from the parent conversation. Agreement with a model is an agreed machine outcome, never a person's answer.
-- `memory:[{ref,result,decision,evidence,correction_result?}]` for the refs in `pending[].memory[]`. A `knowledgeN` article is not an assessment ref; omit memory when none was prepared. Only lessons delivered in this session's own conversations are listed; another session's wait for that session. Use the existing result values (helpful, unused, harmful, unknown); a helpful result needs a concrete decision and checked effect. Preserve the first assessment. Never infer helpfulness from delivery, successful tests, silence or a save.
+- `memory:[{ref,result,decision,evidence,correction_result?}]` for the refs in `pending[].memory[]`. A `knowledgeN` article is not an assessment ref; omit memory when none was prepared. Only lessons delivered in this session's own conversations are listed; another session's wait for that session. Use the existing result values (helpful, unused, harmful, unknown); a helpful result needs a concrete decision and checked effect. When the work went the way a lesson says but nothing shows the lesson changed it, send unknown with `correction_result:"followed"` and that decision: the delivery learns that the lesson applied there. Preserve the first assessment. Never infer helpfulness from delivery, successful tests, silence or a save.
 - `reviewed:["source1","evidence1"]` when you read a source and it supports no lasting lesson. Save any intended knowledge first.
 - `maintenance:[{ref,reason,blocked?}]` after checking the displayed task against its sources; `"blocked": true` declares a page blocked (memory upgrade step 5). A changed article or neighborhood invalidates the retained key.
 

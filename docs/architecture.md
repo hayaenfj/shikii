@@ -72,7 +72,7 @@ For the next similar request, the correction and the action are handed over brie
 | Observation | Classes | Kept alongside |
 |---|---|---|
 | How the memory took part in the decision, `result` | helpful / unused / harmful / unknown | The decision it was used in, `decision`, and what was checked, `evidence` |
-| Action after the correction, `correction_result` | followed / repeated / not_applicable / unknown | A record of the action that followed the correction, the repeated complaint, the reason it does not apply, or the missing evidence |
+| Action after the correction, `correction_result` | followed / repeated / not_applicable / unknown | A record of the action that followed the correction, the repeated complaint, the reason it does not apply, or the missing evidence. A lesson that is not a correction takes only followed |
 
 An observation that it was followed is not treated as helpful. Success, a follow-up request or silence alone do not decide the effect either; if unclear, it is unknown. Corrections that were never handed over, or other work, get no rating; the first rating is kept, and an identical resend is counted only once.
 

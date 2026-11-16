@@ -277,6 +277,9 @@ func (s Store) MemoryReportWithFeedback(scope string, read func() ([]Feedback, e
 				r.Stats.Harmful++
 			case "unknown":
 				r.Stats.Unknown++
+				if a.CorrectionResult == "followed" {
+					r.Stats.Followed++
+				}
 			}
 			if len(r.Recent) < 6 {
 				r.Recent = append(r.Recent, item)

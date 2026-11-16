@@ -72,7 +72,7 @@ Gitの中は実パスのプロジェクトルート、外は実行したフォ�
 | 観察 | 分類 | 一緒に残すもの |
 |---|---|---|
 | 記憶の判断への関わり `result` | helpful / unused / harmful / unknown | 使った判断 `decision` と確認結果 `evidence` |
-| 訂正後の行動 `correction_result` | followed / repeated / not_applicable / unknown | 訂正に沿った行動の記録、再発の指摘、対象外の理由、または不足する証拠 |
+| 訂正後の行動 `correction_result` | followed / repeated / not_applicable / unknown | 訂正に沿った行動の記録、再発の指摘、対象外の理由、または不足する証拠。訂正でない教訓は followed だけを取る |
 
 従ったという観察だけで役立ったと扱わない。成功・追加依頼・沈黙だけでも効果を決めず、分からなければ不明にする。配送のない訂正や別の仕事には評価を付けず、最初の評価を保持し、同じ再送は一度だけ数える。
 

@@ -69,7 +69,16 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 		return errors.New("name a memory actually delivered to this request")
 	}
 	if !correction && a.CorrectionResult != "" {
-		return errors.New("correction_result is only for a delivered correction; leave it out for this lesson (behaviour observations can only be attached to corrections delivered to this request)")
+		// A lesson that is not a correction takes one behaviour observation: followed, the work went the way the lesson says. With
+		// the result unknown it records that the lesson applied to the moment although its effect is not shown, which is what the
+		// delivery's question (lesson-applies) learns from. The others describe what happened to a correction, and a helpful lesson
+		// that is not a correction is not scored as a correction taking effect, as before.
+		if a.CorrectionResult != "followed" {
+			return errors.New("correction_result is only for a delivered correction; leave it out for this lesson, or send followed when the work went the way the lesson says (the other behaviour observations can only be attached to corrections delivered to this request)")
+		}
+		if a.Result != "unknown" {
+			return errors.New("correction_result followed goes with result unknown (the work went the way the lesson says, but the lesson's effect is not shown); with " + a.Result + " leave correction_result out")
+		}
 	}
 	if correction && a.CorrectionResult == "" {
 		a.CorrectionResult = "unknown"
