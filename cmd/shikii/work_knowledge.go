@@ -336,6 +336,11 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 	reply["reading"] = w.Reasoning.Reading
 	read = suppliedWorkReads(entries)
 	if isMemoryUpgradeQuery(query) && req.Assignment == nil {
+		if query == memoryOptimizeQuery { // the same reopening as a prepare without a receipt
+			if e := book.ReopenMemoryUpgrade(); e != nil {
+				return nil, e
+			}
+		}
 		upgrade, upgradeRead, e := prepareMemoryUpgrade(book, w, quoted, true)
 		if e != nil {
 			return nil, e
