@@ -12,9 +12,9 @@ AI agents can carry context forward through memory. A project also needs to use 
 [![Tests](https://img.shields.io/badge/tests-2135%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.34.1-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.35.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.34.1 lets the memory upgrade set aside a page whose original evidence cannot be read, counts a go-ahead message as a reply to the previous request, and asks the question about a decision in terms of what you wanted. Version 0.34.0 brought shikii's hooks to OpenCode 2.x: lessons reach the model before a request, and a missing record is asked for at the end of the work, as in Claude Code and Codex. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
+Version 0.35.0 lets the memory upgrade set aside a page whose original evidence cannot be read, lets a memory optimization review those pages again, counts a go-ahead message as a reply to the previous request, and asks the question about a decision with three answers, the third being "the question does not apply." Version 0.34.0 brought shikii's hooks to OpenCode 2.x: lessons reach the model before a request, and a missing record is asked for at the end of the work, as in Claude Code and Codex. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
 
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 

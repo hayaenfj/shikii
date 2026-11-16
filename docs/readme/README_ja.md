@@ -12,9 +12,9 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 [![Tests](https://img.shields.io/badge/tests-2135%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.34.1-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.35.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.34.1では、記憶の更新が原資料の読めないページを飛ばせるようになりました。「では開始しましょう」などの開始の合図を、前の依頼への返事として数えるようになりました。「先に確認してほしかったか」の問いは、本人が何を望んだかを聞く文に直しています。0.34.0では、OpenCode 2.x でも shikii の hook が働きます。Claude Code や Codex と同じように、依頼の前に教訓がモデルに届き、作業の終わりに足りない記録を促します。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
+0.35.0では、記憶の更新が原資料の読めないページを飛ばせるようになり、記憶の最適化を頼むと飛ばしたページも見直し直します。「では開始しましょう」などの開始の合図を、前の依頼への返事として数えるようになりました。「始める前に確認してほしかったか」の問いは、答えが三つの選択式になりました。0.34.0では、OpenCode 2.x でも shikii の hook が働きます。Claude Code や Codex と同じように、依頼の前に教訓がモデルに届き、作業の終わりに足りない記録を促します。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
 
 
 [困りごと](#困りごと) · [何が育つか](#何が育つか) · [人がすること](#人がすること) · [必要なもの](#必要なもの) · [始め方](#始め方) · [仕組み](#仕組み) · [業務の判定を任せる](#業務の判定を任せる) · [記憶はプロジェクトのもの](#記憶はプロジェクトのもの) · [もっと読む](#もっと読む)

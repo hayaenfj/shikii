@@ -2,14 +2,16 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## 0.34.1 — The memory upgrade can set aside a page; a go-ahead is a reply
+## 0.35.0 — Memory review sets pages aside and optimizes them again; the question before starting has three answers
 
 ### Fixes
 
 - The memory upgrade can set aside a page whose original evidence cannot be read or does not support it. Its review record declares it `blocked` with the reason; the batch skips that page, and it comes back for review when its text changes.
+- Asking for a memory optimization reviews every page again, including pages that were declared blocked. A normal memory upgrade still skips them.
+- When an upgrade has stopped with only blocked pages, a topic summary no longer tells the agent to review them again.
 - When the person asks for a memory upgrade, the skill runs it to the end in the same turn, without scheduled wake-ups or splitting it across turns.
 - A go-ahead message, such as a request to start, now counts as a reply to the previous request, so the question about a decision is not asked for it. The list only joins a short reply to the previous request. Whether the question is skipped depends on the organizing: a message marked as continuing the previous request (`continues_previous`) gets no question, whatever its wording.
-- The question about a decision that should have been asked first now asks whether the person wanted to be asked before the work began. A new project gets the new wording. A project that already exists keeps its copy in `.shikii/decisions/`, so its question keeps the old wording; stored answers are not converted.
+- The question before starting now asks whether the person wanted to be asked before the work began, with three answers: it should have asked, it was fine to go ahead, and the question does not apply. A new project gets the new wording. A project whose copy in `.shikii/decisions/` is unchanged gets it on the next update; an edited copy keeps its old wording. Stored answers are not converted, and the calibration starts again.
 
 ## 0.34.0 — shikii's hooks for OpenCode 2.x
 
