@@ -45,7 +45,7 @@ func prepareMemoryUpgrade(book notebook.Book, w *workState, quoted map[string]st
 		for _, task := range u.Tasks {
 			heads = append(heads, map[string]any{"id": task.PageID, "revision": task.Revision})
 		}
-		return map[string]any{"epoch": u.Epoch, "status": u.Status, "message": u.Message, "total": u.Total, "reviewed": u.Reviewed, "withdrawn": u.Withdrawn, "pending_pages": heads, "unavailable_sources": u.Blocked, "next_action": memoryUpgradeSummaryNext(u)}, nil, nil
+		return map[string]any{"epoch": u.Epoch, "status": u.Status, "message": u.Message, "total": u.Total, "reviewed": u.Reviewed, "withdrawn": u.Withdrawn, "pending_pages": heads, "unavailable_sources": u.Blocked, "unavailable_reasons": u.BlockedReasons, "next_action": memoryUpgradeSummaryNext(u)}, nil, nil
 	}
 	pages := []any{}
 	read := []store.KnowledgeReference{}
@@ -68,7 +68,7 @@ func prepareMemoryUpgrade(book notebook.Book, w *workState, quoted map[string]st
 		task.NextAction = "Follow memory_upgrade.policy for this article; save maintenance with its latest maintenance_ref after any edits."
 		pages = append(pages, map[string]any{"ref": ref, "article": p, "orientation": notebook.Orient(p, notebook.MemoryUpgradePolicy, 1200), "task": task, "maintenance_ref": mref, "body_included": true})
 	}
-	value := map[string]any{"epoch": u.Epoch, "status": u.Status, "message": u.Message, "total": u.Total, "reviewed": u.Reviewed, "withdrawn": u.Withdrawn, "pages": pages, "unavailable_sources": u.Blocked, "policy": u.Policy}
+	value := map[string]any{"epoch": u.Epoch, "status": u.Status, "message": u.Message, "total": u.Total, "reviewed": u.Reviewed, "withdrawn": u.Withdrawn, "pages": pages, "unavailable_sources": u.Blocked, "unavailable_reasons": u.BlockedReasons, "policy": u.Policy}
 	if u.Status == "blocked" {
 		value["next_action"] = memoryUpgradeBlockedNext
 	} else if u.Status != "complete" {

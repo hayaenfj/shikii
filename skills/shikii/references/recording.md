@@ -223,7 +223,10 @@ to finish the memory upgrade, do all of it in the current turn. Do not schedule
 wake-ups, and do not split the work into separate turns or batches for the person.
 For the optimization request, tidy each page before reviewing it, as tidy.md describes.
 
-1. Prepare with the current receipt and `query: memory-upgrade`. If a record or
+1. Prepare with the current receipt and `query: memory-upgrade`. For the optimization
+   request, make this first prepare with `query: memory-optimize` instead: it reviews every
+   page again, including the pages declared blocked earlier. Use `memory-optimize` only for
+   this first prepare, because each `memory-optimize` starts the review over. If a record or
    prepare is refused with "a newer request has started", the receipt belongs to an
    earlier request: prepare again with the ids of the latest hook notice, and
    reuse the `carried` pages and sources it lists instead of rereading them. The

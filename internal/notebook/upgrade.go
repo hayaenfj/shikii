@@ -25,7 +25,9 @@ type MemoryUpgrade struct {
 	Reviewed  int               `json:"reviewed"`
 	Tasks     []MaintenanceTask `json:"tasks,omitempty"`
 	Blocked   []string          `json:"unavailable_sources,omitempty"`
-	Policy    string            `json:"policy,omitempty"`
+	// BlockedReasons gives, for each id in Blocked, why the page cannot be reviewed from its sources.
+	BlockedReasons map[string]string `json:"unavailable_reasons,omitempty"`
+	Policy         string            `json:"policy,omitempty"`
 }
 
 type memoryUpgradeCheckpoint struct {
@@ -192,11 +194,11 @@ func (b Book) MemoryUpgrade() (MemoryUpgrade, error) {
 		// Supersession is not a semantic review. Frozen targets retain their
 		// original source checks and require actual maintenance after replacement.
 		if !live {
-			u.Blocked = append(u.Blocked, id)
+			u.block(id, "the page is no longer in the wiki (superseded or removed)")
 			continue
 		}
-		if len(b.sourceIssues(p)) > 0 {
-			u.Blocked = append(u.Blocked, id)
+		if issues := b.sourceIssues(p); len(issues) > 0 {
+			u.block(id, sourceIssuesReason(issues))
 			continue
 		}
 		if p.Status == "deleted" {
@@ -214,7 +216,7 @@ func (b Book) MemoryUpgrade() (MemoryUpgrade, error) {
 		// A page declared blocked at its current revision holds no batch slot. Its revision changes
 		// when it is edited, and then it returns to review.
 		if mark, ok := c.Blocked[id]; ok && mark.Revision == p.Revision {
-			u.Blocked = append(u.Blocked, id)
+			u.block(id, mark.Reason)
 			continue
 		}
 		if task, ok := byID[id]; ok && len(u.Tasks) < 2 {
@@ -234,6 +236,7 @@ func (b Book) MemoryUpgrade() (MemoryUpgrade, error) {
 	} else {
 		if len(u.Tasks) == 0 && len(u.Blocked) > 0 {
 			u.Status = "blocked"
+			u.Message = fmt.Sprintf("Memory upgrade blocked: %d of %d pages cannot be reviewed; see unavailable_reasons.", len(u.Blocked), u.Total)
 		}
 		if changed {
 			if err := saveMemoryUpgrade(dir, c); err != nil {
@@ -263,6 +266,27 @@ func recordMemoryUpgradeReview(dir string, review MaintenanceReview) error {
 		return fmt.Errorf("save memory upgrade progress: %w", err)
 	}
 	return nil
+}
+
+// block lists a page the upgrade cannot review, with the reason the agent is asked to report.
+func (u *MemoryUpgrade) block(id, reason string) {
+	u.Blocked = append(u.Blocked, id)
+	if u.BlockedReasons == nil {
+		u.BlockedReasons = map[string]string{}
+	}
+	u.BlockedReasons[id] = reason
+}
+
+// sourceIssuesReason names the first source problem of a page and counts the rest.
+func sourceIssuesReason(issues []Issue) string {
+	reason := "source check failed: " + issues[0].Kind
+	if issues[0].Source != "" {
+		reason += " (" + issues[0].Source + ")"
+	}
+	if len(issues) > 1 {
+		reason += fmt.Sprintf("; %d more", len(issues)-1)
+	}
+	return reason
 }
 
 func upgradeCompletionMessage(u MemoryUpgrade) string {
