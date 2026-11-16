@@ -336,7 +336,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 	reply["reading"] = w.Reasoning.Reading
 	read = suppliedWorkReads(entries)
 	if isMemoryUpgradeQuery(query) && req.Assignment == nil {
-		if query == memoryOptimizeQuery { // the same reopening as a prepare without a receipt
+		if req.Query == memoryOptimizeQuery { // only this request's own query reopens the review; a stored query is inherited, not asked again
 			if e := book.ReopenMemoryUpgrade(); e != nil {
 				return nil, e
 			}
