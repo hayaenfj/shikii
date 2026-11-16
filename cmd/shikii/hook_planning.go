@@ -656,13 +656,10 @@ func savePlanningResult(dir *os.Root, name, root, scope string, req planningRequ
 		// truth without the person; a different one waits for the person. The 1-in-20 spot check of a calibrated act stays either way
 		rec := recordOf(sp, d, inputs)
 		rec.AgentPaired = true
-		waits := waitsForPersonFor("needs-plan", d)
-		if pair, ok := pairOf("needs-plan", rec, nil); ok {
-			waits = !pair.agree() || (d.Band == decide.Act && d.IsCalibrated && store.AuditSample(d.TraceID))
-			if pair.agree() {
-				if err := writeAgreed(st, &rec, pair.Agent); err != nil {
-					return err
-				}
+		waits := planningWaits(d, rec)
+		if pair, ok := pairOf("needs-plan", rec, nil); ok && pair.agree() {
+			if err := writeAgreed(st, &rec, pair.Agent); err != nil {
+				return err
 			}
 		}
 		alreadyAsked := false

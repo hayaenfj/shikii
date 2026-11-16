@@ -138,6 +138,8 @@ func reviewQueueState(specID string, rec store.Record, labels map[string]store.L
 	spot := rec.Band == "act" && store.AuditSample(rec.TraceID)
 	if pair, ok := pairOf(specID, rec, reviews); ok {
 		switch {
+		case unsureChoiceNothingOpen(rec): // an unsure choice with nothing open waits for no grade (CHANGELOG 0.35.0)
+			return false, false, ""
 		case pair.Agent == "unknown":
 			return true, true, "uncertain"
 		case !pair.agree():
