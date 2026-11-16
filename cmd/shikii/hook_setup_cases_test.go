@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -263,9 +264,9 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 			t.Fatalf("agent-task must be its own PreToolUse group matching Agent|Task, and the other group must stay as it was:\n%s", b)
 		}
 	}
-	// Codex has no SubagentStart and no PreToolUse hooks, so 3: UserPromptSubmit, Stop and SessionStart (0.7.3; 0.11)
-	if codex := hookCommands(filepath.Join(home, ".codex", "hooks.json")); len(codex) != 3 || strings.Contains(strings.Join(codex, " "), "subagent-start") || strings.Contains(strings.Join(codex, " "), "agent-task") {
-		t.Fatalf("Codex gets UserPromptSubmit, Stop and SessionStart only: %v", codex)
+	// Codex gets all but agent-task: the task handed to a Codex subagent reaches the hooks encrypted, so there is none to keep
+	if codex := hookCommands(filepath.Join(home, ".codex", "hooks.json")); len(codex) != 6 || !strings.Contains(strings.Join(codex, " "), "subagent-start") || !strings.Contains(strings.Join(codex, " "), "subagent-stop") || !strings.Contains(strings.Join(codex, " "), "tool-lesson") || strings.Contains(strings.Join(codex, " "), "agent-task") {
+		t.Fatalf("Codex gets the 6 hooks without agent-task: %v", codex)
 	}
 	b, _ := os.ReadFile(settings)
 	if !strings.Contains(string(b), "node other.mjs") || !strings.Contains(string(b), "rtk hook claude") || !strings.Contains(string(b), `"language": "Japanese"`) || !strings.Contains(string(b), `"SessionStart"`) {
@@ -473,18 +474,23 @@ func TestHookCodex(t *testing.T) {
 	t.Cleanup(func() { hookLocalURL, hookPageURL, hookCalibrate, hookSpawn = oldLocal, oldPage, oldCal, oldSpawn })
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	cmds := hookCommands(codexHooks)
-	if len(cmds) != 3 || !strings.HasSuffix(cmds[0], " hook session-start") || !strings.HasSuffix(cmds[1], " hook stop") || !strings.HasSuffix(cmds[2], " hook user-prompt-submit") {
-		t.Fatalf("Codex must get the 3 hooks and lose the old one: %v", cmds)
+	var events []string
+	for _, c := range cmds {
+		events = append(events, c[strings.LastIndex(c, " hook ")+len(" hook "):])
+	}
+	slices.Sort(events)
+	if want := []string{"session-start", "stop", "subagent-start", "subagent-stop", "tool-lesson", "user-prompt-submit"}; !slices.Equal(events, want) {
+		t.Fatalf("Codex must get the 6 hooks and lose the old one: %v", cmds)
 	}
 	b, _ := os.ReadFile(codexHooks)
-	if strings.Contains(string(b), "apply_patch") || !strings.Contains(string(b), "deny-check.sh") || !strings.Contains(string(b), `"description": "mine"`) {
+	if strings.Contains(string(b), "pre-tool-use") || strings.Contains(string(b), `"Bash|apply_patch"`) || !strings.Contains(string(b), "deny-check.sh") || !strings.Contains(string(b), `"description": "mine"`) {
 		t.Fatalf("Codex hooks.json must drop the old PreToolUse group and keep what was there:\n%s", b)
 	}
 	if fileExists(codexHooks + ".bak-shikii") {
 		t.Fatal("a file that already had shikii hooks in it must not be backed up")
 	}
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(codexHooks); len(cmds) != 3 {
+	if cmds := hookCommands(codexHooks); len(cmds) != 6 {
 		t.Fatalf("second install must not duplicate in Codex: %v", cmds)
 	}
 

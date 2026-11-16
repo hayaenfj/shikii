@@ -9,7 +9,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-2184%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2187%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.35.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -74,7 +74,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 
 | やりたいこと | 必要なもの |
 |---|---|
-| 普段の会話から学び、訂正を検査にする | Claude Code、Codex、またはOpenCode 2.x、shikii、利用するプロジェクトでの `shikii --init`。サブエージェントへの配送はClaude CodeとOpenCode 2.x |
+| 普段の会話から学び、訂正を検査にする | Claude Code、Codex、またはOpenCode 2.x、shikii、利用するプロジェクトでの `shikii --init`。教訓はサブエージェントにも届く。サブエージェントの課題で選ぶ教訓はClaude CodeとOpenCode 2.x |
 | 既製の問いに答えさせる | 推奨: TypeSafeのJev（環境変数 `TYPESAFE_API_KEY`。取得するものは無い）。APIキーを置けない時: llama.cpp（`llama-server`）とTernary-Bonsai-27Bを `shikii up` で立てる構成（取得 約7.6GB、動作中のメモリ約10GB） |
 | 業務の判定に別のモデルを使う | 下の表のSystem One形式の接続先 |
 | インストールする | macOSかLinux（amd64かarm64）、sh、curl、tar、awk、shasumかsha256sum（どちらのOSにも初めからある）。Goは不要 |

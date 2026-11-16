@@ -171,8 +171,9 @@ func TestToolLessonNotRepeatedInSession(t *testing.T) {
 	}
 }
 
-// The hook is installed for Claude Code only, as its own PreToolUse group for the edit tools and Bash, and the output never decides.
-func TestToolLessonInstalledForClaudeCodeOnly(t *testing.T) {
+// The hook is installed as its own PreToolUse group: for the edit tools and Bash in Claude Code, for the shell and apply_patch in
+// Codex. The output never decides.
+func TestToolLessonInstalledForClaudeCodeAndCodex(t *testing.T) {
 	_, scope, _, _ := toolLessonFixture(t)
 	home, _ := os.UserHomeDir()
 	var cfg map[string]any
@@ -191,8 +192,13 @@ func TestToolLessonInstalledForClaudeCodeOnly(t *testing.T) {
 	if !group {
 		t.Fatalf("tool-lesson is its own PreToolUse group for Edit|Write|MultiEdit|NotebookEdit|Bash:\n%v", cfg["hooks"])
 	}
-	if codex := hookCommands(filepath.Join(home, ".codex", "hooks.json")); strings.Contains(strings.Join(codex, " "), "tool-lesson") {
-		t.Fatalf("Codex does not get tool-lesson: %v", codex)
+	var codex map[string]any
+	if err := json.Unmarshal(mustRead(t, filepath.Join(home, ".codex", "hooks.json")), &codex); err != nil {
+		t.Fatal(err)
+	}
+	pre, _ := codex["hooks"].(map[string]any)["PreToolUse"].([]any)
+	if len(pre) != 1 || pre[0].(map[string]any)["matcher"] != "^(Bash|apply_patch)$" || len(pre[0].(map[string]any)["hooks"].([]any)) != 1 || !strings.HasSuffix(pre[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)["command"].(string), " hook tool-lesson") {
+		t.Fatalf("Codex gets tool-lesson alone, for its shell and apply_patch, and no hook that keeps a child's task:\n%v", codex["hooks"])
 	}
 	// broken input, an unknown tool, a tool without input: nothing, and never a decision
 	for _, in := range []map[string]any{

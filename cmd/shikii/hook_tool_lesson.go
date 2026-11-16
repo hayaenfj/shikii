@@ -1,6 +1,6 @@
 package main
 
-// hook tool-lesson (0.11 item H): right before Claude Code edits a file or runs a command (PreToolUse), deliver at most one lesson
+// hook tool-lesson (0.11 item H): right before Claude Code or Codex edits a file or runs a command (PreToolUse), deliver at most one lesson
 // whose page names that file or that command. Lessons chosen once by the words of the request helped in about 1 of 6 deliveries;
 // the moments that mattered were "right before editing version.go" and "right before git commit". This runs before every edit and
 // command, so it calls no model, reads only the pages that name the target, and only adds context: it never allows, denies or asks (the deny of an enabled forbidden-commands guard comes from guardToolCall, before this).
@@ -22,6 +22,32 @@ import (
 // toolLessonMatcher is the PreToolUse matcher of hook tool-lesson: the tools that change a file, and Bash.
 const toolLessonMatcher = "Edit|Write|MultiEdit|NotebookEdit|Bash"
 
+// toolLessonMatcherCodex is the same for Codex (measured on 0.169.0): its shell is reported as Bash with the command in
+// tool_input.command, and every file change is one apply_patch whose tool_input.command is the patch.
+const toolLessonMatcherCodex = "^(Bash|apply_patch)$"
+
+// patchFile is a file header of an apply_patch patch: the file the patch adds, updates or deletes.
+var patchFile = regexp.MustCompile(`(?m)^\*\*\* (?:Add|Update|Delete) File: (.+?)[ \t]*$`)
+
+// patchMax is how much of a patch is read for its file headers.
+const patchMax = 1 << 20
+
+// patchTarget is the first file of a patch whose name is specific enough to look for in lessons (one lesson at most is delivered),
+// as an absolute path: Codex writes a path relative to the folder it works in.
+func patchTarget(patch, cwd string) string {
+	for _, m := range patchFile.FindAllStringSubmatch(cut(patch, patchMax), -1) {
+		file := m[1]
+		if !distinctiveFileName(filepath.Base(file)) {
+			continue
+		}
+		if !filepath.IsAbs(file) && cwd != "" {
+			file = filepath.Join(cwd, file)
+		}
+		return file
+	}
+	return ""
+}
+
 // toolLessonEdits maps each file-changing tool to the input field that holds its file.
 var toolLessonEdits = map[string]string{"Edit": "file_path", "Write": "file_path", "MultiEdit": "file_path", "NotebookEdit": "notebook_path"}
 
@@ -41,8 +67,13 @@ func toolLessonTarget(in *hookInput, scope string) (toolTarget, bool) {
 	if json.Unmarshal(in.ToolInput, &input) != nil {
 		return toolTarget{}, false
 	}
-	if field, ok := toolLessonEdits[in.ToolName]; ok {
+	field, edit := toolLessonEdits[in.ToolName]
+	if edit || in.ToolName == "apply_patch" {
 		file, _ := input[field].(string)
+		if !edit {
+			patch, _ := input["command"].(string)
+			file = patchTarget(patch, in.CWD)
+		}
 		if file == "" || !distinctiveFileName(filepath.Base(file)) {
 			return toolTarget{}, false
 		}

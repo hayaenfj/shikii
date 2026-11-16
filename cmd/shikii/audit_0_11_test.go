@@ -37,8 +37,8 @@ func TestAudit011DocsMatchTheHooksAndTheGuards(t *testing.T) {
 		return string(b)
 	}
 	claude, codex := len(hookEventsFor("Claude Code")), len(hookEventsFor("Codex"))
-	if claude != 7 || codex != 3 {
-		t.Fatalf("precondition: 7 hooks for Claude Code and 3 for Codex, got %d and %d", claude, codex)
+	if claude != 7 || codex != 6 {
+		t.Fatalf("precondition: 7 hooks for Claude Code and 6 for Codex, got %d and %d", claude, codex)
 	}
 	if n := strings.Count(guardKinds, "|") + 1; n != 4 {
 		t.Fatalf("precondition: 4 kinds of guard, got %d", n)
@@ -58,7 +58,12 @@ func TestAudit011DocsMatchTheHooksAndTheGuards(t *testing.T) {
 		{"integrations/claude-code.md", "It never stops a tool.", "an enabled forbidden-words or forbidden-commands guard returns permissionDecision deny"},
 		{"integrations/claude-code.md", "**It does not stop tools. It does not give permission decisions (allow / ask / deny) either.**", "an enabled guard returns permissionDecision deny at PreToolUse"},
 		{"integrations/claude-code.ja.md", "\u30c4\u30fc\u30eb\u306f\u4e00\u5207\u6b62\u3081\u306a\u3044", "an enabled guard returns permissionDecision deny at PreToolUse"},
-		{"integrations/claude-code.md", "`~/.codex/hooks.json` does not change and Codex users need not trust the hooks again", "install adds SessionStart to ~/.codex/hooks.json (3 hooks)"},
+		{"integrations/claude-code.md", "`~/.codex/hooks.json` does not change and Codex users need not trust the hooks again", "install adds SessionStart to ~/.codex/hooks.json (6 hooks)"},
+		{"integrations/claude-code.md", "none is added to Codex", "Codex gets SubagentStart, SubagentStop and the PreToolUse of tool-lesson"},
+		{"integrations/claude-code.ja.md", "\u3069\u308c\u3082 Codex \u306b\u306f\u8db3\u3055\u306a\u3044", "Codex gets SubagentStart, SubagentStop and the PreToolUse of tool-lesson"},
+		{"docs/guide.md", "Codex has 3)", "Codex has 6 hooks"},
+		{"docs/guide.ja.md", "Codex \u306f 3 \u3064)", "Codex has 6 hooks"},
+		{"README.md", "Delivery to subagents is in Claude Code and OpenCode 2.x |", "Codex subagents get the rules for every request too"},
 		{"integrations/claude-code.md", "and for Claude Code 3 more", "Claude Code gets 4 more than the 2 shared ones (SessionStart, SubagentStart, PreToolUse x2), or the 2 are 3 (SessionStart is shared)"},
 		{"integrations/claude-code.md", "nothing is added to tool calls", "hook tool-lesson runs at PreToolUse of Edit/Write/MultiEdit/NotebookEdit/Bash"},
 		{"integrations/claude-code.md", "There are 3 kinds, `paired-files`", "there are 4 kinds (forbidden-commands)"},

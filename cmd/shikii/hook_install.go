@@ -17,14 +17,16 @@ import (
 	"github.com/hayaenfj/shikii/internal/handoff"
 )
 
-// hookEvents are 6: before thinking (UserPromptSubmit), after thinking (Stop), at the session's start and after a summary (SessionStart.
-// Both agents. 0.11), when a subagent starts and ends (SubagentStart, SubagentStop. Claude Code only; OpenCode's plugin runs the same two commands),
-// right before a subagent is started (PreToolUse for Agent / Task only. Keeps the task text passed to the child. Claude Code only. 0.9.1),
-// and right before a file edit or a command (PreToolUse for the edit tools and Bash. One lesson naming that file or command. Claude Code
-// only. 0.11). None of the Claude Code only ones is added to Codex. Measured on Codex 0.169.0: it has SubagentStart and SubagentStop, and
-// its PreToolUse passes additionalContext to the model (it could not be shown to in 0.11), but its subagent starts with a copy of the
-// parent's conversation and the task handed to it reaches the hooks encrypted, so there is nothing of shikii's own to deliver to it;
-// and every change to hooks.json makes Codex users trust the hooks again.
+// hookEvents are 7: before thinking (UserPromptSubmit), after thinking (Stop), at the session's start and after a summary (SessionStart.
+// 0.11), when a subagent starts and ends (SubagentStart, SubagentStop: the lessons for the subagent and its own report of what it did
+// with them), right before a file edit or a command (PreToolUse for the edit tools and the shell. One lesson naming that file or
+// command, and the forbidden-commands guards. 0.11), and right before a subagent is started (PreToolUse for Agent / Task only. Keeps the
+// task text passed to the child. Claude Code only. 0.9.1).
+// Codex gets all but the last. Measured on Codex 0.169.0: SubagentStart, SubagentStop and PreToolUse pass additionalContext to the
+// model (PreToolUse could not be shown to in 0.11, and Codex was left out then), a subagent's hooks carry the parent's session and
+// the subagent's own agent_id, and the task handed to a subagent reaches the hooks encrypted, so there is nothing to keep: a Codex
+// subagent gets the rules for every request and no lesson chosen by its task. Every change to hooks.json makes Codex users trust the
+// hooks again. OpenCode's plugin runs the subagent commands itself.
 // command is the current executable's absolute path + " hook <event>": it works even if the agent's shell PATH has no `shikii` (e.g. ~/go/bin right after go install).
 // If the executable moves, rerunning `shikii hook install --yes` removes the handlers with the old path and adds new ones.
 func hookEvents() []hookEvent {
@@ -33,10 +35,10 @@ func hookEvents() []hookEvent {
 		{"UserPromptSubmit", hookCommand(exe, "user-prompt-submit"), hookTimeout, false, ""},
 		{"SessionStart", hookCommand(exe, "session-start"), hookTimeout, false, ""}, // the project's brief at the start and right after a summary (source compact). Both agents read its additionalContext (0.11)
 		{"Stop", hookCommand(exe, "stop"), hookTimeout + 5, false, ""},
-		{"SubagentStart", hookCommand(exe, "subagent-start"), hookTimeout, true, ""},          // deliver lessons to subagents too (0.7.3)
-		{"SubagentStop", hookCommand(exe, "subagent-stop"), hookTimeout, true, ""},            // the child's own report of what it did with its lessons
-		{"PreToolUse", hookCommand(exe, "agent-task"), hookTimeout, true, "Agent|Task"},       // keep the task text passed to the child (0.9.1)
-		{"PreToolUse", hookCommand(exe, "tool-lesson"), hookTimeout, true, toolLessonMatcher}, // a lesson naming the file or command, right before it (0.11)
+		{"SubagentStart", hookCommand(exe, "subagent-start"), hookTimeout, false, ""},          // deliver lessons to subagents too (0.7.3)
+		{"SubagentStop", hookCommand(exe, "subagent-stop"), hookTimeout, false, ""},            // the child's own report of what it did with its lessons
+		{"PreToolUse", hookCommand(exe, "agent-task"), hookTimeout, true, "Agent|Task"},        // keep the task text passed to the child (0.9.1)
+		{"PreToolUse", hookCommand(exe, "tool-lesson"), hookTimeout, false, toolLessonMatcher}, // a lesson naming the file or command, right before it (0.11)
 	}
 }
 
@@ -109,12 +111,18 @@ func hookEventOf(command string) string {
 	return c[i+len(" hook "):]
 }
 
-// hookEventsFor is the hooks added per settings file. The subagent and tool hooks are left out for Codex (see hookEvents).
+// hookEventsFor is the hooks added per settings file. Codex gets no agent-task (the task reaches its hooks encrypted), and its
+// tool-lesson looks at Codex's own tools (see hookEvents).
 func hookEventsFor(who string) []hookEvent {
 	var evs []hookEvent
 	for _, ev := range hookEvents() {
-		if ev.claudeOnly && who != "Claude Code" {
-			continue
+		if who != "Claude Code" {
+			if ev.claudeOnly {
+				continue
+			}
+			if ev.matcher == toolLessonMatcher {
+				ev.matcher = toolLessonMatcherCodex
+			}
 		}
 		evs = append(evs, ev)
 	}

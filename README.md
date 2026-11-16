@@ -9,7 +9,7 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-2184%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2187%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.35.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -73,7 +73,7 @@ Everything else is the machine's job.
 
 | Use case | What you need |
 |---|---|
-| Learn from ordinary conversations and turn corrections into guards | Claude Code, Codex or OpenCode 2.x, shikii, and `shikii --init` in the projects you choose. Delivery to subagents is in Claude Code and OpenCode 2.x |
+| Learn from ordinary conversations and turn corrections into guards | Claude Code, Codex or OpenCode 2.x, shikii, and `shikii --init` in the projects you choose. Lessons reach subagents too; one chosen by the subagent's task in Claude Code and OpenCode 2.x |
 | Answer the built-in questions | Recommended: TypeSafe Jev with `TYPESAFE_API_KEY` in the environment, nothing to download. Without an API key: llama.cpp (`llama-server`) and Ternary-Bonsai-27B through `shikii up`, about 7.6 GB to download and 10 GB of memory while running |
 | Use another model for business decisions | Any System One endpoint from the table below |
 | Install | macOS or Linux (amd64 or arm64), sh, curl, tar, awk, and shasum or sha256sum (both systems have them). Go is not needed |

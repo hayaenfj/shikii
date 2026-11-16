@@ -264,6 +264,6 @@ func ensurePage(root string) {
 type hookEvent struct {
 	event, cmd string
 	timeout    int
-	claudeOnly bool   // events Codex lacks (SubagentStart, the PreToolUse for child agents) are added only to Claude Code's settings
-	matcher    string // tools PreToolUse looks at (Agent / Task for agent-task, the edit tools and Bash for tool-lesson. Other tools do not trigger the hook)
+	claudeOnly bool   // added only to Claude Code's settings (the PreToolUse that keeps a child's task: Codex gives its hooks no task to keep)
+	matcher    string // tools PreToolUse looks at (Agent / Task for agent-task, the edit tools and the shell for tool-lesson. Other tools do not trigger the hook)
 }
