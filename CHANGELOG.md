@@ -2,6 +2,14 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.34.1 — The memory upgrade goes on past a missing source
+
+### Fixes
+
+- The memory upgrade no longer stops at a page whose original source is missing. Its review record can set that page aside with `blocked` and the reason; the batch then moves on, and the page comes back for review when its text changes.
+- The skill now says the memory upgrade runs to the end in the same turn, without scheduled wake-ups or splitting it into several turns.
+- The question about a decision that should have been asked first now asks whether the person wanted to be asked before the work began. The spec and each project's copy of the question were changed; answers already stored keep the old wording.
+
 ## 0.34.0 — shikii's hooks for OpenCode 2.x
 
 ### Highlights
