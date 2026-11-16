@@ -8,6 +8,9 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
+// memoryUpgradeBlockedNext is the next action when only pages declared blocked remain: the upgrade stops and reports them, it does not send the agent back to review.
+const memoryUpgradeBlockedNext = "Only pages whose original evidence cannot be read or does not support them remain, and they are declared blocked. Stop the upgrade here and report the blocked refs and their reasons. Never delete material to finish; a blocked page returns for review when its text changes."
+
 const memoryUpgradeNext = "Review one batch per task (at most two articles), against original sources and current behavior. Save necessary corrections, then maintenance with the latest returned ref and a checked reason. Preserve sources, preferences and history; reading alone is not review. Resume remaining articles on the next task from durable progress. An explicit request to finish the upgrade may continue with prepare:{receipt,query:memory-upgrade}. Report actual blocked sources; never replace missing evidence with deletion or human grading."
 
 func prepareMemoryUpgrade(book notebook.Book, w *workState, quoted map[string]string, includeComplete bool) (map[string]any, []store.KnowledgeReference, error) {
@@ -50,7 +53,9 @@ func prepareMemoryUpgrade(book notebook.Book, w *workState, quoted map[string]st
 		pages = append(pages, map[string]any{"ref": ref, "article": p, "orientation": notebook.Orient(p, notebook.MemoryUpgradePolicy, 1200), "task": task, "maintenance_ref": mref, "body_included": true})
 	}
 	value := map[string]any{"epoch": u.Epoch, "status": u.Status, "message": u.Message, "total": u.Total, "reviewed": u.Reviewed, "withdrawn": u.Withdrawn, "pages": pages, "unavailable_sources": u.Blocked, "policy": u.Policy}
-	if u.Status != "complete" {
+	if u.Status == "blocked" {
+		value["next_action"] = memoryUpgradeBlockedNext
+	} else if u.Status != "complete" {
 		value["next_action"] = memoryUpgradeNext
 	}
 	if w.Reasoning.Reading == nil {

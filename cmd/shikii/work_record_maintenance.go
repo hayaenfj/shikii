@@ -39,10 +39,12 @@ func (b *workRecordBatch) prepareProcedureReviews() {
 		add(workItem{Ref: "procedure_reviews", Kind: "maintenance", Error: e.Error()})
 		return
 	}
+	pending := 0 // the tasks that are not declared blocked: only these keep the review incomplete
 	for _, task := range tasks {
 		if book.MemoryUpgradeBlocked(task.PageID, task.Revision) {
 			continue // declared blocked by the record: it is not a pending review
 		}
+		pending++
 		view, e := book.Query("lesson:" + task.PageID + "@" + task.Revision)
 		if e == nil && len(view.Lessons) != 1 {
 			e = errors.New("the saved review article is unavailable; prepare with this receipt and its exact lesson revision")
@@ -69,5 +71,5 @@ func (b *workRecordBatch) prepareProcedureReviews() {
 			add(workItem{Ref: "procedure_reviews", Kind: "maintenance", Error: e.Error()})
 		}
 	}
-	complete = len(tasks) == 0
+	complete = pending == 0
 }
