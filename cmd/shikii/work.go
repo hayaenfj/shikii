@@ -219,6 +219,7 @@ type workResult struct {
 	Plan             any                       `json:"plan,omitempty"`
 	Reflection       any                       `json:"reflection,omitempty"`
 	ProcedureReviews []workProcedureReview     `json:"procedure_reviews,omitempty"`
+	LessonsToAssess  *workLessonsToAssess      `json:"lessons_to_assess,omitempty"` // lessons delivered during this request and not assessed yet
 }
 
 type workProcedureReview struct {

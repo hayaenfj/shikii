@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
 )
 
 func (b *workRecordBatch) recordReflection(noteSources []string) {
@@ -21,13 +23,35 @@ func (b *workRecordBatch) recordReflection(noteSources []string) {
 		}
 		reflection.Reviews = append(reflection.Reviews, reviewRequest{SourceID: binding.Source, TraceID: binding.Trace, Truth: r.Answer, Reason: r.Reason})
 	}
+	var own []turnLesson // the lessons delivered during this request, read once when a memory names one by its key
 	for _, m := range req.Memory {
-		binding, ok := w.Memory[m.Ref]
-		if !ok {
+		if binding, ok := w.Memory[m.Ref]; ok {
+			reflection.Memory = append(reflection.Memory, memoryAssessmentRequest{SourceID: binding.Source, Key: binding.Key, Result: m.Result, Decision: m.Decision, Evidence: m.Evidence, CorrectionResult: m.CorrectionResult})
+			continue
+		}
+		if !deliveredKey(m.Ref) {
 			add(workItem{Ref: m.Ref, Kind: "memory", Error: unknownPreparedRef("memory", m.Ref, sortedRefs(w.Memory), "pending[].memory[]")})
 			continue
 		}
-		reflection.Memory = append(reflection.Memory, memoryAssessmentRequest{SourceID: binding.Source, Key: binding.Key, Result: m.Result, Decision: m.Decision, Evidence: m.Evidence, CorrectionResult: m.CorrectionResult})
+		// a lesson of this request is assessed here by its key: every delivery of it in the request (the same lesson can come before
+		// the request and again right before a command or a file)
+		if own == nil {
+			var err error
+			if own, err = b.turnLessons(); err != nil {
+				add(workItem{Ref: m.Ref, Kind: "memory", Error: err.Error()})
+				continue
+			}
+		}
+		found := false
+		for _, l := range own {
+			if l.key == m.Ref {
+				found = true
+				reflection.Memory = append(reflection.Memory, memoryAssessmentRequest{SourceID: l.delivery, Key: l.key, Result: m.Result, Decision: m.Decision, Evidence: m.Evidence, CorrectionResult: m.CorrectionResult, inRequest: true})
+			}
+		}
+		if !found {
+			add(workItem{Ref: m.Ref, Kind: "memory", Error: notThisRequestsLesson(m.Ref, own, sortedRefs(w.Memory))})
+		}
 	}
 	sourceReviews := []string{}
 	for _, ref := range req.Reviewed {
@@ -111,5 +135,90 @@ func (b *workRecordBatch) recordReflection(noteSources []string) {
 			add(item)
 		}
 	}
+	b.lessonsLeft()
+}
 
+// turnLesson is one lesson delivered during a request to the session's own agent: the delivery's id and the quote's key.
+type turnLesson struct {
+	delivery, key string
+	assessed      bool
+}
+
+// workLessonsToAssess names, in a record's reply, the lessons delivered during its request that are not assessed yet.
+type workLessonsToAssess struct {
+	Refs []string `json:"refs"`
+	How  string   `json:"how"`
+}
+
+// lessonsToAssessMax is how many keys a reply names (a request receives two lessons at its start and one per tool call).
+const lessonsToAssessMax = 16
+
+const lessonsToAssessHow = "Lessons delivered during this request that you have not assessed. Only you saw whether they were used: send memory:[{ref,result,decision,evidence}] with ref one of these keys in a work record of this request (result helpful, unused, harmful, or unknown when you cannot tell)."
+
+// deliveredKey reports whether a memory reference has the form of a delivered quote's key, not of a prepared ref (memoryN).
+func deliveredKey(ref string) bool {
+	return strings.HasPrefix(ref, "lesson:") || strings.HasPrefix(ref, "decision:") || strings.HasPrefix(ref, "feedback:")
+}
+
+// turnLessons lists the lessons delivered during this record's request to the session's own agent, in the order delivered: before
+// the request (the delivery carries the turn's id) and right before a command or a file (its parent is the turn). A lesson
+// delivered to a subagent is that subagent's to assess, and a preparation made without a hook has no request of a session.
+func (b *workRecordBatch) turnLessons() ([]turnLesson, error) {
+	if b.w.Standalone || b.token.Turn == "" {
+		return []turnLesson{}, nil
+	}
+	report, err := (store.Store{Dir: b.root}).MemoryReport(b.scope)
+	if err != nil {
+		return nil, err
+	}
+	out := []turnLesson{}
+	for i := len(report.All) - 1; i >= 0; i-- { // the report lists the newest delivery first
+		o := report.All[i]
+		if o.Agent == "" && (o.SourceID == b.token.Turn || o.Parent == b.token.Turn) {
+			out = append(out, turnLesson{delivery: o.SourceID, key: o.Quote.Key, assessed: o.Assessment != nil})
+		}
+	}
+	return out, nil
+}
+
+// notThisRequestsLesson refuses a key that names no lesson delivered to the session's own agent during this request, with the
+// keys the record can take and, for an earlier request's lesson, the prepared refs.
+func notThisRequestsLesson(ref string, own []turnLesson, prepared []string) string {
+	text := fmt.Sprintf("unknown memory reference %q: not a lesson delivered to you during this request", ref)
+	keys, seen := []string{}, map[string]bool{}
+	for _, l := range own {
+		if !seen[l.key] {
+			seen[l.key] = true
+			keys = append(keys, l.key)
+		}
+	}
+	if len(keys) > 0 {
+		text += "; the lessons of this request are " + listRefs(keys)
+	} else {
+		text += " (none was)"
+	}
+	if len(prepared) > 0 {
+		text += "; a lesson of an earlier request is assessed by its ref of pending[].memory[] in the reply of prepare: " + listRefs(prepared)
+	}
+	return text + ". A lesson delivered to a subagent is assessed by that subagent"
+}
+
+// lessonsLeft puts in the reply the lessons of this request that are still not assessed after this record, so the agent that
+// just did the work can assess them in the same request: a session that sends no further request is never asked again.
+func (b *workRecordBatch) lessonsLeft() {
+	own, err := b.turnLessons()
+	if err != nil {
+		hookLog("work record: lessons of the request: " + err.Error())
+		return
+	}
+	refs, seen := []string{}, map[string]bool{}
+	for _, l := range own {
+		if !l.assessed && !seen[l.key] && len(refs) < lessonsToAssessMax {
+			seen[l.key] = true
+			refs = append(refs, l.key)
+		}
+	}
+	if len(refs) > 0 {
+		b.result.LessonsToAssess = &workLessonsToAssess{Refs: refs, How: lessonsToAssessHow}
+	}
 }

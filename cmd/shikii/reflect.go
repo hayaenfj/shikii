@@ -41,6 +41,9 @@ type memoryAssessmentRequest struct {
 	Result           string `json:"result"`
 	Decision         string `json:"decision"`
 	Evidence         string `json:"evidence"`
+	// inRequest is set by a work record for a lesson delivered during its own request (never read from input): the store then
+	// does not wait for the conversation to be recorded.
+	inRequest bool
 }
 
 type reflectSource struct {
@@ -407,7 +410,7 @@ func runReflectWithCommit(root, scope string, req reflectRequest, commit workCom
 		if neutral && a.Decision == "" && a.Result == "unused" {
 			a.Decision = "No task decision used this memory."
 		}
-		assessment := store.MemoryAssessment{SourceID: a.SourceID, Key: a.Key, Result: a.Result, Decision: a.Decision, Evidence: a.Evidence, CorrectionResult: a.CorrectionResult}
+		assessment := store.MemoryAssessment{SourceID: a.SourceID, Key: a.Key, Result: a.Result, Decision: a.Decision, Evidence: a.Evidence, CorrectionResult: a.CorrectionResult, InRequest: a.inRequest}
 		err := commit(func() error {
 			if e := (store.Store{Dir: root}).SaveMemoryAssessment(scope, assessment); e != nil {
 				return e

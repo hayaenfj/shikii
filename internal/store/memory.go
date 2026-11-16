@@ -52,6 +52,10 @@ type MemoryAssessment struct {
 	// Agent is the subagent that assessed a lesson delivered to itself, from its own final report. Empty for the reflection of the
 	// conversation: only the one a lesson was delivered to can tell whether it was used.
 	Agent string `json:"agent,omitempty"`
+	// InRequest is set when the agent that did the work assessed the lesson in the work record of the request it was delivered
+	// in, before the person's next message. Without it (and without Agent) the assessment was made after the conversation was
+	// recorded, at a later request of the same session.
+	InRequest bool `json:"in_request,omitempty"`
 }
 
 type MemoryStats struct {

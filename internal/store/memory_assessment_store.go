@@ -88,9 +88,14 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 	if correction && a.CorrectionResult == "" {
 		a.CorrectionResult = "unknown"
 	}
+	if a.InRequest && (a.Agent != "" || deliveredTo != "") {
+		return errors.New("a lesson delivered to a subagent is assessed by that subagent, in its final report")
+	}
 	// A subagent reports what it did with a lesson when it ends, inside the parent's turn: it does not wait for the person's next
-	// message, which is about the parent's reply, not about the subagent's work.
-	if a.Agent == "" {
+	// message, which is about the parent's reply, not about the subagent's work. The agent of the conversation can assess a
+	// lesson in the work record of the request it was delivered in (InRequest): it just did the work, and a session that sends
+	// no further request is never asked again. Any other assessment waits for the conversation to be recorded.
+	if a.Agent == "" && !a.InRequest {
 		feedback, err := s.RecentFeedback(scope)
 		if err != nil {
 			return err
