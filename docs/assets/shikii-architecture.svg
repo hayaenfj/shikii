@@ -45,5 +45,5 @@
 <rect x="40" y="794" width="1120" height="100" rx="16" fill="#152236" stroke="#2b405b"/>
 <text x="64" y="831" font-size="22" font-weight="700" fill="#d2e1f5">共通の入口: ~/.shikii/agent</text>
 <text x="64" y="866" font-size="18" font-weight="400" fill="#b3c3d9">型・道具・プロジェクトの索引。会話・正解・線は各プロジェクトへ保存。</text>
-<text x="40" y="937" font-size="18" font-weight="400" fill="#b3c3d9">会話の整理は利用中のエージェント。既製の問いの判定はJev(鍵が無い時は手元のモデル)が担当します。</text>
+<text x="40" y="937" font-size="18" font-weight="400" fill="#b3c3d9">会話の整理は利用中のエージェント。既製の問いの判定はJev(APIキーが無い時は手元のモデル)が担当します。</text>
 </svg>

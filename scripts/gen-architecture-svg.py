@@ -95,7 +95,7 @@ COPY = {
         "decision_foot": "会話の仮採点だけでは線を引かない。",
         "shared_title": "共通の入口: ~/.shikii/agent",
         "shared_body": "型・道具・プロジェクトの索引。会話・正解・線は各プロジェクトへ保存。",
-        "arch_foot": "会話の整理は利用中のエージェント。既製の問いの判定はJev(鍵が無い時は手元のモデル)が担当します。",
+        "arch_foot": "会話の整理は利用中のエージェント。既製の問いの判定はJev(APIキーが無い時は手元のモデル)が担当します。",
     },
     "en": {
         "hero_title": "Every turn adds to what the project knows.",

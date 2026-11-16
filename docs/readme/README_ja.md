@@ -74,26 +74,26 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 | やりたいこと | 必要なもの |
 |---|---|
 | 普段の会話から学び、訂正を検査にする | Claude Code、Codex、またはOpenCode 2.x、shikii、利用するプロジェクトでの `shikii --init`。サブエージェントへの配送はClaude Codeだけ |
-| 既製の問いに答えさせる | 推奨: TypeSafeのJev（環境変数 `TYPESAFE_API_KEY`。取得するものは無い）。鍵を置けない時: llama.cpp（`llama-server`）とTernary-Bonsai-27Bを `shikii up` で立てる構成（取得 約7.6GB、動作中のメモリ約10GB） |
+| 既製の問いに答えさせる | 推奨: TypeSafeのJev（環境変数 `TYPESAFE_API_KEY`。取得するものは無い）。APIキーを置けない時: llama.cpp（`llama-server`）とTernary-Bonsai-27Bを `shikii up` で立てる構成（取得 約7.6GB、動作中のメモリ約10GB） |
 | 業務の判定に別のモデルを使う | 下の表のSystem One形式の接続先 |
 | インストールする | macOSかLinux（amd64かarm64）、sh、curl、tar、awk、shasumかsha256sum（どちらのOSにも初めからある）。Goは不要 |
 | ソースからインストールする | Go 1.27以上、Git、sh。画面は同梱済みでNode.jsは不要 |
 | コンテナで業務のAPIと画面を動かす | DockerとCompose、またはPodmanとCompose provider（[準備](../../integrations/docker.ja.md)） |
-| 鍵やGPUなしで一周試す | Go 1.27以上と同梱の偽モデル（`scripts/demo.sh`） |
+| APIキーやGPUなしで一周試す | Go 1.27以上と同梱の偽モデル（`scripts/demo.sh`） |
 
 | 接続先 | 準備するもの |
 |---|---|
-| Jev（TypeSafe AI） | 推奨。`TYPESAFE_API_KEY`。鍵があれば、既製の問いと、`send_to` に `hosted` を含む業務の判定がここへ送られる。[公式仕様](https://docs.typesafe.ai/introduction/quickstart) |
-| llama.cpp | 鍵を置けない時。通常のチャットGGUFを同梱の `shikii-readout` 越しに（手元の標準はTernary-Bonsai-27B。`shikii up` が両方を立てる）。OpenJevのような学習済みの決定モデルはそのまま通す。Kev-4Bは使えない。[実行例](../../integrations/readout.ja.md) |
+| Jev（TypeSafe AI） | 推奨。`TYPESAFE_API_KEY`。APIキーがあれば、既製の問いと、`send_to` に `hosted` を含む業務の判定がここへ送られる。[公式仕様](https://docs.typesafe.ai/introduction/quickstart) |
+| llama.cpp | APIキーを置けない時。通常のチャットGGUFを同梱の `shikii-readout` 越しに（手元の標準はTernary-Bonsai-27B。`shikii up` が両方を立てる）。OpenJevのような学習済みの決定モデルはそのまま通す。Kev-4Bは使えない。[実行例](../../integrations/readout.ja.md) |
 | Ollama / LM Studio | `/v1/systemone` と決定モデル。業務の判定向け。この版では未検証 |
 
 ## 始め方
 
-### 1. TypeSafeの鍵を置く（推奨）
+### 1. TypeSafeのAPIキーを置く（推奨）
 
-[TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart)でAPIの鍵を取得し、シェルとエージェントの環境変数に置きます（`export TYPESAFE_API_KEY=…`）。取得するものはなく、普通のPCで動きます。鍵があれば、hookも既製の問いもJevへ送り、手元のモデルは起こしません（`shikii up` も起こしません）。既製の問いのために、依頼文・エージェントの返答・wikiの教訓がTypeSafeへ送られます（手元の記録にも残ります）。鍵を置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jevに固定するなら `SHIKII_MODEL=hosted` を置きます。
+[TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart)でAPIキーを取得し、シェルとエージェントの環境変数に置きます（`export TYPESAFE_API_KEY=…`）。取得するものはなく、普通のPCで動きます。APIキーがあれば、hookも既製の問いもJevへ送り、手元のモデルは起こしません（`shikii up` も起こしません）。既製の問いのために、依頼文・エージェントの返答・wikiの教訓がTypeSafeへ送られます（手元の記録にも残ります）。APIキーを置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jevに固定するなら `SHIKII_MODEL=hosted` を置きます。
 
-**鍵を置けない時はllama.cppです。** 鍵が無ければ手元のモデルを動かします。27Bのモデルなので動作中のメモリが約10GB要り、普通のPCでは重いことがあります。macOSでHomebrewなら:
+**APIキーを置けない時はllama.cppです。** APIキーが無ければ手元のモデルを動かします。27Bのモデルなので動作中のメモリが約10GB要り、普通のPCでは重いことがあります。macOSでHomebrewなら:
 
 ```sh
 brew install llama.cpp
@@ -134,7 +134,7 @@ Goを上げた後や実行ファイルを動かした後にhookが働かなく�
 
 > このプロジェクトでshikiiを使って
 
-エージェントが `shikii --init` を実行します（自分で実行しても同じ）。初期化したプロジェクトだけで動きます。答え合わせの画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こしてブラウザで開きます（URL は `shikii page`）。この機械で最初のプロジェクトなら、hook が 1 つも入っていない時は `shikii --init` が hook も入れます（`shikii hook install --yes` と同じ。TypeSafeの鍵が無く `llama-server` が入っている機械では、手元のモデルを裏で起動します）。すでにプロジェクトがあって hook が無い機械では、hook は入れずに、入れるコマンドを表示します。既製の問い・wiki・止める検査の置き場・作業記録の置き場・MCPの設定（プロジェクトに `.mcp.json`・`opencode.json` が足されます。`AGENTS.md` と `CLAUDE.md` には書きません。Gitの除外に入るのは `.shikii/` だけです。MCPを共通の `~/.codex/config.toml` からしか読まないCodexには、プロジェクトを書かない共通の登録を1つ書き、道具を呼ぶたびにエージェントの作業フォルダを `project` で渡します。この登録には `default_tools_approval_mode = "approve"` を書くので、Codexはshikiiの道具を、呼ぶたびに確認せずに実行します。確認してほしい時は、そこを `"prompt"` と書くか、行を消します。shikiiが足し直すことはありません）・エージェントの作法が用意されます。`shikii doctor` で状態を確かめます。
+エージェントが `shikii --init` を実行します（自分で実行しても同じ）。初期化したプロジェクトだけで動きます。答え合わせの画面はプロジェクトごとに 1 つで、最初の依頼の hook が空いているポートで起こしてブラウザで開きます（URL は `shikii page`）。この機械で最初のプロジェクトなら、hook が 1 つも入っていない時は `shikii --init` が hook も入れます（`shikii hook install --yes` と同じ。TypeSafeのAPIキーが無く `llama-server` が入っている機械では、手元のモデルを裏で起動します）。すでにプロジェクトがあって hook が無い機械では、hook は入れずに、入れるコマンドを表示します。既製の問い・wiki・止める検査の置き場・作業記録の置き場・MCPの設定（プロジェクトに `.mcp.json`・`opencode.json` が足されます。`AGENTS.md` と `CLAUDE.md` には書きません。Gitの除外に入るのは `.shikii/` だけです。MCPを共通の `~/.codex/config.toml` からしか読まないCodexには、プロジェクトを書かない共通の登録を1つ書き、道具を呼ぶたびにエージェントの作業フォルダを `project` で渡します。この登録には `default_tools_approval_mode = "approve"` を書くので、Codexはshikiiの道具を、呼ぶたびに確認せずに実行します。確認してほしい時は、そこを `"prompt"` と書くか、行を消します。shikiiが足し直すことはありません）・エージェントの作法が用意されます。`shikii doctor` で状態を確かめます。
 
 **OpenCodeについて。** OpenCode 2.xにはhookの設定ファイルが無いので、`shikii hook install --yes`(と、この機械で最初の `shikii --init`)が、小さなプラグインを `~/.config/opencode/plugins/shikii/` に置きます(`$XDG_CONFIG_HOME` が絶対パスの時は、その下の `opencode/` です)。Claude CodeやCodexと同じhookを動かすので、依頼の前にshikiiの教訓がモデルに届き、必要な記録が残っていなければ、回の終わりに続きを促します。この終了時の確認は、OpenCode の試験段階の hook(OpenCode 2.3.0)を使って回の中で動くので、TUI でも `opencode run` でも動きます。その hook を動かさない OpenCode では回が終わった後にしか確認できず、自前のサーバーで動く `opencode run`(`--standalone`、または常駐のサービスが動いていない時)はその時にはもう終わっています。同じ名前のあなたのフォルダは上書きせず、リンクもたどらず、その旨を表示して残します。`OPENCODE_CONFIG_DIR` を設定して起こしたOpenCodeは、そのフォルダの `plugins/` からだけプラグインを読むので、shikiiのプラグインを読みません。shikiiはそこへは書かず、`shikii doctor` がそう知らせます。OpenCode 1.xはこのフォルダを読まず、これまでどおりMCPの設定とskillだけを使います。shikiiのプラグインはコマンドの前のhookを持たないので、コマンドを拒む止める検査はOpenCodeでは動きません(終了時の確認は動きます)。shikiiのプラグインはあなたへ文も見せないので、Claude CodeやCodexで表示するshikiiの文(止める検査の説明、答えを待つ数、自動の続きを止めた知らせ)は、OpenCodeには出ません。入れた後はOpenCodeを開き直してください。
 
@@ -182,7 +182,7 @@ hookを入れると、shikiiは人の依頼1つと、それに対するエージ
 
 ### 決定モデルに聞くこと
 
-決定モデルは、文章を書かずに、はい/いいえや選択肢の確率だけを返すモデルです。推奨はTypeSafeのJevで、鍵を置けない時は手元のTernary-Bonsai-27Bを使います。shikiiは、エージェント自身の仕事についての次の問いを初めから持っています。
+決定モデルは、文章を書かずに、はい/いいえや選択肢の確率だけを返すモデルです。推奨はTypeSafeのJevで、APIキーを置けない時は手元のTernary-Bonsai-27Bを使います。shikiiは、エージェント自身の仕事についての次の問いを初めから持っています。
 
 | 問い | 聞く時 |
 |---|---|
@@ -241,7 +241,7 @@ cloneした中で（例の判定はインストーラーには入っていませ
 
 ```sh
 shikii new same-issue --from decisions/same-issue.yaml              # 例の判定を .shikii/decisions/ に写す
-SHIKII_MODEL=local shikii up                                     # この例の問いは pii: true なので手元のモデルが要る。鍵があると up は SHIKII_MODEL=local の時だけ起こす
+SHIKII_MODEL=local shikii up                                     # この例の問いは pii: true なので手元のモデルが要る。APIキーがあると up は SHIKII_MODEL=local の時だけ起こす
 shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
 #   → band=ask   （線がまだ無いので人が決める）
 shikii serve --local http://127.0.0.1:8080                       # 答え合わせの画面: http://127.0.0.1:8095
@@ -257,7 +257,7 @@ shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…
 | `discard` | 動かない |
 | `abstain` | 足りない入力か接続先を揃える |
 
-線は質問とモデルの組ごとに持ち、どちらかが変われば測り直します。過去の案件の表(CSV)から正解を取り込む `shikii import` や、大きいモデルに同じ問いを聞き、人の正解とよく合う時だけその答えを正解に足す `shikii judge` もあります。`shikii tune` は貯めた正解で別の聞き方を採点し、`shikii drift` と `shikii check` はずれたモデルや弱められた線を捕まえます。鍵やGPUなしで試すなら、cloneした中で `scripts/demo.sh` を実行します。
+線は質問とモデルの組ごとに持ち、どちらかが変われば測り直します。過去の案件の表(CSV)から正解を取り込む `shikii import` や、大きいモデルに同じ問いを聞き、人の正解とよく合う時だけその答えを正解に足す `shikii judge` もあります。`shikii tune` は貯めた正解で別の聞き方を採点し、`shikii drift` と `shikii check` はずれたモデルや弱められた線を捕まえます。APIキーやGPUなしで試すなら、cloneした中で `scripts/demo.sh` を実行します。
 
 - [既製の判定](../../decisions/README.md) · [業務の例](../examples/inquiry-route.ja.md) · [全コマンドとHTTP API](../guide.ja.md) · [MCP](../../integrations/mcp.ja.md) · [測った数字](../bench.ja.md)
 

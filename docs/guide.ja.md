@@ -67,7 +67,7 @@ GitHub Releases の最新安定版から、利用中の OS・CPU 向けの本体
 
 ## プロジェクトごとの有効化
 
-インストール後、利用するプロジェクトで `shikii --init`(`shikii init` も同じ)を一度実行する。shikii の hook が入っていない機械で最初のプロジェクトを初期化すると、hook も入れる(`shikii hook install --yes` と同じ。TypeSafe の鍵が無く `llama-server` が入っている機械では、手元のモデルを裏で起動する。初回はモデルを取得する)。すでにプロジェクトがあって hook が無い機械では入れずに、入れるコマンドを表示する。エージェントに「このプロジェクトで shikii を使いたい」と頼んでもよい。既製の問い(hook の 4 問・wiki の 2 問・配送の 1 問 lesson-applies)・wiki・止める検査と作業記録の置き場・MCP・作法と画面への入口を揃え、最後に `.shikii/project.json` を書く。hook はこのファイルがある場所だけで動き、未初期化の場所には保存先も Git の除外も作らない。サブフォルダからも同じプロジェクトルートを使い、再初期化しても既存の設定・会話・正解を保持する。`shikii doctor` で状態を確かめる。
+インストール後、利用するプロジェクトで `shikii --init`(`shikii init` も同じ)を一度実行する。shikii の hook が入っていない機械で最初のプロジェクトを初期化すると、hook も入れる(`shikii hook install --yes` と同じ。TypeSafe のAPIキーが無く `llama-server` が入っている機械では、手元のモデルを裏で起動する。初回はモデルを取得する)。すでにプロジェクトがあって hook が無い機械では入れずに、入れるコマンドを表示する。エージェントに「このプロジェクトで shikii を使いたい」と頼んでもよい。既製の問い(hook の 4 問・wiki の 2 問・配送の 1 問 lesson-applies)・wiki・止める検査と作業記録の置き場・MCP・作法と画面への入口を揃え、最後に `.shikii/project.json` を書く。hook はこのファイルがある場所だけで動き、未初期化の場所には保存先も Git の除外も作らない。サブフォルダからも同じプロジェクトルートを使い、再初期化しても既存の設定・会話・正解を保持する。`shikii doctor` で状態を確かめる。
 
 `.shikii/` の中身:
 
@@ -99,7 +99,7 @@ Claude Code と Codex は、依頼の前・作業の後・セッションの始�
 
 ## 止める検査
 
-機械で確かめられる訂正は「止める検査」にする(`.shikii/guards/<id>.yaml`)。種類は `paired-files`(片方が変わったらもう片方も)、`forbidden-words`(足した行に使わない語)、`commit-body`(そのターンのコミットの本文に含む語)、`forbidden-commands`(流そうとしているコマンドが当たってはいけない正規表現。Claude Code の Bash の `PreToolUse` で流す直前に断る。`example` に止めるべきコマンドを書き、`enable` がそれを止めて見せる。Stop ではコマンドを見ない、0.11)の 4 つ。`pairs` と `except` のパスは glob で書ける。`/` を含まない型は、どの階層でもファイル名だけにも当たる(`*.md` は `docs/a/b.md` に当たり、`docs/*.md` は `docs` の直下の `.md` だけに当たる)。`*` は 1 つのフォルダの中だけに当たり、`**` だけの区切りは 0 個以上のフォルダに当たる(`docs/**/*.md` は `docs/b.md` にも `docs/a/c/b.md` にも、`**/*.md` は `README.md` にも当たる)。末尾の `dir/**` は `dir` の下の全部。Stop で有効な検査を変わったファイル・足した行・依頼の時の HEAD からのコミットに当て、引っかかれば `decision: block` と理由を返してエージェントに直させる。足した行は、依頼の時のファイルに無かった行。本人が書いて未コミットだった行は、足した行に数えない。依頼の時に未コミットの変更があったファイルと、まだ追跡していなかったファイルは、その中身の写しを shikii が残さない。`forbidden-words` の検査が有効な間は、行ごとの鍵付きハッシュ(HMAC-SHA256。鍵は依頼ごとに作る乱数)とその行の数だけを、一覧の横に控える(`sessions/<id>.lines`、スラッシュコマンドのターンは `sessions/<id>.guard.lines`。本人だけが読める権限で、次の依頼で置き換わり、一覧と同じく 7 日で消える)。そうしたファイルの足した行は、この表に無い行で、同じ行が依頼の時より多い時は、多い数だけ足した行になる。表は止める検査の上限(200 ファイル、1 ファイル 1 MB、バイナリは除く)と、hook の git の上限の 3 秒に合わせて作る。上限を超えたファイルと、一覧を取ってから表を作るまでに変わったファイルは、今までどおり依頼の時の HEAD のコミットと比べるので、そこに本人が書いて未コミットだった行は、ターンがそのファイルを変えると足した行に数える。依頼の時に未コミットの物が無いプロジェクトでは、表を作らない。`forbidden-words` の検査が止めた行は、依頼の前からあった行に数えない。その行を止めた Stop(と、失敗のまま記録し直した Stop)が、止めた行そのものだけを、ファイルごとに鍵付きハッシュ(鍵はこの記録だけの乱数)と、止めた数と、そのターンの始まりの HEAD のコミットにその行がいくつあったかで、セッションごとではなくリポジトリごとに 1 つの記録に控える(`records/stopped-lines/<リポジトリのパスのハッシュ>.stopped`。行そのものは入らず、本人だけが読める権限)。止めた行は、ファイルから消すか、ターンが始まる前にコミットするまで、どのセッションのどのターンでも、そのファイルを変えれば、依頼の時の中身をどう読んでも(`git add` の後も)、Stop(依頼のターンとスラッシュコマンドのターン)と公開前の検査が足した行に数え、もう一度止める。ターン自身のコミットでは、そのターンの間は外れない。止めた行をコミットすると、そのコミットの後に始まるターンからは、どの比べでも数えない(そのターン自身が作ったコミットでは、そのターンの間は外れない)。記録は行を文の鍵付きハッシュでしか覚えないので、本人が止めた行を消し(ファイルから、または後のコミットや revert で)、コミットした後か消した後にそのファイルを比べた Stop がまだ無いうちに同じ文をもう一度書くと、書き直した行は止めた行と見分けられず、止める(0.30.7 と同じ)。本人の行とみなすのは、依頼の時にあり、かつ止めた行の記録に無い行だけで、同じ文を本人も書いていた時は、止めた数を超える分が本人の行になる。Stop が見直すのは、そのターンが変えたファイルだけで、そこで消した・コミットした止めた行と、無くなったファイルの止めた行を落とす。ほかのファイルの止めた行は、そのまま残す。このため、本人が `git stash` でよけた止めた行は、`git stash pop` の後も止める。ただし、よけている間にそのファイルを比べた Stop があると(ターンがそのファイルを変えた、ターンの間に stash した)、その Stop が消したとみなす。Stop は記録を 1 回だけ読む。書く時は比べた時に読んだ記録を使い、錠の中では記録の先頭の行(書くたびに作り直す乱数の値が入る)だけを読んで確かめ、その間に別の Stop が記録を書いた時だけ全体を読み直す。記録を書く Stop は、読んだ順のまま並べ替えずに 1 回だけ書く。このため、上限に近い記録でも、Stop に足されるのは記録を 1 回読み、1 回書く時間だけ。記録は錠を取って読み、変え、書く(錠を取れない Stop は書かずに進む)。記録の数は決まった幅で書くので、前からある行は数が変わっても長さが変わらない(幅に入らない大きな数は幅の最大で書き、その数以上として読む。止める側に寄るだけ)。記録は 4 MB まで。前からある分は必ず残し、4 MB を超える時は、新しく足す分のうち入らない分だけを落とす(新しい分は、止めた行の少ないファイルから入れる)。記録は、リポジトリを最後に見た時から 7 日で消える。記録を読む Stop と、リポジトリがあると確かめたセッションの掃除が 7 日を数え直すので、一時的に見えなくなったリポジトリ(名前を変えた、ディスクをつないでいない)の記録は残る。スラッシュコマンド(`/commit` など)で始まるターンは依頼としては残さないが、止める検査のためだけに区切る。その時の作業ツリーの一覧と HEAD を控え、そのターンの Stop で検査を当てる(2 つの問い・スラッシュコマンドの時の教訓の配送・作法の検査は足さない。道具の直前の教訓は、依頼のターンと同じく届く)。そのターンは、区切り自身の起点(スラッシュコマンドの時の一覧と HEAD)と比べる。その間に本人がしたこと(pull や checkout など)は、そのターンの作業に数えない。前の依頼まで戻るのは 2 つの場合だけ。前の依頼のターンが終わりまで行っておらず(本人が中断した時)、スラッシュコマンドのターンがファイルを変えるかコミットを作った時は、そのターンが依頼の続きをしているので、依頼の時から後を確かめる(依頼のターンが足した行は、`/commit` がコミットする時も足した行のまま)。何も変えないスラッシュコマンド(`/model` など)のターンは、何も止めない。流そうとしているコマンド(`git push` など)は、今までどおり依頼の時から後を確かめるので、検査に落ちたままの作業はスラッシュコマンド経由でも公開されない。同じ検査が同じターンを止めるのは 1 回だけで、その検査が止めた後の Stop ではその検査は止めず、直ったかを `records/guards.jsonl` に記録する。まだそのターンを止めていない検査は、作法の検査や別の検査が先に止めた後の Stop でも 1 回止める(1 ターンに止める回数は検査の数まで)。作法の検査が未完了のまま打ち切る Stop では、止める検査は止めない。依頼の時の HEAD のコミットを `--amend` や rebase で書き換えたり、別の履歴へ切り替えたりすると、依頼の時の HEAD が今の HEAD の祖先でなくなり、`commit-body` はそのターンのコミットを読めない。この時は止めず、記録は「通った」ではなく「確かめられなかった」(`"unverified": true`)になる。`shikii guard list` には `last: not checked` と出て、止めた数・直った数には数えない。`forbidden-commands` の検査は、Claude Code がコマンドを流す直前(Bash の `PreToolUse`、0.11)に動く。形に当たるコマンドを理由付きで断り(`permissionDecision: deny`)、エージェントはターンの終わりではなくその場で直したコマンドを流す。この止めはそのターンの記録に `tool: true` で残り、検査が通る Stop が直ったことを記録する。ファイルの変更は起きる前には判定しない。`forbidden-words` は今までどおり Stop だけで動く(足す行を直前に見る検査は 0.11 で作ったが、監査が 3 回続けて行を見逃す・除外したファイルを断る道を見つけたので外した)。
+機械で確かめられる訂正は「止める検査」にする(`.shikii/guards/<id>.yaml`)。種類は `paired-files`(片方が変わったらもう片方も)、`forbidden-words`(足した行に使わない語)、`commit-body`(そのターンのコミットの本文に含む語)、`forbidden-commands`(流そうとしているコマンドが当たってはいけない正規表現。Claude Code の Bash の `PreToolUse` で流す直前に断る。`example` に止めるべきコマンドを書き、`enable` がそれを止めて見せる。Stop ではコマンドを見ない、0.11)の 4 つ。`pairs` と `except` のパスは glob で書ける。`/` を含まない型は、どの階層でもファイル名だけにも当たる(`*.md` は `docs/a/b.md` に当たり、`docs/*.md` は `docs` の直下の `.md` だけに当たる)。`*` は 1 つのフォルダの中だけに当たり、`**` だけの区切りは 0 個以上のフォルダに当たる(`docs/**/*.md` は `docs/b.md` にも `docs/a/c/b.md` にも、`**/*.md` は `README.md` にも当たる)。末尾の `dir/**` は `dir` の下の全部。Stop で有効な検査を変わったファイル・足した行・依頼の時の HEAD からのコミットに当て、引っかかれば `decision: block` と理由を返してエージェントに直させる。足した行は、依頼の時のファイルに無かった行。本人が書いて未コミットだった行は、足した行に数えない。依頼の時に未コミットの変更があったファイルと、まだ追跡していなかったファイルは、その中身の写しを shikii が残さない。`forbidden-words` の検査が有効な間は、行ごとのキー付きハッシュ(HMAC-SHA256。キーは依頼ごとに作る乱数)とその行の数だけを、一覧の横に控える(`sessions/<id>.lines`、スラッシュコマンドのターンは `sessions/<id>.guard.lines`。本人だけが読める権限で、次の依頼で置き換わり、一覧と同じく 7 日で消える)。そうしたファイルの足した行は、この表に無い行で、同じ行が依頼の時より多い時は、多い数だけ足した行になる。表は止める検査の上限(200 ファイル、1 ファイル 1 MB、バイナリは除く)と、hook の git の上限の 3 秒に合わせて作る。上限を超えたファイルと、一覧を取ってから表を作るまでに変わったファイルは、今までどおり依頼の時の HEAD のコミットと比べるので、そこに本人が書いて未コミットだった行は、ターンがそのファイルを変えると足した行に数える。依頼の時に未コミットの物が無いプロジェクトでは、表を作らない。`forbidden-words` の検査が止めた行は、依頼の前からあった行に数えない。その行を止めた Stop(と、失敗のまま記録し直した Stop)が、止めた行そのものだけを、ファイルごとにキー付きハッシュ(キーはこの記録だけの乱数)と、止めた数と、そのターンの始まりの HEAD のコミットにその行がいくつあったかで、セッションごとではなくリポジトリごとに 1 つの記録に控える(`records/stopped-lines/<リポジトリのパスのハッシュ>.stopped`。行そのものは入らず、本人だけが読める権限)。止めた行は、ファイルから消すか、ターンが始まる前にコミットするまで、どのセッションのどのターンでも、そのファイルを変えれば、依頼の時の中身をどう読んでも(`git add` の後も)、Stop(依頼のターンとスラッシュコマンドのターン)と公開前の検査が足した行に数え、もう一度止める。ターン自身のコミットでは、そのターンの間は外れない。止めた行をコミットすると、そのコミットの後に始まるターンからは、どの比べでも数えない(そのターン自身が作ったコミットでは、そのターンの間は外れない)。記録は行を文のキー付きハッシュでしか覚えないので、本人が止めた行を消し(ファイルから、または後のコミットや revert で)、コミットした後か消した後にそのファイルを比べた Stop がまだ無いうちに同じ文をもう一度書くと、書き直した行は止めた行と見分けられず、止める(0.30.7 と同じ)。本人の行とみなすのは、依頼の時にあり、かつ止めた行の記録に無い行だけで、同じ文を本人も書いていた時は、止めた数を超える分が本人の行になる。Stop が見直すのは、そのターンが変えたファイルだけで、そこで消した・コミットした止めた行と、無くなったファイルの止めた行を落とす。ほかのファイルの止めた行は、そのまま残す。このため、本人が `git stash` でよけた止めた行は、`git stash pop` の後も止める。ただし、よけている間にそのファイルを比べた Stop があると(ターンがそのファイルを変えた、ターンの間に stash した)、その Stop が消したとみなす。Stop は記録を 1 回だけ読む。書く時は比べた時に読んだ記録を使い、錠の中では記録の先頭の行(書くたびに作り直す乱数の値が入る)だけを読んで確かめ、その間に別の Stop が記録を書いた時だけ全体を読み直す。記録を書く Stop は、読んだ順のまま並べ替えずに 1 回だけ書く。このため、上限に近い記録でも、Stop に足されるのは記録を 1 回読み、1 回書く時間だけ。記録は錠を取って読み、変え、書く(錠を取れない Stop は書かずに進む)。記録の数は決まった幅で書くので、前からある行は数が変わっても長さが変わらない(幅に入らない大きな数は幅の最大で書き、その数以上として読む。止める側に寄るだけ)。記録は 4 MB まで。前からある分は必ず残し、4 MB を超える時は、新しく足す分のうち入らない分だけを落とす(新しい分は、止めた行の少ないファイルから入れる)。記録は、リポジトリを最後に見た時から 7 日で消える。記録を読む Stop と、リポジトリがあると確かめたセッションの掃除が 7 日を数え直すので、一時的に見えなくなったリポジトリ(名前を変えた、ディスクをつないでいない)の記録は残る。スラッシュコマンド(`/commit` など)で始まるターンは依頼としては残さないが、止める検査のためだけに区切る。その時の作業ツリーの一覧と HEAD を控え、そのターンの Stop で検査を当てる(2 つの問い・スラッシュコマンドの時の教訓の配送・作法の検査は足さない。道具の直前の教訓は、依頼のターンと同じく届く)。そのターンは、区切り自身の起点(スラッシュコマンドの時の一覧と HEAD)と比べる。その間に本人がしたこと(pull や checkout など)は、そのターンの作業に数えない。前の依頼まで戻るのは 2 つの場合だけ。前の依頼のターンが終わりまで行っておらず(本人が中断した時)、スラッシュコマンドのターンがファイルを変えるかコミットを作った時は、そのターンが依頼の続きをしているので、依頼の時から後を確かめる(依頼のターンが足した行は、`/commit` がコミットする時も足した行のまま)。何も変えないスラッシュコマンド(`/model` など)のターンは、何も止めない。流そうとしているコマンド(`git push` など)は、今までどおり依頼の時から後を確かめるので、検査に落ちたままの作業はスラッシュコマンド経由でも公開されない。同じ検査が同じターンを止めるのは 1 回だけで、その検査が止めた後の Stop ではその検査は止めず、直ったかを `records/guards.jsonl` に記録する。まだそのターンを止めていない検査は、作法の検査や別の検査が先に止めた後の Stop でも 1 回止める(1 ターンに止める回数は検査の数まで)。作法の検査が未完了のまま打ち切る Stop では、止める検査は止めない。依頼の時の HEAD のコミットを `--amend` や rebase で書き換えたり、別の履歴へ切り替えたりすると、依頼の時の HEAD が今の HEAD の祖先でなくなり、`commit-body` はそのターンのコミットを読めない。この時は止めず、記録は「通った」ではなく「確かめられなかった」(`"unverified": true`)になる。`shikii guard list` には `last: not checked` と出て、止めた数・直った数には数えない。`forbidden-commands` の検査は、Claude Code がコマンドを流す直前(Bash の `PreToolUse`、0.11)に動く。形に当たるコマンドを理由付きで断り(`permissionDecision: deny`)、エージェントはターンの終わりではなくその場で直したコマンドを流す。この止めはそのターンの記録に `tool: true` で残り、検査が通る Stop が直ったことを記録する。ファイルの変更は起きる前には判定しない。`forbidden-words` は今までどおり Stop だけで動く(足す行を直前に見る検査は 0.11 で作ったが、監査が 3 回続けて行を見逃す・除外したファイルを断る道を見つけたので外した)。
 
 ```sh
 shikii guard add < guard.json       # 草稿(無効)。JSON: id, kind, title, reason, source, pairs/words/except/allow/required
@@ -306,13 +306,13 @@ spec ごとに記録とラベルの数、ラベルの出どころ(ask / outcome 
 ### 推奨のモデル(TypeSafe の Jev)
 
 ```sh
-export TYPESAFE_API_KEY=...       # 鍵は環境変数だけから読む。shikii は Keychain を読まない
+export TYPESAFE_API_KEY=...       # APIキーは環境変数だけから読む。shikii は Keychain を読まない
 shikii doctor                     # hosted に「key present」と出れば、hook・既製の問い・pii: false の判定は Jev へ
 ```
 
-推奨は TypeSafe の Jev。鍵があれば hook と既製の問いは Jev へ送り、手元のモデルは起こさない(`shikii up` も断る。取得するものは無い)。鍵を置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jev に固定するなら `SHIKII_MODEL=hosted`(CLI・MCP・`serve`・hook で同じ)。`pii: true` の判定は鍵があっても手元にしか送らないので、鍵を置いたまま手元のモデルで答えさせるには `SHIKII_MODEL=local shikii up` で立てる。
+推奨は TypeSafe の Jev。APIキーがあれば hook と既製の問いは Jev へ送り、手元のモデルは起こさない(`shikii up` も断る。取得するものは無い)。APIキーを置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jev に固定するなら `SHIKII_MODEL=hosted`(CLI・MCP・`serve`・hook で同じ)。`pii: true` の判定はAPIキーがあっても手元にしか送らないので、APIキーを置いたまま手元のモデルで答えさせるには `SHIKII_MODEL=local shikii up` で立てる。
 
-### 鍵を置けない時の手元のモデル(llama.cpp)
+### APIキーを置けない時の手元のモデル(llama.cpp)
 
 ```sh
 brew install llama.cpp            # Homebrewの公式formula
@@ -320,9 +320,9 @@ llama-server --version
 shikii up                         # llama-server を :8086 に、shikii-readout を :8080 に立てる(初回は約 7.6 GB を取得)
 ```
 
-基本モデルは `prism-ml/Ternary-Bonsai-27B-gguf` の `Ternary-Bonsai-27B-Q2_g64.gguf`(普通のチャット用モデル。`shikii-readout` が選択肢の文字の確率を読み、決定モデルの速さで答える)。導入は[Homebrewのformula](https://formulae.brew.sh/formula/llama.cpp)、他のOSは[公式の手順](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md)を参照する。`shikii up` と既製hookも、鍵が無ければこのモデルを使う。動作中のメモリは約 10 GB で、普通の PC では重いことがある。OpenJev のような学習済みの決定モデルは `shikii up --hf <repo:quant>`(readout はその答えをそのまま通す)。Kev-4B は使えない。
+基本モデルは `prism-ml/Ternary-Bonsai-27B-gguf` の `Ternary-Bonsai-27B-Q2_g64.gguf`(普通のチャット用モデル。`shikii-readout` が選択肢の文字の確率を読み、決定モデルの速さで答える)。導入は[Homebrewのformula](https://formulae.brew.sh/formula/llama.cpp)、他のOSは[公式の手順](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md)を参照する。`shikii up` と既製hookも、APIキーが無ければこのモデルを使う。動作中のメモリは約 10 GB で、普通の PC では重いことがある。OpenJev のような学習済みの決定モデルは `shikii up --hf <repo:quant>`(readout はその答えをそのまま通す)。Kev-4B は使えない。
 
-モデル名は応答の `model`が較正の鍵になる。`--model` で送った名前ではない。
+モデル名は応答の `model`が較正のキーになる。`--model` で送った名前ではない。
 
 ### 接続先
 
@@ -331,17 +331,17 @@ shikii up                         # llama-server を :8086 に、shikii-readout 
 | 接続先 | 条件 | URLの例 |
 |---|---|---|
 | Jev(推奨) | `TYPESAFE_API_KEY`、外部送信を許可するspec(`pii: false`) | 指定不要(`--hosted https://api.typesafe.ai` が既定) |
-| llama.cpp | 鍵を置けない時。通常のGGUF(手元の標準はTernary-Bonsai-27B)を `shikii-readout` 越しに。OpenJevなどの決定モデルはそのまま通す | `--local http://127.0.0.1:8080`(`shikii up` が立てる readout の口) |
+| llama.cpp | APIキーを置けない時。通常のGGUF(手元の標準はTernary-Bonsai-27B)を `shikii-readout` 越しに。OpenJevなどの決定モデルはそのまま通す | `--local http://127.0.0.1:8080`(`shikii up` が立てる readout の口) |
 | Ollama | v0.35.0以上、System One対応の決定モデル。今回の実機推論は未検証 | `--local http://127.0.0.1:11434 --model nimble` |
 | LM Studio | Jev互換のSystem One対応API、読み込み済みの決定モデル。今回の実機推論は未検証 | `--local http://127.0.0.1:1234 --model <読み込み済みのモデルID>` |
 
 参照: [OllamaのSystem One](https://docs.ollama.com/api/systemone)、[LM StudioのSystem One](https://lmstudio.ai/docs/developer/jev-compat/systemone)、[TypeSafeのAPI](https://docs.typesafe.ai/introduction/quickstart)。公式仕様とクライアントを照合した表で、接続先の実機推論の成功を保証する表ではない。ローカルのクライアントはAuthorizationを付けないため、認証を必須にした構成は別途確認が必要。
 
-既製のhookは、鍵があれば Jev、無ければ `127.0.0.1:8080` の固定構成で、OllamaやLM Studioへ自動で切り替わらない。会話の整理と参照は判定用モデルが止まっていても動く。OllamaはローカルURL経由でクラウドモデルも呼べるため、手元だけで扱う判定にはローカルのモデルを選ぶ。[Ollamaのクラウドモデルの説明](https://docs.ollama.com/capabilities/decision)。
+既製のhookは、APIキーがあれば Jev、無ければ `127.0.0.1:8080` の固定構成で、OllamaやLM Studioへ自動で切り替わらない。会話の整理と参照は判定用モデルが止まっていても動く。OllamaはローカルURL経由でクラウドモデルも呼べるため、手元だけで扱う判定にはローカルのモデルを選ぶ。[Ollamaのクラウドモデルの説明](https://docs.ollama.com/capabilities/decision)。
 
 ### `--hosted` と `--local` の例
 
-`--hosted` は URL にパスがあればそのまま使う。鍵は環境変数 `DECISIONS_API_KEY`(または `TYPESAFE_API_KEY`)。
+`--hosted` は URL にパスがあればそのまま使う。APIキーは環境変数 `DECISIONS_API_KEY`(または `TYPESAFE_API_KEY`)。
 
 | 先 | 例 |
 |---|---|
@@ -369,7 +369,7 @@ bin/shikii decide .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0
 
 - 起動時に `/tokenize` で全ラベルが 1 トークンかを確かめ、違えば起動しない
 - `/apply-template` でそのモデルの chat template を使い、Qwen3 系の `<think>` は `enable_thinking: false` で潰す(受けない upstream には送り直す)
-- 返す確率は**素の softmax**。較正はしない。応答の `model` は llama-server の `--alias` で決まり、それが較正の鍵になる
+- 返す確率は**素の softmax**。較正はしない。応答の `model` は llama-server の `--alias` で決まり、それが較正のキーになる
 - 上位 `--n-probs` に入らなかった選択肢は床の確率(1e-6)を得る(0 にすると較正の log が壊れる)
 - state は prompt の最後に置き、spec ごとの接頭辞(質問・選択肢)を先に 1 回流してチェックポイントを作る。再帰層を持つ Qwen3.5/3.8 系
   (Bonsai の土台)はこれが無いと `cache_prompt` が効かない
@@ -387,7 +387,7 @@ go build -o bin/shikii ./cmd/shikii
 bin/shikii new prompt-intent --from examples/prompt-intent.yaml
 bin/shikii new same-issue --from decisions/same-issue.yaml
 
-# 仕様のハッシュ(較正の鍵)
+# 仕様のハッシュ(較正のキー)
 bin/shikii hash .shikii/decisions/same-issue.yaml
 
 # 判定。ホスト版は TYPESAFE_API_KEY があれば使う。--tainted なら hosted に送らない
@@ -401,7 +401,7 @@ bin/shikii label --last --spec-id prompt-intent question --source ask   # 直近
 
 # 較正。noul は identity と Platt、choice/score は identity と vector(選択肢ごとの bias + 温度)を 5-fold CV で比べて勝った方を書く。
 # ファイルのラベルと store のラベル((spec_hash, model) が一致するもの)を合わせて使う
-bin/shikii calibrate .shikii/decisions/same-issue.yaml --model 'ternary-bonsai-27b-q2g64+state-last'   # 応答の model(鍵があれば Jev の名前)
+bin/shikii calibrate .shikii/decisions/same-issue.yaml --model 'ternary-bonsai-27b-q2g64+state-last'   # 応答の model(APIキーがあれば Jev の名前)
 ```
 
 ### 判定の定義ファイル(spec)の書き方
@@ -410,7 +410,7 @@ bin/shikii calibrate .shikii/decisions/same-issue.yaml --model 'ternary-bonsai-2
 
 正解が `eval.min_n`(spec に必ず書く。`shikii new` の既定は 50)に足りないうちは `calibrate --write` も `tune` も書かない。手持ちが少ないうちに試すなら、spec の `eval.min_n` を手持ちの件数に下げる。`--force` で書いた線は `check` が「calibrate なら書かなかった線」として落とすので、試しの道には使わない。
 
-### 2 分で一周(鍵も GPU も無し)
+### 2 分で一周(APIキーも GPU も無し)
 
 ```sh
 scripts/demo.sh                  # 偽モデル(cmd/fake-systemone)で decide → label → calibrate → check → drift → status
@@ -427,7 +427,7 @@ bin/shikii check .shikii/decisions/*.yaml
 bin/shikii drift .shikii/decisions/prompt-intent.yaml --model jev-1.14.0 --window 50
 ```
 
-較正の方法は 3 つ。どれも `calibrate --write` が生成し、鍵は (spec_hash, model)。
+較正の方法は 3 つ。どれも `calibrate --write` が生成し、キーは (spec_hash, model)。
 
 | method | 対象 | 中身 |
 |---|---|---|
@@ -441,7 +441,7 @@ bin/shikii drift .shikii/decisions/prompt-intent.yaml --model jev-1.14.0 --windo
 
 順序尺度では隣り合うレベルに確率が割れるので、最上位の確率で帯を決めると実際より弱く見える。たとえば「直接関連」と「強く関連」に確率が半々に割れると、最上位は 0.5 前後で ask 止まりになるが、「直接関連以上」の確率は高い。
 `thresholds.level: k` を置くと、帯は **P(level ≥ k)** で決まる(top と期待値 score はそのまま出す)。
-較正の鍵には入らない(閾値と同じ扱い)。報告の precision も「P(level ≥ k) と正解レベル ≥ k」で測る。
+較正のキーには入らない(閾値と同じ扱い)。報告の precision も「P(level ≥ k) と正解レベル ≥ k」で測る。
 
 ### choice の順序バイアス: `shikii bias`
 
@@ -451,7 +451,7 @@ bin/shikii bias .shikii/decisions/prompt-intent-v2.yaml --local http://127.0.0.1
 
 選択肢の並びを入れ替えて同じ state を聞き直し、最上位が変わる率(flip rate)と、位置ごとの確率のずれ
 (spec の並びで聞いた時との差)を出す。flip rate > 0.10 か位置のずれの幅 > 0.10 で警告・exit 1。
-生成しないモデルなので順列を回すのは安い。選択肢は spec に書いた並びのまま送る(`systemone.OrderedCriteria`。Go の map だと鍵がソートされてしまう)。
+生成しないモデルなので順列を回すのは安い。選択肢は spec に書いた並びのまま送る(`systemone.OrderedCriteria`。Go の map だとキーがソートされてしまう)。
 
 ### 掃除: `shikii gc`
 
@@ -478,10 +478,10 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 |---|---|
 | `shikii init`(`shikii --init`) | このプロジェクトを有効にする(既製の問い・wiki・止める検査と作業記録の置き場・MCP・作法・画面への入口。hook が無い機械の最初のプロジェクトでは hook も)。2 回目も安全 |
 | `shikii new <id>` | 質問に答えるだけで `.shikii/decisions/<id>.yaml` を作る(`--from` で見本を写す) |
-| `shikii up` | 手元のモデルを起こす(llama-server と、普通の GGUF なら `shikii-readout`)。鍵がある時は起こさない |
+| `shikii up` | 手元のモデルを起こす(llama-server と、普通の GGUF なら `shikii-readout`)。APIキーがある時は起こさない |
 | `shikii serve` | HTTP の口と答え合わせの画面 |
 | `shikii mcp` | 同じ中身を stdio の MCP サーバーとして出す(`shikii_specs`・`shikii_decide`・`shikii_label`・`shikii_status`・`shikii_tune`・`shikii_wiki`・`shikii_review`・`shikii_reflect`) |
-| `shikii doctor` | 鍵・手元のモデル・置き場の状態と、hook と Codex の MCP の登録が動かす shikii の実行ファイルが今もあって動かせるかを確かめる(無い時は直し方を出す)。確かめるのは、shikii が書く形ちょうどの hook(単引用符のパスか、パスに使う文字だけの裸のパスの後に ` hook <出来事>`、本体の名が `shikii`)だけ。ほかの書き方で shikii を動かす command(`~`・`$HOME`・引用符・別の command の後につないだ物・出来事の後ろに語が続く物)は、手で書かれていて確かめていないと言い、`hook install` も `uninstall` も command ごと触らない |
+| `shikii doctor` | APIキー・手元のモデル・置き場の状態と、hook と Codex の MCP の登録が動かす shikii の実行ファイルが今もあって動かせるかを確かめる(無い時は直し方を出す)。確かめるのは、shikii が書く形ちょうどの hook(単引用符のパスか、パスに使う文字だけの裸のパスの後に ` hook <出来事>`、本体の名が `shikii`)だけ。ほかの書き方で shikii を動かす command(`~`・`$HOME`・引用符・別の command の後につないだ物・出来事の後ろに語が続く物)は、手で書かれていて確かめていないと言い、`hook install` も `uninstall` も command ごと触らない |
 | `shikii update` | 最新の安定版へ本体と readout を更新する |
 | `shikii hook install` / `uninstall` | Claude Code と Codex の hook を入れる・外す(`--yes` 無しは表示だけ) |
 | `shikii uninstall` | shikii がエージェントに入れた物(hook・MCP の項目・エージェントの作法)を外し、画面を止める。データ(`.shikii/`・`~/.shikii/agent`)と実行ファイルは残し、実行ファイルを消す `rm` のコマンドを出す(`--yes` 無しは表示だけ) |
@@ -506,7 +506,7 @@ bin/shikii gc --older-than 1w .shikii/decisions/prompt-intent-v2.yaml       # sp
 | `shikii drift <spec> --model M` | 直近の正解で線の劣化を見る |
 | `shikii bias <spec>` | 選択肢の並びで答えが変わるかを測る |
 | `shikii gc` | 古くて正解の無い記録の掃除(`--apply` で消す) |
-| `shikii hash <spec>` | 較正の鍵になる spec のハッシュ |
+| `shikii hash <spec>` | 較正のキーになる spec のハッシュ |
 | `shikii version` | 版を表示する |
 
 ## serve の HTTP API
@@ -544,20 +544,20 @@ curl -s localhost:8095/v1/label  -H 'Content-Type: application/json' -d '{"spec"
 
 | 場所 | 役割 |
 |---|---|
-| `internal/spec` | Decision Spec の読み書き。較正の鍵 `Hash()`(質問・テンプレ・選択肢から。閾値・policy は含めない) |
+| `internal/spec` | Decision Spec の読み書き。較正のキー `Hash()`(質問・テンプレ・選択肢から。閾値・policy は含めない) |
 | `internal/systemone` | System One 形式(`POST /v1/systemone`)の薄いクライアント。Jev / llama.cpp はベース URL の差だけ |
 | `internal/decide` | 仕様 + 入力 → 帯。required 欠落は abstain、tainted は hosted を外す、**較正が無い判定は act を出さない** |
 | `internal/calib` | Platt 較正(`calib.go`)、vector scaling(`vector.go`)、Brier / ECE / 信頼度図、AUC と 95% 区間(答えを見分ける力) |
 | `cmd/shikii` | CLI |
 | `cmd/shikii-readout` | **普通の GGUF を System One にするアダプタ** `shikii-readout`。後ろの llama-server の `/apply-template` と `/completion` で選択肢の文字の確率を読む。推論も較正も持たない |
-| `cmd/fake-systemone` | 鍵も GPU も無しで輪を回すための偽モデル |
+| `cmd/fake-systemone` | APIキーも GPU も無しで輪を回すための偽モデル |
 | `decisions/*.yaml` | spec の見本(この repo。自分のプロジェクトでは `.shikii/decisions/` に写す) |
 | `testdata/` | 作り物のラベル付きデータ(依頼文 62 件、不具合報告と問い合わせの各 32 組)と、CI 用の較正の裏付け(`store/labels/`) |
 
 ## まだ無いもの
 
 - 等張回帰
-- 鍵の取り出し(環境変数で渡す。このプロセスはキーチェーンに触らない)
+- APIキーの取り出し(環境変数で渡す。このプロセスはキーチェーンに触らない)
 
 ## 作業中に見つけた知識を次へつなぐ
 

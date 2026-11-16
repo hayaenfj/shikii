@@ -34,7 +34,7 @@ scripts/eval-model.sh http://127.0.0.1:8083 bonsai2       # Kev-4B / OpenJev と
 | choice の `criteria` は id → 説明 | 同じ。選択肢は W, X, Y, Z, A, … の 1 文字に割り当てて logit を読む | 並びは request の順を保つ |
 | score の `criteria` は level の配列 | 同じ | |
 | noul は `criteria` 無しでよい | 無ければ true / false の既定を使う | `true` / `false` 以外のキーは 422 |
-| 応答の `model` | 起動時に載せたモデル id（`ternary-bonsai-2-27b`） | 較正の鍵になる。request の `model` は無視される |
+| 応答の `model` | 起動時に載せたモデル id（`ternary-bonsai-2-27b`） | 較正のキーになる。request の `model` は無視される |
 | `probabilities` | 文字の logit の softmax（+ BonJev 内蔵の temperature / bias） | **較正されていない**。`calibrate` の出番 |
 
 ## 実測（2026-10-17、Ternary-Bonsai-2-27B PQ2_0、Metal、1 問 ≈ 2.5 秒）
@@ -53,4 +53,4 @@ scripts/eval-model.sh http://127.0.0.1:8083 bonsai2       # Kev-4B / OpenJev と
 
 - 必要なのは Prism の fork。本家 llama.cpp の `ggml-*` と混ぜない（fork の README の警告）
 - 1-bit の Q1_0 は BonJev 非対応。ternary の PQ2_0 だけ
-- 確率は BonJev の内蔵較正を通っているが、それはモデル全体の温度であって **spec ごとの較正ではない**。(spec_hash, model) の鍵で `calibrate` を当て直す前提は変わらない
+- 確率は BonJev の内蔵較正を通っているが、それはモデル全体の温度であって **spec ごとの較正ではない**。(spec_hash, model) のキーで `calibrate` を当て直す前提は変わらない
