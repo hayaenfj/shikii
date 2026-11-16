@@ -628,7 +628,12 @@ func prepareWork(root, scope string, req workRequest) (out any, err error) {
 	var memoryUpgrade map[string]any
 	if req.Assignment == nil {
 		var upgradeRead []store.KnowledgeReference
-		memoryUpgrade, upgradeRead, err = prepareMemoryUpgrade(book, w, quoted, req.Query == "memory-upgrade")
+		if req.Query == memoryOptimizeQuery {
+			if e := book.ReopenMemoryUpgrade(); e != nil {
+				return nil, e
+			}
+		}
+		memoryUpgrade, upgradeRead, err = prepareMemoryUpgrade(book, w, quoted, isMemoryUpgradeQuery(req.Query))
 		if err != nil {
 			return nil, err
 		}

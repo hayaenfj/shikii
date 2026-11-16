@@ -9,9 +9,25 @@ import (
 )
 
 // memoryUpgradeBlockedNext is the next action when only pages declared blocked remain: the upgrade stops and reports them, it does not send the agent back to review.
-const memoryUpgradeBlockedNext = "Only pages whose original evidence cannot be read or does not support them remain, and they are declared blocked. Stop the upgrade here and report the blocked refs and their reasons. Never delete material to finish; a blocked page returns for review when its text changes."
+const memoryUpgradeBlockedNext = "Only blocked pages remain: their original evidence cannot be read, or a review found that it does not support them. Stop the upgrade here and report the blocked refs and their reasons. Never delete material to finish; a blocked page returns for review when its text changes or when the person asks for an optimization."
+
+// memoryOptimizeQuery is the query of a request to optimize the memory: every page is reviewed again, declarations included.
+const memoryOptimizeQuery = "memory-optimize"
+
+// isMemoryUpgradeQuery says whether a prepare query starts or continues the memory upgrade (an optimization starts it too).
+func isMemoryUpgradeQuery(q string) bool {
+	return q == "memory-upgrade" || q == memoryOptimizeQuery
+}
 
 const memoryUpgradeNext = "Review one batch per task (at most two articles), against original sources and current behavior. Save necessary corrections, then maintenance with the latest returned ref and a checked reason. Preserve sources, preferences and history; reading alone is not review. Resume remaining articles on the next task from durable progress. An explicit request to finish the upgrade may continue with prepare:{receipt,query:memory-upgrade}. Report actual blocked sources; never replace missing evidence with deletion or human grading."
+
+// memoryUpgradeSummaryNext is the next action of a topic summary: while the upgrade is blocked it does not send the agent back to review.
+func memoryUpgradeSummaryNext(u notebook.MemoryUpgrade) string {
+	if u.Status == "blocked" {
+		return memoryUpgradeBlockedNext
+	}
+	return "At a break in the task, prepare this receipt with query memory-upgrade to review existing knowledge in bounded batches. " + memoryUpgradeNext
+}
 
 func prepareMemoryUpgrade(book notebook.Book, w *workState, quoted map[string]string, includeComplete bool) (map[string]any, []store.KnowledgeReference, error) {
 	if projectInitVersion(book.Root) == 0 {
@@ -29,7 +45,7 @@ func prepareMemoryUpgrade(book notebook.Book, w *workState, quoted map[string]st
 		for _, task := range u.Tasks {
 			heads = append(heads, map[string]any{"id": task.PageID, "revision": task.Revision})
 		}
-		return map[string]any{"epoch": u.Epoch, "status": u.Status, "message": u.Message, "total": u.Total, "reviewed": u.Reviewed, "withdrawn": u.Withdrawn, "pending_pages": heads, "unavailable_sources": u.Blocked, "next_action": "At a break in the task, prepare this receipt with query memory-upgrade to review existing knowledge in bounded batches. " + memoryUpgradeNext}, nil, nil
+		return map[string]any{"epoch": u.Epoch, "status": u.Status, "message": u.Message, "total": u.Total, "reviewed": u.Reviewed, "withdrawn": u.Withdrawn, "pending_pages": heads, "unavailable_sources": u.Blocked, "next_action": memoryUpgradeSummaryNext(u)}, nil, nil
 	}
 	pages := []any{}
 	read := []store.KnowledgeReference{}
@@ -77,7 +93,7 @@ func memoryUpgradeHook(root, scope string, s *hookSession) (hookOut, string, err
 	}
 	key := fmt.Sprintf("%s:%s:%d/%d", u.Epoch, u.Status, u.Reviewed, u.Total)
 	out := hookOut{}
-	if u.Status != "complete" && s.MemoryUpgrade != key {
+	if u.Status != "complete" && u.Status != "blocked" && s.MemoryUpgrade != key {
 		out.Context = "shikii: Upgrading memory… At a break in work, prepare the current receipt with query memory-upgrade. Review one batch (at most two articles) this task, then resume next task. Retain original sources, preferences and history."
 	}
 	if s.MemoryUpgrade != key {

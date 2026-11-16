@@ -41,6 +41,24 @@ func memoryUpgradePath(dir string) string {
 	return filepath.Join(dir, ".memory-upgrade-"+MemoryUpgradeEpoch+".json")
 }
 
+// ReopenMemoryUpgrade starts the review of every page again, for a request to optimize the memory. The checkpoint is removed, so the next
+// MemoryUpgrade begins with all current pages and without declarations or earlier reviews. The wiki and the maintenance records stay as they are.
+func (b Book) ReopenMemoryUpgrade() error {
+	dir, err := b.directory(true, "pages")
+	if err != nil {
+		return err
+	}
+	unlock, err := lock(dir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := os.Remove(memoryUpgradePath(dir)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("reopen the memory upgrade: %w", err)
+	}
+	return nil
+}
+
 func readMemoryUpgrade(dir string) (memoryUpgradeCheckpoint, error) {
 	var c memoryUpgradeCheckpoint
 	f, err := os.OpenFile(memoryUpgradePath(dir), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)

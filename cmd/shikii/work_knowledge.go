@@ -211,7 +211,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		entries = append(entries, entry)
 		return nil
 	}
-	if query == "memory-upgrade" && req.Proposal == "" && req.Conditions == "" {
+	if isMemoryUpgradeQuery(query) && req.Proposal == "" && req.Conditions == "" {
 		// The upgrade uses the existing maintenance recorder.
 	} else if req.Proposal != "" || req.Conditions != "" {
 		op := "consult"
@@ -335,7 +335,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 	}
 	reply["reading"] = w.Reasoning.Reading
 	read = suppliedWorkReads(entries)
-	if query == "memory-upgrade" && req.Assignment == nil {
+	if isMemoryUpgradeQuery(query) && req.Assignment == nil {
 		upgrade, upgradeRead, e := prepareMemoryUpgrade(book, w, quoted, true)
 		if e != nil {
 			return nil, e
