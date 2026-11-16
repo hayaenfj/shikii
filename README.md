@@ -9,12 +9,12 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-2124%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2129%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.34.1-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.34.1 fixes the memory upgrade, which now sets aside a page whose source is missing and goes on to the next, and it asks the question about a decision in terms of what you wanted. Version 0.34.0 brought shikii's hooks to OpenCode 2.x: lessons reach the model before a request, and a missing record is asked for at the end of the work, as in Claude Code and Codex. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
+Version 0.34.1 lets the memory upgrade set aside a page whose original evidence cannot be read, counts a go-ahead message as a reply to the previous request, and asks the question about a decision in terms of what you wanted. Version 0.34.0 brought shikii's hooks to OpenCode 2.x: lessons reach the model before a request, and a missing record is asked for at the end of the work, as in Claude Code and Codex. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
 
 Update all writers sharing a project, refresh skills with `shikii --init` when using no hooks, then reopen agent sessions and restart the page and MCP. Existing records are retained; the agent receives source-preserving memory upgrade work with English progress. [Memory and learning](docs/memory-and-learning.md) explains what changes.
 

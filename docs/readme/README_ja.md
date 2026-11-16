@@ -9,12 +9,12 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-2124%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2129%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.34.1-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.34.1では、記憶の更新が出典の無いページで止まらなくなりました。「先に確認してほしかったか」の問いは、本人が何を望んだかを聞く文に直しています。0.34.0では、OpenCode 2.x でも shikii の hook が働きます。Claude Code や Codex と同じように、依頼の前に教訓がモデルに届き、作業の終わりに足りない記録を促します。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
+0.34.1では、記憶の更新が原資料の読めないページを飛ばせるようになりました。「では開始しましょう」などの開始の合図を、前の依頼への返事として数えるようになりました。「先に確認してほしかったか」の問いは、本人が何を望んだかを聞く文に直しています。0.34.0では、OpenCode 2.x でも shikii の hook が働きます。Claude Code や Codex と同じように、依頼の前に教訓がモデルに届き、作業の終わりに足りない記録を促します。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
 
 同じプロジェクトへ書く本体を全て更新し、hookなしの場合は既存のプロジェクトで `shikii --init` を実行して作法も更新してください。その後、エージェントのセッション・ページ・MCPを起動し直します。既存の記録を保持し、原資料を残したメモリ更新作業をエージェントへ届けます。進捗は英語で表示します。詳しくは[記憶と学習](../memory-and-learning.ja.md)を参照してください。
 

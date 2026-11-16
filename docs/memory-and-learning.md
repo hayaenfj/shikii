@@ -114,7 +114,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.32.0 | Checks wiki wording against sources while preserving meaning; delivers prepared context and saved articles for review. |
 | 0.33.0 | Agents read only the section of a reference they need, and the MCP tool definition is smaller. |
 | 0.34.0 | OpenCode 2.x also gets lessons through hooks and is asked for the record at the end of the work. |
-| 0.34.1 | The memory upgrade sets aside a page whose source is missing and goes on to the next, instead of stopping. The question about a decision now asks what you wanted. |
+| 0.34.1 | The memory upgrade can set aside a page whose original evidence cannot be read, and a go-ahead message counts as a reply to the previous request. The question about a decision now asks what you wanted. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -350,8 +350,10 @@ Until now OpenCode had only the MCP settings, so shikii could not deliver lesson
 
 One OpenCode server serves the conversations of several projects, and its notices reach the plugin of every project. Each conversation's hooks therefore run only in its own project, and the check at the end of the work runs once for each piece of work. The plugin went through five rounds of independent audit and was checked with a real OpenCode 2.3.0. The cases where lessons do not arrive, such as moving a conversation to another project in the middle of the work, are listed in the integration guide.
 
-### In 0.34.1, the memory upgrade goes on past a missing source
+### In 0.34.1, the memory upgrade can set aside an unreadable page
 
-The memory upgrade reviews old pages one batch at a time. A page whose original source had been lost could stop the whole batch, so the upgrade could not finish. Now the person's review record can set such a page aside with its reason. The batch moves on, and the page comes back for review when its text changes.
+The memory upgrade reviews old pages one batch at a time. A page whose original evidence cannot be read, or does not support its lesson, can now be declared `blocked` in its review record, with the reason. The batch skips that page and moves on, and the page comes back for review when its text changes.
 
-The question about a decision that should have been asked first now says what the person wanted: whether they wanted to be asked before the work began. The wording was changed in the spec and in each project's copy of the question. The answers already stored under the old wording are not converted.
+A go-ahead message, such as the Japanese phrase for "let's start," now counts as a reply to the previous request, not a new request, so the question about a decision is not asked for it. Phrasings outside that list still count as new requests.
+
+The question about a decision that should have been asked first now says what the person wanted: whether they wanted to be asked before the work began. A new project gets the new wording. A project that already exists keeps its copy under `.shikii/decisions/`, so its question keeps the old wording, and stored answers are not converted.
