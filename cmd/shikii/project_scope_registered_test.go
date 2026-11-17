@@ -485,27 +485,151 @@ func TestMovedProjectIsFoundFromBelowAfterItReconnects(t *testing.T) {
 	}
 }
 
-// On a disk that does not tell upper case from lower case (the macOS default), a folder below the project reached by a path that
-// differs only in case finds the project, spelled as its project.json records it.
+// On a disk that does not tell upper case from lower case (the macOS default), the project's folder and a folder below it reached
+// by a path that differs only in case find the project, spelled as its project.json records it, inside git and outside it. The
+// hooks and the CLI use that one spelling, so the CLI takes the request the hooks recorded.
 func TestProjectIsFoundFromBelowByAPathInAnotherCase(t *testing.T) {
-	base := feedbackScope(t.TempDir())
-	p := filepath.Join(base, "Proj")
-	if err := os.Mkdir(p, 0o700); err != nil {
+	for _, git := range []bool{false, true} {
+		model := fakeAgentModel(t, func(string) float64 { return .1 })
+		base := feedbackScope(t.TempDir())
+		p := filepath.Join(base, "Proj")
+		if err := os.Mkdir(p, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		lower := filepath.Join(base, "proj")
+		if _, err := os.Stat(lower); err != nil {
+			t.Skip("this disk tells upper case from lower case")
+		}
+		if git {
+			if out, err := exec.Command("git", "-C", p, "init", "-q").CombinedOutput(); err != nil {
+				t.Fatalf("git init: %v %s", err, out)
+			}
+		}
+		hookEnv(t, model, p)
+		sub := filepath.Join(lower, "a", "b")
+		if err := os.MkdirAll(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for _, cwd := range []string{lower, sub} {
+			if got := projectScopeAt(cwd); got != p {
+				t.Errorf("git=%v: from %s the CLI's project is %q, want %q", git, cwd, got, p)
+			}
+			if _, _, _, _, hook := treeStateWithScope(cwd); hook != p {
+				t.Errorf("git=%v: from %s the hooks' project is %q, want %q", git, cwd, hook, p)
+			}
+			if root, _, err := prepareHookProject(cwd); err != nil || root != filepath.Join(p, ".shikii") {
+				t.Errorf("git=%v: from %s the hooks use the project's store: %q %v", git, cwd, root, err)
+			}
+		}
+		for i, cwd := range []string{lower, sub} {
+			session := []string{"at-the-project", "below-it"}[i]
+			runHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": cwd, "prompt": "add a note to the README"})
+			s, err := readSession(filepath.Join(p, ".shikii"), session)
+			if err != nil || s.TurnID == "" {
+				t.Fatalf("git=%v: the session of a request from %s is in the project's store: %+v %v", git, cwd, s, err)
+			}
+			if s.Scope != p {
+				t.Errorf("git=%v: the session of a request from %s names another project: %q, want %q", git, cwd, s.Scope, p)
+			}
+			if err := currentPlanningFrame(s, s.TurnID, projectScopeAt(cwd)); err != nil && strings.Contains(err.Error(), "another project folder") {
+				t.Errorf("git=%v: the CLI in %s refuses this session's own request: %v", git, cwd, err)
+			}
+		}
+	}
+}
+
+// An entry an older version wrote by the path (no store id) for a project that is gone does not vouch for a store placed at that
+// path later: walking up takes a registered project only by its store's own id, which the index holds in the person's home.
+func TestEntryByThePathDoesNotVouchForAStorePlacedThereLater(t *testing.T) {
+	model := fakeAgentModel(t, func(string) float64 { return .1 })
+	hookEnv(t, model)
+	shared := feedbackScope(t.TempDir())
+	common, _ := agentHome()
+	entry, _ := json.Marshal(projectEntry{ID: projectID(shared), Name: filepath.Base(shared), Path: shared, URL: "/p/" + projectID(shared) + "/"})
+	if err := os.WriteFile(filepath.Join(common, "projects", projectID(shared)+".json"), entry, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	lower := filepath.Join(base, "proj")
-	if _, err := os.Stat(lower); err != nil {
-		t.Skip("this disk tells upper case from lower case")
-	}
-	hookEnv(t, nil, p)
-	sub := filepath.Join(lower, "a", "b")
-	if err := os.MkdirAll(sub, 0o755); err != nil {
+	planted := filepath.Join(shared, ".shikii") // placed there later, by hand
+	if err := os.Mkdir(planted, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	if got := projectScopeAt(sub); got != p {
-		t.Errorf("a folder below the project by a path in another case: got %q, want %q", got, p)
+	if err := os.WriteFile(filepath.Join(planted, "project.json"), handMark(t, shared), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if root, _, err := prepareHookProject(sub); err != nil || root != filepath.Join(p, ".shikii") {
-		t.Errorf("the hooks there use the project's store: %q %v", root, err)
+	plain := filepath.Join(shared, "someone", "notes")
+	if err := os.MkdirAll(plain, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := projectScopeAt(plain); got != plain {
+		t.Errorf("a folder below a store placed by hand: got %q, want %q", got, plain)
+	}
+	if _, _, _, _, got := treeStateWithScope(plain); got != plain {
+		t.Errorf("the hooks' project there: got %q, want %q", got, plain)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "v", "cwd": plain, "prompt": "the plan is tangerine-4471"})
+	if hits := storeTextHits(planted, "tangerine-4471"); len(hits) > 0 {
+		t.Errorf("the request was written into the store placed above: %v", hits)
+	}
+}
+
+// The home folder is not the project of a folder below it also when this machine's index names the store in ~/.shikii by its own
+// id (an older version ran there): only the condition on the shared place keeps it out.
+func TestHomeFolderRegisteredByItsStoreIDIsNotTheProjectOfAFolderBelow(t *testing.T) {
+	hookEnv(t, nil)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	home = feedbackScope(home)
+	root := filepath.Join(home, ".shikii")
+	if err := os.WriteFile(filepath.Join(root, "project.json"), handMark(t, home), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	id := storeID(root, true)
+	if id == "" {
+		t.Fatal("the store in ~/.shikii gets an id")
+	}
+	common, _ := agentHome()
+	entry, _ := json.Marshal(projectEntry{ID: projectID(home), Name: filepath.Base(home), Path: home, URL: "/p/" + projectID(home) + "/", StoreID: id, StoreDir: storeDir(root)})
+	if err := os.WriteFile(filepath.Join(common, "projects", id+".json"), entry, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !registeredProjectAt(common, home) {
+		t.Fatal("the setup: the home folder is registered by its store's id")
+	}
+	work := filepath.Join(home, "work", "x")
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := projectScopeAt(work); got != work {
+		t.Errorf("a folder under a registered home: got %q, want %q", got, work)
+	}
+	if _, _, _, _, got := treeStateWithScope(work); got != work {
+		t.Errorf("the hooks' project under a registered home: got %q, want %q", got, work)
+	}
+	if _, _, err := prepareHookProject(work); !errors.Is(err, errProjectInactive) {
+		t.Errorf("the hooks stay off under a registered home: %v", err)
+	}
+}
+
+// A worktree under the project whose .shikii is a link to another project's store: the link is passed over, and the CLI, the MCP
+// server and the hooks name the project the worktree is kept under. Only the condition on a real folder keeps the link out.
+func TestLinkedStoreAtAWorktreeTopBelowTheProjectIsPassedOver(t *testing.T) {
+	hookEnv(t, nil)
+	repo, tree := nestedWorktree(t)
+	project := projectScopeAt(repo)
+	other := feedbackScope(t.TempDir())
+	t.Chdir(other)
+	capture(t, func() error { return cmdInit(nil) })
+	if err := os.Symlink(filepath.Join(other, ".shikii"), filepath.Join(tree, ".shikii")); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(project, ".shikii")
+	cli, _, cerr := projectStoreAt(tree)
+	mcp, _, merr := mcpProjectStore(tree)
+	hook, _, herr := prepareHookProject(tree)
+	_, _, _, _, scope := treeStateWithScope(tree)
+	if cli != want || mcp != want || hook != want || scope != project || cerr != nil || merr != nil || herr != nil {
+		t.Errorf("want %q: the CLI uses %q (%v), the MCP server %q (%v), the hooks %q (%v), the hooks' project %q", want, cli, cerr, mcp, merr, hook, herr, scope)
 	}
 }

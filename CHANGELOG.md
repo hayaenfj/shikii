@@ -19,9 +19,9 @@
 ### Limits
 
 - A folder under a project now belongs to that project. This includes another repository you keep under the project; before, shikii was not running in such a repository. To make such a repository a project of its own, run `shikii --init` in it: init prepares the top of the git working tree it runs in (outside git, the folder itself), and from then on that nearer folder is the project.
-- Only a project initialized on this machine is found from a folder below it. A `.shikii/` that was copied in, or that someone else placed in a folder above, is passed over. After you move a project's folder, open an agent session in that folder (or run `shikii --init` there) once; until then a worktree under it is not reached.
+- Walking up finds only a project initialized on this machine. A `.shikii/` in a folder above that was copied in, or that someone else placed there, is passed over. The `.shikii/` at the top of the git working tree you are in (outside git, in the current folder) is used as before. After you move a project's folder, send an agent one request in that folder (or run `shikii --init` there); until then a worktree under it is not reached.
 - A worktree created outside the project folder is not reached. Name the original project there, as before.
-- A worktree under the project gets no `.shikii/` of its own.
+- A worktree under the project gets no `.shikii/` of its own. If you commit `.shikii/project.json` to git, each worktree gets a copy of it; shikii treats that copy as a store brought in from elsewhere and does not run in that worktree, as before. Keep `project.json` out of git.
 - In a project that does not use git, the guards that look at changed files or commits stop nothing, in a subfolder as in the project's folder. This is unchanged.
 - After updating, reopen agent sessions and restart the page and MCP. A process still running 0.36.1 or earlier cannot read an assessment longer than 1500 bytes, and replaces it when it assesses the same lesson again.
 

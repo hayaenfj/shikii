@@ -28,18 +28,23 @@ func projectScopeAt(cwd string) string {
 }
 
 // projectAbove is the nearest folder at or above dir that holds an initialized store (a real .shikii folder with a regular
-// project.json) and is either own, the folder shikii init prepares from there, or a project registered on this machine (the index
-// init writes under ~/.shikii/agent/projects), "" when there is none. A store this machine did not initialize, such as one copied
-// in or placed in a folder above by someone else, is passed over: walking up never hands a session to it (audit of 0.37.0). The
-// shared place (the home folder, whose .shikii is the agents' store) is never a project.
+// project.json) and is either own, the folder shikii init prepares from there, or a project registered on this machine: for such
+// a project it returns the path this machine's index records (registeredStorePath). "" when there is none. A store this machine
+// did not initialize, such as one copied in or placed in a folder above by someone else, is passed over: walking up never hands a
+// session to it, and nothing it holds but its id is read (audit of 0.37.0). The shared place (the home folder, whose .shikii is
+// the agents' store) is never a project.
 func projectAbove(dir, own string) string {
 	agent, _ := agentHome()
 	for dir != "" {
 		if store, err := os.Lstat(filepath.Join(dir, ".shikii")); err == nil && store.IsDir() {
 			if file, err := os.Lstat(filepath.Join(dir, ".shikii", "project.json")); err == nil && file.Mode().IsRegular() && !isSharedPlaceScope(dir) {
-				// the index names the project as its project.json spells it, which a path in another case does not (a case-insensitive disk)
-				if sameFolder(dir, own) || (agent != "" && registeredProjectAt(agent, canonicalScope(dir))) {
+				if sameFolder(dir, own) {
 					return dir
+				}
+				if agent != "" {
+					if path := registeredStorePath(agent, dir); path != "" {
+						return path
+					}
 				}
 			}
 		}
@@ -52,13 +57,14 @@ func projectAbove(dir, own string) string {
 	return ""
 }
 
-// treeProjectScope is the project a session at cwd belongs to, spelled as the hooks key their records, where top is the folder its
-// files are compared at (the top of cwd's git working tree, or cwd outside git). It is the folder projectScopeAt names, found the
-// same way from cwd, so the hooks and the CLI never name two projects for one folder; else top itself.
+// treeProjectScope is the project a session at cwd belongs to, as the hooks key their records, where top is the folder its files
+// are compared at (the top of cwd's git working tree, or cwd outside git). It is projectScopeAt for the hooks, which already asked
+// git for top: the same walk and the same spelling, so the hooks and the CLI never name two projects for one folder, also when
+// cwd spells the path in another case (confirmation audit of 0.37.0).
 func treeProjectScope(cwd, top string) string {
-	top = feedbackScope(top)
+	top = canonicalScope(feedbackScope(top))
 	if dir := projectAbove(feedbackScope(cwd), top); dir != "" {
-		return dir
+		return canonicalScope(dir)
 	}
 	return top
 }

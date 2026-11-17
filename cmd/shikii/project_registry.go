@@ -290,6 +290,24 @@ func registeredProjectAt(common, scope string) bool {
 	return ok && p.Path == scope && registeredEntryActive(path, p)
 }
 
+// registeredStorePath is the path this machine's index records for the store in dir, "" when the index does not vouch for it. The
+// store must carry its own id (records/store-id), and the entry named by that id must record this id, name this folder (by any
+// spelling: another case on a case-insensitive disk) and be active. An entry an older version named by the path does not vouch
+// for a store: whoever can write to that path could place one there (confirmation audit of 0.37.0). Only the store's id is read
+// from the folder; the path comes from the index, which is in the person's home.
+func registeredStorePath(common, dir string) string {
+	id := storeID(filepath.Join(dir, ".shikii"), false)
+	if id == "" {
+		return ""
+	}
+	path := filepath.Join(common, "projects", id+".json")
+	p, ok := readEntry(path)
+	if !ok || p.StoreID != id || !sameFolder(p.Path, dir) || !registeredEntryActive(path, p) {
+		return ""
+	}
+	return p.Path
+}
+
 func registeredEntryActive(path string, p projectEntry) bool {
 	if feedbackScope(p.Path) != p.Path || projectID(p.Path) != p.ID {
 		return false
