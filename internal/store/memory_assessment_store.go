@@ -45,13 +45,18 @@ func (s Store) memoryAssessment(scope, id, key string) (*MemoryAssessment, error
 const followedUnshown = "The agent reports that the work went the way the lesson says; no check shows the lesson changed it."
 
 func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
-	// followed without evidence is taken only with unknown and only for a lesson that is not a correction, which is known once
-	// the delivery is found below. Until then it is not refused for its evidence: with another result on such a lesson the
-	// refusal is the one that keeps the result and leaves followed out, not a request for evidence that is refused again.
-	unshown := a.CorrectionResult == "followed" && strings.TrimSpace(a.Evidence) == ""
+	// What an entry with followed needs depends on the lesson it names, which is known once the delivery is found below: on a
+	// lesson that is not a correction it goes only with unknown, and then needs no evidence. So such an entry is not refused
+	// here for a decision or evidence it lacks; below, one order decides: the delivery, whether followed fits the lesson, then
+	// what the entry lacks. A refusal asking for a field is never followed by one that says to take followed out.
 	sent := a
-	if unshown {
-		a.Evidence = followedUnshown
+	if a.CorrectionResult == "followed" {
+		if strings.TrimSpace(a.Evidence) == "" {
+			a.Evidence = followedUnshown
+		}
+		if strings.TrimSpace(a.Decision) == "" {
+			a.Decision = followedUnshown // only for the check of the entry's form; an entry without a decision is refused below
+		}
 	}
 	if scope == "" || !validMemoryAssessment(a) {
 		return errors.New(memoryAssessmentRefusal(a))
@@ -87,9 +92,6 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 	if a.Agent != "" && a.Agent != deliveredTo {
 		return errors.New("a subagent assesses only a memory delivered to itself")
 	}
-	if unshown && correction { // a correction said to be followed counts as the correction taking effect: it keeps needing its check result
-		return errors.New(memoryAssessmentRefusal(sent))
-	}
 	if !correction && a.CorrectionResult != "" {
 		// A lesson that is not a correction takes one behaviour observation: followed, the work went the way the lesson says. With
 		// the result unknown it records that the lesson applied to the moment although its effect is not shown, which is what the
@@ -101,6 +103,17 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 		if a.Result != "unknown" {
 			return errors.New("correction_result followed is only for result unknown (the work went the way the lesson says, but the lesson's effect is not shown): keep result " + a.Result + ", leave correction_result out and send the entry again")
 		}
+	}
+	if sent.CorrectionResult == "followed" {
+		need := sent
+		if !correction {
+			need.Evidence = a.Evidence // unknown and followed on a lesson that is not a correction: there is no evidence to ask for
+		}
+		// a correction said to be followed counts as the correction taking effect: it keeps needing its check result
+		if strings.TrimSpace(need.Decision) == "" || strings.TrimSpace(need.Evidence) == "" {
+			return errors.New(memoryAssessmentRefusal(need))
+		}
+		a.Decision = sent.Decision
 	}
 	if correction && a.CorrectionResult == "" {
 		a.CorrectionResult = "unknown"

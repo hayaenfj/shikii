@@ -358,21 +358,34 @@ func TestOnlyTheRequestsOwnRecordAssessesBeforeTheConversationIsRecorded(t *test
 	}
 }
 
-// The audit of 0.36.1. followed on a lesson that is not a correction goes with unknown only: with another result and no
-// evidence, the refusal is the one that keeps the agent's own result, not a request for evidence that is refused again once added.
-func TestFollowedWithAnotherResultAndNoEvidenceSaysToKeepTheResult(t *testing.T) {
+// The audit of 0.36.1. followed on a lesson that is not a correction goes with unknown only. With another result the refusal is
+// the one that keeps the agent's own result and leaves followed out, whatever else the entry has or lacks: it asks for no
+// evidence and no decision that would be refused again once added.
+func TestFollowedWithAnotherResultSaysToKeepTheResultWhateverElseIsMissing(t *testing.T) {
 	st, scope, turn, atRequest, _ := turnDelivery(t)
-	r, err := workCall(t, notebook.Book{Root: st.Dir, Scope: scope}, "record", map[string]any{"session_id": "owner", "turn_id": turn,
-		"memory": []any{map[string]any{"ref": atRequest, "result": "unused", "correction_result": "followed", "decision": "Ran the steps before editing."}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	reply, _ := json.Marshal(r)
-	if got := assessed(t, st, scope); got[turn+" "+atRequest] != "" {
-		t.Fatalf("it is not saved: %v", got)
-	}
-	if !strings.Contains(string(reply), "keep result unused, leave correction_result out") || strings.Contains(string(reply), "needs evidence") {
-		t.Errorf("the refusal keeps the agent's own result and asks for no evidence: %s", reply)
+	for _, result := range []string{"helpful", "unused", "harmful"} {
+		for _, decision := range []string{"Ran the steps before editing.", ""} {
+			for _, evidence := range []string{"The steps passed.", ""} {
+				entry := map[string]any{"ref": atRequest, "result": result, "correction_result": "followed"}
+				if decision != "" {
+					entry["decision"] = decision
+				}
+				if evidence != "" {
+					entry["evidence"] = evidence
+				}
+				r, err := workCall(t, notebook.Book{Root: st.Dir, Scope: scope}, "record", map[string]any{"session_id": "owner", "turn_id": turn, "memory": []any{entry}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				reply, _ := json.Marshal(r)
+				if got := assessed(t, st, scope); got[turn+" "+atRequest] != "" {
+					t.Fatalf("%v is not saved: %v", entry, got)
+				}
+				if !strings.Contains(string(reply), "keep result "+result+", leave correction_result out") || strings.Contains(string(reply), "needs evidence") || strings.Contains(string(reply), "needs decision") {
+					t.Errorf("%v: the refusal keeps the agent's own result and asks for nothing else: %s", entry, reply)
+				}
+			}
+		}
 	}
 }
 
