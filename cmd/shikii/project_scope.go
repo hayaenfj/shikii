@@ -12,26 +12,35 @@ import (
 	"time"
 )
 
-// projectScopeAt is the project a folder belongs to: the nearest folder at or above it that shikii was initialized in. A worktree or
-// any other folder kept under a project, with or without git, uses that project's store instead of being a place of its own. Where no
-// folder above is initialized, it is the folder shikii init prepares (projectTopAt).
+// projectScopeAt is the project a folder belongs to. It is the folder shikii init prepares from there (projectTopAt: the top of its
+// git working tree, or the folder itself outside git), unless a project of this machine is met first on the way up from cwd: a
+// worktree or any other folder kept under such a project, with or without git, uses that project's store instead of being a place
+// of its own.
 func projectScopeAt(cwd string) string {
 	if cwd == "" {
 		return ""
 	}
-	if dir := initializedAbove(feedbackScope(cwd)); dir != "" {
+	top := projectTopAt(cwd)
+	if dir := projectAbove(feedbackScope(cwd), top); dir != "" {
 		return canonicalScope(dir)
 	}
-	return projectTopAt(cwd)
+	return top
 }
 
-// initializedAbove is the nearest folder at or above dir that holds an initialized store (a real .shikii folder with a regular
-// project.json), "" when there is none. The shared place (the home folder, whose .shikii is the agents' store) is never a project.
-func initializedAbove(dir string) string {
+// projectAbove is the nearest folder at or above dir that holds an initialized store (a real .shikii folder with a regular
+// project.json) and is either own, the folder shikii init prepares from there, or a project registered on this machine (the index
+// init writes under ~/.shikii/agent/projects), "" when there is none. A store this machine did not initialize, such as one copied
+// in or placed in a folder above by someone else, is passed over: walking up never hands a session to it (audit of 0.37.0). The
+// shared place (the home folder, whose .shikii is the agents' store) is never a project.
+func projectAbove(dir, own string) string {
+	agent, _ := agentHome()
 	for dir != "" {
 		if store, err := os.Lstat(filepath.Join(dir, ".shikii")); err == nil && store.IsDir() {
 			if file, err := os.Lstat(filepath.Join(dir, ".shikii", "project.json")); err == nil && file.Mode().IsRegular() && !isSharedPlaceScope(dir) {
-				return dir
+				// the index names the project as its project.json spells it, which a path in another case does not (a case-insensitive disk)
+				if sameFolder(dir, own) || (agent != "" && registeredProjectAt(agent, canonicalScope(dir))) {
+					return dir
+				}
 			}
 		}
 		parent := filepath.Dir(dir)
@@ -43,14 +52,15 @@ func initializedAbove(dir string) string {
 	return ""
 }
 
-// treeProjectScope is the project the working tree at top belongs to, spelled as the hooks key their records: top itself when it is
-// initialized or no folder above it is, else the nearest initialized folder above it. The tree's files are still compared at top.
-func treeProjectScope(top string) string {
-	scope := feedbackScope(top)
-	if dir := initializedAbove(scope); dir != "" {
+// treeProjectScope is the project a session at cwd belongs to, spelled as the hooks key their records, where top is the folder its
+// files are compared at (the top of cwd's git working tree, or cwd outside git). It is the folder projectScopeAt names, found the
+// same way from cwd, so the hooks and the CLI never name two projects for one folder; else top itself.
+func treeProjectScope(cwd, top string) string {
+	top = feedbackScope(top)
+	if dir := projectAbove(feedbackScope(cwd), top); dir != "" {
 		return dir
 	}
-	return scope
+	return top
 }
 
 // projectTopAt is the folder shikii init prepares from cwd: the top folder of its git working tree, or cwd itself outside git. init

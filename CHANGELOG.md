@@ -6,19 +6,24 @@
 
 ### Highlights
 
-- shikii now takes the nearest initialized folder at or above the current folder as the project. An agent working in a worktree kept under the project (Claude Code's `.claude/worktrees/`, chiten's `.chiten/wt/` and the like), or in a subfolder of a project that does not use git, gets the project's lessons, is stopped by the project's guards, and its records go to the project's `.shikii/`. Before, shikii looked only at the top of the git working tree, so it was not running in such a worktree. git is not needed to find the project.
+- shikii now takes the nearest folder at or above the current folder that was initialized on this machine as the project. An agent working in a worktree kept under the project (Claude Code's `.claude/worktrees/`, chiten's `.chiten/wt/` and the like) gets the project's lessons, is stopped by the project's guards, and its records go to the project's `.shikii/`. Before, shikii looked only at the top of the git working tree, so it was not running in such a worktree. git is not needed to find the project: a subfolder of a project that does not use git is found the same way.
 - `shikii guard try` checks the working tree it runs in. In a worktree kept apart from the project's own tree, it checks what the worktree changed since it left the project's branch, with its commits and the files not tracked yet, and its first line says so. In the project's own tree it compares with HEAD as before.
 
 ### Fixes
 
 - An assessment whose decision or evidence is too long is refused with the name of the field, its length and the limit, and the refusal asks for the same assessment again, shortened. Before, the refusal did not say that the length was the reason.
 - A decision and an evidence can each be 1500 characters long. Before, the limit was 1500 bytes, so Japanese text could be about a third as long as English text.
+- `shikii handoff write` and `shikii handoff append` name the written file by its whole path when they run outside the project's folder, such as in a worktree under it. Before, they showed a path that is not there from that folder.
+- A `.shikii/project.json` that names its folder by a relative path no longer counts as an initialization. `shikii --init` writes the absolute path.
 
 ### Limits
 
-- A folder under an initialized project now belongs to that project unless you run `shikii --init` in it. This includes another repository you keep under the project. Before, shikii was not running in such a repository.
+- A folder under a project now belongs to that project. This includes another repository you keep under the project; before, shikii was not running in such a repository. To make such a repository a project of its own, run `shikii --init` in it: init prepares the top of the git working tree it runs in (outside git, the folder itself), and from then on that nearer folder is the project.
+- Only a project initialized on this machine is found from a folder below it. A `.shikii/` that was copied in, or that someone else placed in a folder above, is passed over. After you move a project's folder, open an agent session in that folder (or run `shikii --init` there) once; until then a worktree under it is not reached.
 - A worktree created outside the project folder is not reached. Name the original project there, as before.
-- No worktree gets a `.shikii/` of its own. `shikii --init` still prepares the folder it runs in (the top of its git working tree), also below an initialized folder; from then on that nearer folder is the project.
+- A worktree under the project gets no `.shikii/` of its own.
+- In a project that does not use git, the guards that look at changed files or commits stop nothing, in a subfolder as in the project's folder. This is unchanged.
+- After updating, reopen agent sessions and restart the page and MCP. A process still running 0.36.1 or earlier cannot read an assessment longer than 1500 bytes, and replaces it when it assesses the same lesson again.
 
 ## 0.36.1 — Lessons are assessed in the request they were delivered in
 

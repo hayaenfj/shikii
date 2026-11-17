@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/hayaenfj/shikii/internal/handoff"
@@ -115,7 +117,7 @@ func cmdHandoff(args []string) error {
 			return err
 		}
 		e := res.(handoff.Entry)
-		fmt.Fprintf(stdout, "wrote: .shikii/handoff/%s (%d bytes)\n", e.Path, e.Size)
+		fmt.Fprintf(stdout, "wrote: %s (%d bytes)\n", shownHandoffPath(root, e.Path), e.Size)
 		return nil
 	}
 	return usage
@@ -183,4 +185,13 @@ func (s *server) handleHandoffFile(w http.ResponseWriter, r *http.Request) {
 	}
 	h.Set("Content-Length", fmt.Sprint(e.Size))
 	_, _ = io.Copy(w, io.LimitReader(f, e.Size))
+}
+
+// shownHandoffPath is how a written work record is named to the person: .shikii/handoff/<name> when the project's folder is the
+// current one, else the whole path. From a subfolder or a worktree kept under the project the short form names a file that is not there.
+func shownHandoffPath(root, name string) string {
+	if cwd, err := os.Getwd(); err == nil && sameFolder(cwd, filepath.Dir(root)) {
+		return ".shikii/handoff/" + name
+	}
+	return filepath.Join(root, "handoff", filepath.FromSlash(name))
 }

@@ -52,7 +52,7 @@ func cmdInit(args []string) error {
 		registrations, _ := filepath.Glob(filepath.Join(agent, "projects", "*.json"))
 		firstProject = len(registrations) == 0
 	}
-	if notice := relinkMovedProject(scope, true); strings.HasPrefix(notice, "shikii:") { // a moved folder (0.9.7)
+	if notice := relinkMovedStore(root, scope, true); strings.HasPrefix(notice, "shikii:") { // a moved folder (0.9.7)
 		fmt.Fprintln(stdout, "Reconnected this project at its new path (its wiki and records are kept)")
 	} else if notice != "" { // a copy, or a .shikii from elsewhere, the person makes a project of its own
 		fmt.Fprintln(stdout, notice)

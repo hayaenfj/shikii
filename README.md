@@ -9,12 +9,12 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-2241%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2253%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.37.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.37.0 lets an agent working in a worktree kept under a project (Claude Code's `.claude/worktrees/`, chiten's `.chiten/wt/` and the like) use that project's wiki, guards and records: shikii now takes the nearest initialized folder above as the project. Version 0.36.1 let an agent assess a delivered lesson in the same request it received it, so a lesson delivered in the last request of a session can be assessed too. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
+Version 0.37.0 lets an agent working in a worktree kept under a project (Claude Code's `.claude/worktrees/`, chiten's `.chiten/wt/` and the like) use that project's wiki, guards and records: shikii now takes the nearest folder above that was initialized on this machine as the project. Version 0.36.1 let an agent assess a delivered lesson in the same request it received it, so a lesson delivered in the last request of a session can be assessed too. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
 
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 

@@ -129,7 +129,8 @@ func projectActive(root, scope string) (bool, error) {
 	if decoder.Decode(&extra) != io.EOF {
 		return false, errors.New("the project's initialization mark is invalid")
 	}
-	return activation.Version >= 1 && (activation.Scope == scope || sameFolder(activation.Scope, scope)), nil
+	// an initialization records the absolute path: a relative one would be read from wherever the process happens to be (audit of 0.37.0)
+	return activation.Version >= 1 && filepath.IsAbs(activation.Scope) && (activation.Scope == scope || sameFolder(activation.Scope, scope)), nil
 }
 
 // version is the version written to project.json. If a new binary's --init was only rerun on a store with an old mark (version 1, 0.7.4 or earlier) and records,

@@ -36,7 +36,7 @@ func treeStateWithScope(cwd string) (hash, listing string, listed bool, project,
 	if cwd == "" {
 		return "", "", false, "", ""
 	}
-	scope = treeProjectScope(cwd)
+	scope = treeProjectScope(cwd, cwd)
 	project = filepath.Base(filepath.Clean(cwd))
 	ctx, cancel := context.WithTimeout(context.Background(), hookGitTimeout)
 	defer cancel()
@@ -58,8 +58,8 @@ func treeStateWithScope(cwd string) (hash, listing string, listed bool, project,
 		return "", "", false, project, scope // outside git: the marker is the cwd's name
 	}
 	project = filepath.Base(top)
-	scope = treeProjectScope(top) // a worktree kept under a project is that project's work: its records are the project's, its files are compared here
-	dir = top                     // from here on, at the repo's root (even a session started in a subdirectory sees the whole repo)
+	scope = treeProjectScope(cwd, top) // a worktree kept under a project is that project's work: its records are the project's, its files are compared here
+	dir = top                          // from here on, at the repo's root (even a session started in a subdirectory sees the whole repo)
 	objects, ok := run(nil, "rev-parse", "--git-path", "objects")
 	if !ok {
 		return "", "", false, project, scope

@@ -306,7 +306,11 @@ func worktreeBase(project, dir string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*hookGitTimeout)
 	defer cancel()
 	top, ok := gitRun(ctx, dir, "rev-parse", "--show-toplevel")
-	if !ok || feedbackScope(strings.TrimSpace(top)) == feedbackScope(project) {
+	if !ok {
+		return ""
+	}
+	// the project's own tree, also when the project is a folder below the top of that tree
+	if own, ok := gitRun(ctx, project, "rev-parse", "--show-toplevel"); !ok || feedbackScope(strings.TrimSpace(top)) == feedbackScope(strings.TrimSpace(own)) {
 		return ""
 	}
 	head := gitHead(project)

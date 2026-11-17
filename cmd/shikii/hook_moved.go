@@ -57,6 +57,12 @@ func relinkMovedProject(cwd string, takeOver bool) string {
 	if err != nil {
 		return ""
 	}
+	return relinkMovedStore(root, scope, takeOver)
+}
+
+// relinkMovedStore is relinkMovedProject for a store already chosen. shikii init passes the store of the folder it prepares, so it
+// never reconnects or takes over a store in a folder above (audit of 0.37.0).
+func relinkMovedStore(root, scope string, takeOver bool) string {
 	if _, _, ok := previousScope(root, scope); !ok {
 		return ""
 	}
