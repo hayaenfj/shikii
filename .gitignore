@@ -4,6 +4,9 @@
 *.out
 coverage.*
 
+# Report of scripts/check-dup.sh (jscpd)
+/.jscpd-report/
+
 # Where records and labels live. They are calibration material and differ per environment. eval-model.sh keeps them apart in .shikii-eval/<name>/
 /.shikii/
 /.shikii-*/
