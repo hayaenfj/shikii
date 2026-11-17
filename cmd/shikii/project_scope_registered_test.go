@@ -755,3 +755,72 @@ func TestStoreIDThatIsAFIFODoesNotHoldTheWalk(t *testing.T) {
 		t.Errorf("an id written into a FIFO is read as the store's id: %q", id)
 	}
 }
+
+// An entry with a store id and no store folder (an older form) does not vouch for a store placed later at the project's path by
+// someone who knows the id: a folder below is not handed to it, and the request is written into none.
+func TestEntryWithoutStoreFolderDoesNotVouchForAStorePlacedThere(t *testing.T) {
+	hookEnv(t, fakeAgentModel(t, func(string) float64 { return .1 }))
+	gone := feedbackScope(t.TempDir())
+	t.Chdir(gone)
+	capture(t, func() error { return cmdInit(nil) })
+	root := filepath.Join(gone, ".shikii")
+	id := storeID(root, false)
+	common, _ := agentHome()
+	entryPath := filepath.Join(common, "projects", id+".json")
+	e, ok := readEntry(entryPath)
+	if !ok || e.StoreDir == "" {
+		t.Fatalf("the setup: registered by its id with its store folder: %+v %v", e, ok)
+	}
+	e.StoreDir = ""
+	b, _ := json.Marshal(e)
+	if err := os.WriteFile(entryPath, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	planted := filepath.Join(gone, ".shikii")
+	if err := os.MkdirAll(filepath.Join(planted, "records"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(planted, "project.json"), handMark(t, gone), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(planted, "records", "store-id"), []byte(id+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plain := filepath.Join(gone, "someone", "notes")
+	if err := os.MkdirAll(plain, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := projectScopeAt(plain); got != plain {
+		t.Errorf("the CLI's project of a folder below: got %q, want %q", got, plain)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "zz", "cwd": plain, "prompt": "the plan is tangerine-4471"})
+	if hits := storeTextHits(planted, "tangerine-4471"); len(hits) > 0 {
+		t.Errorf("the request was written into the store placed there: %v", hits)
+	}
+}
+
+// After a project's folder is moved and a link to the new place is left at the old path, one request in the moved folder
+// reconnects it: the record names the new path, and a folder below finds the project.
+func TestMovedProjectWithALinkLeftAtTheOldPathIsFoundFromBelow(t *testing.T) {
+	_, old, moved := movedProject(t)
+	if err := os.Symlink(moved, old); err != nil {
+		t.Fatal(err)
+	}
+	inner := filepath.Join(moved, "vendor", "tool")
+	if err := os.MkdirAll(inner, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "-C", inner, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s1", "cwd": moved, "prompt": "fix a typo in the README"})
+	if got := projectScopeAt(inner); !sameFolder(got, moved) {
+		t.Errorf("after one request in the moved folder, a folder below finds %q, want the project %q", got, moved)
+	}
+	if hook := treeProjectScope(moved, moved); projectScopeAt(moved) != hook {
+		t.Errorf("in the moved folder the CLI says %q and the hooks %q", projectScopeAt(moved), hook)
+	}
+}

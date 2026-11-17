@@ -93,8 +93,8 @@ func canonicalScope(scope string) string {
 	if !ok || a.Scope == "" || a.Scope == scope || !filepath.IsAbs(a.Scope) {
 		return scope
 	}
-	if sameFolder(a.Scope, scope) {
-		return a.Scope
+	if sameFolder(a.Scope, scope) && !leadsThroughLink(a.Scope) {
+		return a.Scope // not a link left at an old path: that spelling is reconnected, not kept
 	}
 	return scope
 }
@@ -123,4 +123,11 @@ func storeOfScope(scope string) (string, string, error) {
 	}
 
 	return root, scope, nil
+}
+
+// leadsThroughLink reports whether a recorded path reaches its folder through a link (the other spelling of the same folder that is not just
+// another case): the project was moved and a link was left at the old path, so project.json still names the old path.
+func leadsThroughLink(path string) bool {
+	resolved, err := filepath.EvalSymlinks(path)
+	return err == nil && !strings.EqualFold(resolved, filepath.Clean(path))
 }

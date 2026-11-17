@@ -306,7 +306,7 @@ func registeredStorePath(common, dir string) string {
 	}
 	path := filepath.Join(common, "projects", id+".json")
 	p, ok := readEntry(path)
-	if !ok || p.StoreID != id || !sameFolder(p.Path, dir) || !registeredEntryActive(path, p) {
+	if !ok || p.StoreID != id || p.StoreDir == "" || !sameFolder(p.Path, dir) || !registeredEntryActive(path, p) {
 		return ""
 	}
 	return p.Path
