@@ -42,10 +42,14 @@ type ReviewTarget struct {
 
 const (
 	FeedbackTextLimit = 1500
-	feedbackTextMax   = FeedbackTextLimit
-	feedbackReadMax   = 4 << 20 // do not read the whole history every turn
-	feedbackRecent    = 256
-	feedbackRecall    = 2
+	// AssessmentTextLimit is how many characters the decision and the evidence of a memory assessment take, each. It counts
+	// characters, not bytes: a text in Japanese (three bytes a character) gets the same room as one in English. A saved
+	// assessment stays under the 32 KiB its file is read with: a character is at most six bytes in the file.
+	AssessmentTextLimit = 1500
+	feedbackTextMax     = FeedbackTextLimit
+	feedbackReadMax     = 4 << 20 // do not read the whole history every turn
+	feedbackRecent      = 256
+	feedbackRecall      = 2
 )
 
 func (s Store) feedbackPath(scope string) string {

@@ -456,22 +456,25 @@ func TestARecordThatStopsEarlyStillListsTheLessonsLeft(t *testing.T) {
 	}
 }
 
-// An assessment whose decision or evidence is longer than the store keeps is refused with what to shorten and to what size, in
-// one refusal that also names evidence it lacks: the agent shortens the same entry instead of sending it again unchanged or
-// dropping it. Nothing is saved, and the shortened entry is.
+// The decision and the evidence of an assessment take 1500 characters each, counted as characters and not as bytes, so a text
+// in Japanese gets the same room as one in English. A longer one is refused with what to shorten and to what size, in one
+// refusal that also names evidence it lacks: the agent shortens the same entry instead of dropping it. Nothing is saved then.
 func TestAnAssessmentThatIsTooLongSaysWhatToShorten(t *testing.T) {
-	st, scope, turn, atRequest, _ := turnDelivery(t)
-	long := strings.Repeat("The steps passed. ", 90) // 1620 bytes
-	limit := fmt.Sprint(store.FeedbackTextLimit)
+	st, scope, turn, atRequest, atTool := turnDelivery(t)
+	limit := store.AssessmentTextLimit
+	long := strings.Repeat("The steps passed. ", 90) // 1620 characters
+	kana := strings.Repeat("\u3042", limit+1)        // one character over, 4503 bytes
+	said := fmt.Sprintf("at most %d characters each", limit)
 	for _, c := range []struct {
 		name               string
 		decision, evidence string
 		says, not          []string
 	}{
-		{"evidence", "Ran the steps before editing.", long, []string{"shorten evidence (1620 bytes)", limit + " bytes", "in the same entry", "send it again"}, []string{"decision (", "add evidence"}},
-		{"decision", long, "The steps passed.", []string{"shorten decision (1620 bytes)", limit + " bytes", "in the same entry", "send it again"}, []string{"evidence (1620", "add evidence"}},
-		{"both", long, long, []string{"shorten decision (1620 bytes) and evidence (1620 bytes)", limit + " bytes"}, []string{"add evidence"}},
-		{"decision, and no evidence", long, "", []string{"shorten decision (1620 bytes)", limit + " bytes", "add evidence"}, []string{"evidence (1620"}},
+		{"evidence", "Ran the steps before editing.", long, []string{"shorten evidence (1620 characters)", said, "in the same entry", "send it again"}, []string{"decision (", "add evidence"}},
+		{"decision", long, "The steps passed.", []string{"shorten decision (1620 characters)", said, "in the same entry", "send it again"}, []string{"evidence (1620", "add evidence"}},
+		{"both", long, long, []string{"shorten decision (1620 characters) and evidence (1620 characters)", said}, []string{"add evidence"}},
+		{"decision, and no evidence", long, "", []string{"shorten decision (1620 characters)", said, "add evidence"}, []string{"evidence (1620"}},
+		{"one character over, not in ASCII", "Ran the steps before editing.", kana, []string{fmt.Sprintf("shorten evidence (%d characters)", limit+1), said}, []string{"bytes"}},
 	} {
 		entry := map[string]any{"ref": atRequest, "result": "helpful", "decision": c.decision}
 		if c.evidence != "" {
@@ -496,13 +499,27 @@ func TestAnAssessmentThatIsTooLongSaysWhatToShorten(t *testing.T) {
 			}
 		}
 	}
-	r, err := workCall(t, notebook.Book{Root: st.Dir, Scope: scope}, "record", map[string]any{"session_id": "owner", "turn_id": turn,
-		"memory": []any{map[string]any{"ref": atRequest, "result": "helpful", "decision": "Ran the steps before editing.", "evidence": long[:store.FeedbackTextLimit]}}})
+	// At the limit both are saved and read back: characters of three bytes, and characters the saved file writes as six bytes.
+	full := strings.Repeat("\u3042", limit)
+	escaped := strings.Repeat("<", limit)
+	r, err := workCall(t, notebook.Book{Root: st.Dir, Scope: scope}, "record", map[string]any{"session_id": "owner", "turn_id": turn, "memory": []any{
+		map[string]any{"ref": atRequest, "result": "helpful", "decision": full, "evidence": full},
+		map[string]any{"ref": atTool, "result": "unused", "decision": escaped, "evidence": escaped}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := assessed(t, st, scope); got[turn+" "+atRequest] != "helpful" {
-		reply, _ := json.Marshal(r)
-		t.Errorf("the entry shortened to the limit is saved: %v\n%s", got, reply)
+	reply, _ := json.Marshal(r)
+	got := assessed(t, st, scope)
+	if got[turn+" "+atRequest] != "helpful" {
+		t.Errorf("an entry of %d characters and %d bytes in each text is saved and read back: %v\n%s", limit, len(full), got, reply)
+	}
+	unused := 0
+	for id, result := range got {
+		if strings.HasSuffix(id, " "+atTool) && result == "unused" {
+			unused++
+		}
+	}
+	if unused != 1 {
+		t.Errorf("an entry of %d characters the file escapes is saved and read back: %v\n%s", limit, got, reply)
 	}
 }

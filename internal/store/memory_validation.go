@@ -3,6 +3,7 @@ package store
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // memoryAssessmentRefusal says what a refused assessment lacks, so the agent that sent it sends it again whole instead of
@@ -14,14 +15,14 @@ func memoryAssessmentRefusal(a MemoryAssessment) string {
 	// A text that is too long is named with its size and the limit, with the evidence the entry also lacks: one refusal says
 	// everything to change, and the agent keeps the rest of the entry.
 	long := []string{}
-	if len(a.Decision) > feedbackTextMax {
-		long = append(long, fmt.Sprintf("decision (%d bytes)", len(a.Decision)))
+	if n := utf8.RuneCountInString(a.Decision); n > AssessmentTextLimit {
+		long = append(long, fmt.Sprintf("decision (%d characters)", n))
 	}
-	if len(a.Evidence) > feedbackTextMax {
-		long = append(long, fmt.Sprintf("evidence (%d bytes)", len(a.Evidence)))
+	if n := utf8.RuneCountInString(a.Evidence); n > AssessmentTextLimit {
+		long = append(long, fmt.Sprintf("evidence (%d characters)", n))
 	}
 	if len(long) > 0 {
-		text := fmt.Sprintf("decision and evidence of a memory assessment take at most %d bytes each: shorten %s in the same entry", feedbackTextMax, strings.Join(long, " and "))
+		text := fmt.Sprintf("decision and evidence of a memory assessment take at most %d characters each: shorten %s in the same entry", AssessmentTextLimit, strings.Join(long, " and "))
 		if strings.TrimSpace(a.Evidence) == "" {
 			text += ", add " + evidence
 		}
@@ -40,7 +41,7 @@ func validMemoryAssessment(a MemoryAssessment) bool {
 	if !validCorrectionResult(a.CorrectionResult) || (a.CorrectionResult != "" && a.CorrectionResult != "unknown" && strings.TrimSpace(a.Decision) == "") {
 		return false
 	}
-	if !textTrace.MatchString(a.SourceID) || a.Key == "" || len(a.Key) > 80 || strings.TrimSpace(a.Evidence) == "" || len(a.Decision) > feedbackTextMax || len(a.Evidence) > feedbackTextMax {
+	if !textTrace.MatchString(a.SourceID) || a.Key == "" || len(a.Key) > 80 || strings.TrimSpace(a.Evidence) == "" || utf8.RuneCountInString(a.Decision) > AssessmentTextLimit || utf8.RuneCountInString(a.Evidence) > AssessmentTextLimit {
 		return false
 	}
 	switch a.Result {
