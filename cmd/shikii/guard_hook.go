@@ -235,6 +235,91 @@ func guardWorkingTreeInput(dir string) guardInput {
 	return in
 }
 
+// guardSinceInput is for `shikii guard try` in a worktree kept apart from the project's own tree: everything the tree changed since base,
+// the commit where its branch left the project's (committed, staged, unstaged and untracked files), with the bodies of the commits made
+// since then. Added lines are compared with base.
+func guardSinceInput(dir, base string) guardInput {
+	in := guardInput{Added: map[string][]string{}}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*hookGitTimeout)
+	defer cancel()
+	top, ok := gitRun(ctx, dir, "rev-parse", "--show-toplevel")
+	if !ok {
+		return in
+	}
+	top = strings.TrimSpace(top)
+	diff, ok := gitRun(ctx, top, "diff", "--name-only", "--no-renames", base)
+	if !ok {
+		return in
+	}
+	status, ok := gitRun(ctx, top, "status", "--porcelain", "--untracked-files=all", "--no-renames")
+	if !ok {
+		return in
+	}
+	in.Known = true
+	seen := map[string]bool{}
+	add := func(p string) {
+		p = gitPath(strings.TrimSpace(p))
+		if p == "" || strings.HasPrefix(p, ".shikii/") || seen[p] {
+			return
+		}
+		seen[p] = true
+		in.Changed = append(in.Changed, p)
+	}
+	for _, line := range strings.Split(diff, "\n") {
+		add(line)
+	}
+	for _, line := range strings.Split(status, "\n") {
+		if strings.HasPrefix(line, "?? ") { // the files git does not track yet are not in the diff from base
+			add(line[3:])
+		}
+	}
+	for i, p := range in.Changed {
+		if i >= guardFilesMax {
+			break
+		}
+		now, err := os.ReadFile(filepath.Join(top, filepath.FromSlash(p)))
+		if err != nil || len(now) > guardFileBytesMax || isBinary(now) {
+			continue
+		}
+		var old []byte
+		if s, ok := gitRun(ctx, top, "show", base+":"+p); ok {
+			old = []byte(s)
+		}
+		if lines := addedLines(old, now); len(lines) > 0 {
+			in.Added[p] = lines
+		}
+	}
+	if out, ok := gitRun(ctx, top, "log", "--no-merges", "--format=%ct%x1f%B%x1e", base+"..HEAD"); ok { // ignore the automatic text of merges
+		in.CommitsKnown = true
+		for _, rec := range strings.Split(out, "\x1e") {
+			if _, body, found := strings.Cut(strings.TrimSpace(rec), "\x1f"); found {
+				in.Commits = append(in.Commits, strings.TrimSpace(body))
+			}
+		}
+	}
+	return in
+}
+
+// worktreeBase is the commit where the working tree at dir left the project's branch, when dir is in a worktree of the project's
+// repository kept apart from the project's own tree. "" otherwise: the project's own tree, another repository, outside git, no commit.
+func worktreeBase(project, dir string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*hookGitTimeout)
+	defer cancel()
+	top, ok := gitRun(ctx, dir, "rev-parse", "--show-toplevel")
+	if !ok || feedbackScope(strings.TrimSpace(top)) == feedbackScope(project) {
+		return ""
+	}
+	head := gitHead(project)
+	if head == "" {
+		return ""
+	}
+	base, ok := gitRun(ctx, strings.TrimSpace(top), "merge-base", "HEAD", head)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(base)
+}
+
 // guardStop runs the enabled checks at Stop and, if one fails, returns output that blocks (decision: block). Results are kept in records/guards.jsonl.
 // base is the start the turn is compared with: the request's, or the stretch a slash command opened (guard_turn.go).
 // A guard stops a turn at most once. A failing guard stops the Stop unless that same guard already stopped an earlier Stop of this turn,

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -139,7 +140,9 @@ func guardSetEnabled(root, id string, enable bool) error {
 	return nil
 }
 
-// guardTry runs the enabled checks against the current working tree (its diff from HEAD) and shows the result (it does not stop anything). It does not look at commits.
+// guardTry runs the enabled checks against the working tree the person is in and shows the result (it does not stop anything). In the
+// project's own tree it is the diff from HEAD, and commits are not looked at. In a worktree kept apart from it (which uses the project's
+// guards), it is everything the worktree changed since it left the project's branch, with its commits.
 func guardTry(root string) error {
 	if _, err := loadGuards(root); err != nil {
 		return err // the person is at the terminal: name the file that does not load instead of skipping it
@@ -152,7 +155,17 @@ func guardTry(root string) error {
 		fmt.Fprintln(stdout, "No enabled checks that stop the turn")
 		return nil
 	}
-	in := guardWorkingTreeInput(filepath.Dir(root))
+	// the working tree the person is in: a worktree kept under the project is checked with the project's guards
+	tree, err := os.Getwd()
+	if err != nil {
+		tree = filepath.Dir(root)
+	}
+	in := guardWorkingTreeInput(tree)
+	if base := worktreeBase(filepath.Dir(root), tree); base != "" {
+		// a worktree's work is committed on its own branch: compare with where it left the project's, not with its own HEAD
+		fmt.Fprintf(stdout, "Checking what this worktree changed since it left the project's branch (%.12s), its commits included\n", base)
+		in = guardSinceInput(tree, base)
+	}
 	for _, g := range guards {
 		r := evalGuard(g, in)
 		if r.Pass {

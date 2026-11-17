@@ -32,7 +32,12 @@ func cmdInit(args []string) error {
 	if len(args) > 0 {
 		return errors.New("usage: shikii init or shikii --init (no extra arguments needed)")
 	}
-	root, scope, err := currentProjectStore()
+	// init prepares the folder it runs in (the top of its git working tree), also when a folder above it is already a project
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	root, scope, err := projectTopStoreAt(cwd)
 	if err != nil {
 		return err
 	}

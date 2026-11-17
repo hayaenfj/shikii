@@ -30,7 +30,7 @@ shikii guard add < /tmp/guard.json      # writes .shikii/guards/changelog-pair.y
 shikii guard enable changelog-pair      # RED: the kind's negative example must stop; GREEN: the positive example must pass; then enabled: true
 shikii guard disable changelog-pair     # keeps the file, stops checking
 shikii guard list                       # state and the last result of each guard
-shikii guard try                        # apply the enabled guards to the working tree now (diff against HEAD; commits are not checked)
+shikii guard try                        # apply the enabled guards to the working tree now (diff against HEAD; commits are not checked). In another worktree under the project: what it changed since it left the project's branch, with its commits
 ```
 
 `enable` refuses a guard whose negative example does not fail. Never edit `enabled:` by hand to skip that check, and never disable a guard to get past it; if a guard is wrong, say so and let the person decide.
