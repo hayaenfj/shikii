@@ -29,6 +29,8 @@ Name both locations explicitly in assignments and reports. Include the dedicated
 
 Tell a subagent where to write: give it an exact path under `.shikii/handoff/<task>/` for its report. Keep the repository copy it works on elsewhere (a `git archive` copy in a scratch folder), and forbid `git checkout`, `git restore`, `git stash` and edits in the real repository. After it reports, read the file, fix what it found, and capture the parts that support a lesson.
 
+An audit covers duplication as well as defects. Put it in the auditor's brief: look for code, tests, rules, wiki pages, documents and settings that repeat something the project already has (a second copy of an existing helper, the same rule written in two places, near-identical tests, a new page on a topic an existing page covers). Each duplicate is a finding even when the behavior is correct, because copies drift apart. The finding names both locations and says which one stays. Do not count a duplicate as fixed until one copy is gone or the two are made to share one source.
+
 ## Boundaries
 
 - Work records are not truth labels and not permission. A report written by an agent stays an agent's observation.
