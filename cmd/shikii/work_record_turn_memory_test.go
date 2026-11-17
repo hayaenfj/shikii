@@ -247,8 +247,9 @@ func TestARefusedAssessmentOfTheRequestSaysWhatItLacks(t *testing.T) {
 		lacks string
 		entry map[string]any
 	}{
-		{"needs evidence", map[string]any{"result": "unknown", "decision": "Ran the steps before editing.", "correction_result": "followed"}},
+		{"needs evidence", map[string]any{"result": "helpful", "decision": "Ran the steps before editing."}},
 		{"needs decision", map[string]any{"result": "helpful", "evidence": "The steps ran."}},
+		{"needs decision", map[string]any{"result": "unknown", "correction_result": "followed"}},
 	} {
 		st, scope, turn, atRequest, _ := turnDelivery(t)
 		c.entry["ref"] = atRequest
@@ -266,6 +267,61 @@ func TestARefusedAssessmentOfTheRequestSaysWhatItLacks(t *testing.T) {
 		if got := assessed(t, st, scope); got[turn+" "+atRequest] != "" {
 			t.Errorf("an assessment that %s is not saved: %v", c.lacks, got)
 		}
+	}
+}
+
+// The skill tells an agent whose work went the way a lesson says, with nothing to show that the lesson changed it, to record
+// result unknown with correction_result followed and the decision. It names no evidence, and there is none to give: a real Codex
+// (0.169.0) sent exactly that twice and was refused twice. That entry is saved as it is sent, with what shikii knows as its evidence.
+func TestUnknownWithFollowedAndWhatTheWorkDidIsSavedWithoutEvidence(t *testing.T) {
+	st, scope, turn, atRequest, _ := turnDelivery(t)
+	r, err := workCall(t, notebook.Book{Root: st.Dir, Scope: scope}, "record", map[string]any{"session_id": "owner", "turn_id": turn,
+		"memory": []any{map[string]any{"ref": atRequest, "result": "unknown", "correction_result": "followed", "decision": "Ran the steps before editing."}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if errs := recordErrors(r); len(errs) != 0 {
+		t.Fatalf("the entry the skill describes is saved: %v", errs)
+	}
+	report, err := st.MemoryReport(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range report.All {
+		if o.SourceID != turn || o.Quote.Key != atRequest {
+			continue
+		}
+		a := o.Assessment
+		if a == nil || a.Result != "unknown" || a.CorrectionResult != "followed" || a.Decision != "Ran the steps before editing." {
+			t.Fatalf("the assessment keeps what the agent sent: %+v", a)
+		}
+		if !strings.Contains(a.Evidence, "no check shows") {
+			t.Errorf("its evidence says that nothing shows the lesson's effect: %q", a.Evidence)
+		}
+		return
+	}
+	t.Fatal("the delivery of the request is not in the report")
+}
+
+// A delivered correction is another matter: followed counts as the correction taking effect, so it still needs the check result.
+func TestFollowedOnADeliveredCorrectionStillNeedsEvidence(t *testing.T) {
+	st, scope, turn, _, _ := turnDelivery(t)
+	key := "lesson:1111111111111111:2222222222222222"
+	if err := st.SaveMemoryDelivery(store.MemoryDelivery{ID: "cccccccccccccccc", Scope: scope, Request: "Update the install steps of the README", Parent: turn, Tool: "Bash go vet", Phrase: "go vet",
+		Quotes: []store.MemoryQuote{{Key: key, ID: "1111111111111111", Revision: "2222222222222222", Lesson: "Run go vet.", AppliesTo: "go vet", Sources: []string{"0000000000000001"},
+			Correction: &store.Correction{SourceID: "0000000000000001", Quote: "You did not run go vet.", Action: "Run go vet before a commit."}}}, At: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	r, err := workCall(t, notebook.Book{Root: st.Dir, Scope: scope}, "record", map[string]any{"session_id": "owner", "turn_id": turn,
+		"memory": []any{map[string]any{"ref": key, "result": "unknown", "correction_result": "followed", "decision": "Ran go vet."}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reply, _ := json.Marshal(r); !strings.Contains(string(reply), "needs evidence") {
+		t.Errorf("a correction said to be followed needs its evidence: %s", reply)
+	}
+	if got := assessed(t, st, scope); got["cccccccccccccccc "+key] != "" {
+		t.Errorf("it is not saved without it: %v", got)
 	}
 }
 

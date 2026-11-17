@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -38,7 +39,18 @@ func (s Store) memoryAssessment(scope, id, key string) (*MemoryAssessment, error
 	return &a, nil
 }
 
+// followedUnshown is the evidence of the entry the skill describes for work that went the way a lesson says with nothing to show
+// that the lesson changed it: result unknown, correction_result followed and the decision. There is no evidence to ask the agent
+// for, and a real Codex (0.169.0) that sent exactly that entry was refused twice.
+const followedUnshown = "The agent reports that the work went the way the lesson says; no check shows the lesson changed it."
+
 func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
+	// taken without evidence only for a lesson that is not a correction, which is known once the delivery is found below
+	unshown := a.Result == "unknown" && a.CorrectionResult == "followed" && strings.TrimSpace(a.Evidence) == ""
+	sent := a
+	if unshown {
+		a.Evidence = followedUnshown
+	}
 	if scope == "" || !validMemoryAssessment(a) {
 		return errors.New(memoryAssessmentRefusal(a))
 	}
@@ -73,6 +85,9 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 	if a.Agent != "" && a.Agent != deliveredTo {
 		return errors.New("a subagent assesses only a memory delivered to itself")
 	}
+	if unshown && correction { // a correction said to be followed counts as the correction taking effect: it keeps needing its check result
+		return errors.New(memoryAssessmentRefusal(sent))
+	}
 	if !correction && a.CorrectionResult != "" {
 		// A lesson that is not a correction takes one behaviour observation: followed, the work went the way the lesson says. With
 		// the result unknown it records that the lesson applied to the moment although its effect is not shown, which is what the
@@ -82,7 +97,7 @@ func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 			return errors.New("correction_result is only for a delivered correction; leave it out for this lesson, or send followed when the work went the way the lesson says (the other behaviour observations can only be attached to corrections delivered to this request)")
 		}
 		if a.Result != "unknown" {
-			return errors.New("correction_result followed goes with result unknown (the work went the way the lesson says, but the lesson's effect is not shown); with " + a.Result + " leave correction_result out")
+			return errors.New("correction_result followed is only for result unknown (the work went the way the lesson says, but the lesson's effect is not shown): keep result " + a.Result + ", leave correction_result out and send the entry again")
 		}
 	}
 	if correction && a.CorrectionResult == "" {

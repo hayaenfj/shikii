@@ -75,7 +75,8 @@ means no wiki draft. Important corrections, failures and new procedures still
 need source-backed notes; short messages do not make them optional.
 
 For a prepared memory whose lesson the work followed, without evidence that the lesson changed the work, record
-`result:"unknown"` with `correction_result:"followed"` and the decision; `unused` means no decision followed the lesson.
+`result:"unknown"` with `correction_result:"followed"` and the decision (that entry needs no evidence; a delivered correction's
+does); `unused` means no decision followed the lesson.
 
 The host supplies project/session/turn and retains the receipt; never invent
 missing metadata or collect shell history, environment values or secret-bearing

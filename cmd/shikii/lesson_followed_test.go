@@ -110,6 +110,11 @@ func TestFollowedOnAPlainLessonGoesWithUnknownOnly(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "correction_result") || !strings.Contains(err.Error(), c.want) {
 			t.Fatalf("result %s with correction_result %s on a plain lesson is refused, naming the field and what to send (%q): %v", c.result, c.behaviour, c.want, err)
 		}
+		// a real Codex (0.169.0) that sent helpful with followed read "followed goes with result unknown" and changed its helpful to
+		// unknown: the refusal says to keep the result it judged and to leave the field out
+		if c.behaviour == "followed" && !strings.Contains(err.Error(), "keep result "+c.result+", leave correction_result out") {
+			t.Fatalf("the refusal keeps the agent's own result %s: %v", c.result, err)
+		}
 	}
 	if err := followedSubmit(t, st, scope, d, ids["version"], "unknown", "followed", ""); err == nil {
 		t.Fatal("followed says what the work did: without a decision it is refused")
