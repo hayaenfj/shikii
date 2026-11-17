@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -354,5 +355,90 @@ func TestOnlyTheRequestsOwnRecordAssessesBeforeTheConversationIsRecorded(t *test
 	err = st.SaveMemoryAssessment(scope, store.MemoryAssessment{SourceID: "bbbbbbbbbbbbbbbb", Key: child, Result: "unused", Decision: "d", Evidence: "e", InRequest: true})
 	if err == nil || !strings.Contains(err.Error(), "assessed by that subagent") {
 		t.Fatalf("the store does not take an in-request assessment for a subagent's lesson: %v", err)
+	}
+}
+
+// The audit of 0.36.1. followed on a lesson that is not a correction goes with unknown only: with another result and no
+// evidence, the refusal is the one that keeps the agent's own result, not a request for evidence that is refused again once added.
+func TestFollowedWithAnotherResultAndNoEvidenceSaysToKeepTheResult(t *testing.T) {
+	st, scope, turn, atRequest, _ := turnDelivery(t)
+	r, err := workCall(t, notebook.Book{Root: st.Dir, Scope: scope}, "record", map[string]any{"session_id": "owner", "turn_id": turn,
+		"memory": []any{map[string]any{"ref": atRequest, "result": "unused", "correction_result": "followed", "decision": "Ran the steps before editing."}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply, _ := json.Marshal(r)
+	if got := assessed(t, st, scope); got[turn+" "+atRequest] != "" {
+		t.Fatalf("it is not saved: %v", got)
+	}
+	if !strings.Contains(string(reply), "keep result unused, leave correction_result out") || strings.Contains(string(reply), "needs evidence") {
+		t.Errorf("the refusal keeps the agent's own result and asks for no evidence: %s", reply)
+	}
+}
+
+// The audit of 0.36.1. A lesson delivered at a subagent's start is the subagent's, also when the host sends no agent_id: the
+// parent's record neither assesses that delivery by the key nor lists it.
+func TestASubagentStartWithoutAnAgentIDIsNotTheParentsLesson(t *testing.T) {
+	st, scope, turn, atRequest, atTool := turnDelivery(t)
+	ctx := runUnreviewedHook(t, "subagent-start", map[string]any{"session_id": "owner", "cwd": scope, "agent_type": "Explore", "prompt": "README \u306e\u5c0e\u5165\u624b\u9806\u3092\u66f4\u65b0\u3057\u3066\u304f\u3060\u3055\u3044"})
+	ds, err := st.MemoryDeliveries(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, childKeys := "", []string{}
+	for _, d := range ds {
+		if d.Parent == turn && d.Tool == "" {
+			child = d.ID
+			for _, q := range d.Quotes {
+				childKeys = append(childKeys, q.Key)
+			}
+		}
+	}
+	if child == "" || len(childKeys) == 0 {
+		t.Fatalf("the subagent's start records its delivery under the turn: %v\n%s", ds, ctx)
+	}
+	memory := []any{}
+	for _, key := range []string{atRequest, atTool} {
+		memory = append(memory, map[string]any{"ref": key, "result": "helpful", "decision": "d", "evidence": "e"})
+	}
+	r, err := workCall(t, notebook.Book{Root: st.Dir, Scope: scope}, "record", map[string]any{"session_id": "owner", "turn_id": turn, "memory": memory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply, _ := json.Marshal(r)
+	got := assessed(t, st, scope)
+	for _, key := range childKeys {
+		if got[child+" "+key] != "" {
+			t.Errorf("the parent's record assessed the delivery made at the subagent's start (%s %s): %v\n%s", child, key, got, reply)
+		}
+	}
+	if got[turn+" "+atRequest] == "" {
+		t.Errorf("the parent's own lesson is assessed: %v\n%s", got, reply)
+	}
+	if _, listed := r["lessons_to_assess"]; listed {
+		t.Errorf("the subagent's lessons are not listed for the parent: %s", reply)
+	}
+}
+
+// The audit of 0.36.1. A record that stops before its reflection (here at a note it cannot take) saved no assessment, so its
+// reply lists the lessons of the request and asks for the record that assesses them.
+func TestARecordThatStopsEarlyStillListsTheLessonsLeft(t *testing.T) {
+	st, scope, turn, atRequest, _ := turnDelivery(t)
+	r, err := workCall(t, notebook.Book{Root: st.Dir, Scope: scope}, "record", map[string]any{"session_id": "owner", "turn_id": turn,
+		"notes":  []any{map[string]any{"ref": "nope"}},
+		"memory": []any{map[string]any{"ref": atRequest, "result": "helpful", "decision": "d", "evidence": "e"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply, _ := json.Marshal(r)
+	if got := assessed(t, st, scope); got[turn+" "+atRequest] != "" || r["complete"] != false {
+		t.Fatalf("the record stops at the note and saves no assessment: %v\n%s", got, reply)
+	}
+	left, _ := r["lessons_to_assess"].(map[string]any)
+	if left == nil || !strings.Contains(fmt.Sprint(left["refs"]), atRequest) {
+		t.Errorf("the reply lists the lesson it did not take: %s", reply)
+	}
+	if next, _ := r["next_action"].(string); !strings.Contains(next, lessonsToAssessNext) {
+		t.Errorf("the reply asks for the record that assesses them: %s", reply)
 	}
 }

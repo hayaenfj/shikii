@@ -116,7 +116,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.34.0 | OpenCode 2.x also gets lessons through hooks and is asked for the record at the end of the work. |
 | 0.35.0 | The memory upgrade can set aside a page whose original evidence cannot be read. Asking for a memory optimization reviews those pages again. A go-ahead message counts as a reply to the previous request. The question about a decision asks what you wanted, and has three answers. |
 | 0.36.0 | Codex gets lessons right before a command or a file change (the agent reads them with the result of that call), and a guard can refuse a command there. A subagent assesses the lessons it received, in Claude Code, Codex and OpenCode 2.x. The assessment of a delivery is asked only of the session that received it. |
-| 0.36.1 | An agent assesses a delivered lesson in the same request it received it, so a lesson delivered in the last request of a session is assessed too. |
+| 0.36.1 | An agent assesses a delivered lesson in the same request it received it, so a lesson delivered in the last request of a session can be assessed too. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 

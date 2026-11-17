@@ -153,6 +153,7 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		result.Storage = map[string]any{"status": "unconfirmed"}
 	}
 	defer func() {
+		lessonsLeft(root, scope, w, token, &result)
 		finishWorkRecordReply(book, w, req, &result, stampReview)
 		if retErr == nil {
 			reply = result

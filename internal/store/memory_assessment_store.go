@@ -45,8 +45,10 @@ func (s Store) memoryAssessment(scope, id, key string) (*MemoryAssessment, error
 const followedUnshown = "The agent reports that the work went the way the lesson says; no check shows the lesson changed it."
 
 func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
-	// taken without evidence only for a lesson that is not a correction, which is known once the delivery is found below
-	unshown := a.Result == "unknown" && a.CorrectionResult == "followed" && strings.TrimSpace(a.Evidence) == ""
+	// followed without evidence is taken only with unknown and only for a lesson that is not a correction, which is known once
+	// the delivery is found below. Until then it is not refused for its evidence: with another result on such a lesson the
+	// refusal is the one that keeps the result and leaves followed out, not a request for evidence that is refused again.
+	unshown := a.CorrectionResult == "followed" && strings.TrimSpace(a.Evidence) == ""
 	sent := a
 	if unshown {
 		a.Evidence = followedUnshown

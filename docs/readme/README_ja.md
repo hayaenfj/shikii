@@ -9,12 +9,12 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-2232%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2235%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.36.1-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.36.1では、エージェントが、教訓を受け取ったその依頼の中で教訓を評価できるようになりました。セッションの最後の依頼に届いた教訓が、評価されないまま残ることがなくなります。0.36.0では、Codex でも、コマンドを流す直前とファイルを書き換える直前に教訓が届き、有効にした検査がコマンドを実行の前に断るようになりました。サブエージェントに届いた教訓は、そのサブエージェントが自分で評価します(Claude Code・Codex・OpenCode 2.x)。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
+0.36.1では、エージェントが、教訓を受け取ったその依頼の中で教訓を評価できるようになりました。セッションの最後の依頼に届いた教訓も、評価できます。0.36.0では、Codex でも、コマンドを流す直前とファイルを書き換える直前に教訓が届き、有効にした検査がコマンドを実行の前に断るようになりました。サブエージェントに届いた教訓は、そのサブエージェントが自分で評価します(Claude Code・Codex・OpenCode 2.x)。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
 
 
 [困りごと](#困りごと) · [何が育つか](#何が育つか) · [人がすること](#人がすること) · [必要なもの](#必要なもの) · [始め方](#始め方) · [仕組み](#仕組み) · [業務の判定を任せる](#業務の判定を任せる) · [記憶はプロジェクトのもの](#記憶はプロジェクトのもの) · [もっと読む](#もっと読む)

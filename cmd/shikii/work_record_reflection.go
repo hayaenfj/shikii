@@ -37,7 +37,7 @@ func (b *workRecordBatch) recordReflection(noteSources []string) {
 		// the request and again right before a command or a file)
 		if own == nil {
 			var err error
-			if own, err = b.turnLessons(); err != nil {
+			if own, err = turnLessons(b.root, b.scope, b.w, b.token); err != nil {
 				add(workItem{Ref: m.Ref, Kind: "memory", Error: err.Error()})
 				continue
 			}
@@ -135,7 +135,6 @@ func (b *workRecordBatch) recordReflection(noteSources []string) {
 			add(item)
 		}
 	}
-	b.lessonsLeft()
 }
 
 // turnLesson is one lesson delivered during a request to the session's own agent: the delivery's id and the quote's key.
@@ -165,20 +164,22 @@ func deliveredKey(ref string) bool {
 }
 
 // turnLessons lists the lessons delivered during this record's request to the session's own agent, in the order delivered: before
-// the request (the delivery carries the turn's id) and right before a command or a file (its parent is the turn). A lesson
-// delivered to a subagent is that subagent's to assess, and a preparation made without a hook has no request of a session.
-func (b *workRecordBatch) turnLessons() ([]turnLesson, error) {
-	if b.w.Standalone || b.token.Turn == "" {
+// the request (the delivery carries the turn's id) and right before a command or a file (its parent is the turn and it names
+// the tool). A lesson delivered to a subagent is that subagent's to assess: its delivery has the turn as parent too, with the
+// subagent's id, or with no tool when the host sent no id at the subagent's start. A preparation made without a hook has no
+// request of a session.
+func turnLessons(root, scope string, w *workState, token workToken) ([]turnLesson, error) {
+	if w.Standalone || token.Turn == "" {
 		return []turnLesson{}, nil
 	}
-	report, err := (store.Store{Dir: b.root}).MemoryReport(b.scope)
+	report, err := (store.Store{Dir: root}).MemoryReport(scope)
 	if err != nil {
 		return nil, err
 	}
 	out := []turnLesson{}
 	for i := len(report.All) - 1; i >= 0; i-- { // the report lists the newest delivery first
 		o := report.All[i]
-		if o.Agent == "" && (o.SourceID == b.token.Turn || o.Parent == b.token.Turn) {
+		if o.Agent == "" && (o.SourceID == token.Turn || o.Parent == token.Turn && o.Tool != "") {
 			out = append(out, turnLesson{delivery: o.SourceID, key: o.Quote.Key, assessed: o.Assessment != nil})
 		}
 	}
@@ -208,9 +209,10 @@ func notThisRequestsLesson(ref string, own []turnLesson, prepared []string) stri
 }
 
 // lessonsLeft puts in the reply the lessons of this request that are still not assessed after this record, so the agent that
-// just did the work can assess them in the same request: a session that sends no further request is never asked again.
-func (b *workRecordBatch) lessonsLeft() {
-	own, err := b.turnLessons()
+// just did the work can assess them in the same request: a session that sends no further request is never asked again. It runs
+// when the reply is finished, so a record that stopped before its reflection (a refused note, a failed save) lists them too.
+func lessonsLeft(root, scope string, w *workState, token workToken, result *workResult) {
+	own, err := turnLessons(root, scope, w, token)
 	if err != nil {
 		hookLog("work record: lessons of the request: " + err.Error())
 		return
@@ -223,6 +225,6 @@ func (b *workRecordBatch) lessonsLeft() {
 		}
 	}
 	if len(refs) > 0 {
-		b.result.LessonsToAssess = &workLessonsToAssess{Refs: refs, How: lessonsToAssessHow}
+		result.LessonsToAssess = &workLessonsToAssess{Refs: refs, How: lessonsToAssessHow}
 	}
 }
