@@ -2,6 +2,22 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.36.1 — Lessons are assessed in the request they were delivered in
+
+### Fixes
+
+- An agent can now assess a delivered lesson in the same request it received it, when it records its work. Before, shikii asked only at the session's next request, so a lesson delivered in the last request of a session was never assessed. This works in Claude Code, Codex and OpenCode 2.x.
+- When the agent records its work without assessing a lesson delivered in that request, the reply names the lesson and asks for the assessment before the agent answers you.
+- An assessment that says the work followed a lesson, without knowing whether the lesson was the reason, is saved without separate evidence. Before, it was refused unless evidence was added.
+- An assessment that is refused now says what is missing and what to keep, so the agent sends the same assessment again instead of a shorter one.
+- In Codex, a lesson is delivered before a file change when the file header of the patch is indented, which Codex accepts.
+- The README and "how shikii relates to memory" now say that the agent reads a lesson delivered right before a command or a file change together with the result of that call.
+
+### Limits
+
+- An assessment made in the same request is made before you have reacted to the work. shikii marks these assessments so that they can be counted apart.
+- A lesson the agent does not assess in its request is asked about at the session's next request, as before. If that session never sends another request, the lesson stays unassessed.
+
 ## 0.36.0 — Lessons right before a command or a file edit in Codex; subagents assess the lessons they received
 
 ### Highlights

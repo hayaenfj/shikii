@@ -12,9 +12,9 @@ AI agents can carry context forward through memory. A project also needs to use 
 [![Tests](https://img.shields.io/badge/tests-2232%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.36.0-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.36.1-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.36.0 brings lessons to Codex right before it runs a command or changes a file, lets a guard you enabled refuse a command in Codex before it runs, and has each subagent assess the lessons it received, in Claude Code, Codex and OpenCode 2.x. Version 0.35.0 let the memory upgrade set aside a page whose original evidence cannot be read, and gave the question about a decision three answers. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
+Version 0.36.1 lets an agent assess a delivered lesson in the same request it received it, so a lesson delivered in the last request of a session is no longer left unassessed. Version 0.36.0 brought lessons to Codex right before it runs a command or changes a file, let a guard you enabled refuse a command in Codex before it runs, and had each subagent assess the lessons it received, in Claude Code, Codex and OpenCode 2.x. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
 
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 

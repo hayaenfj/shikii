@@ -116,6 +116,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.34.0 | OpenCode 2.x also gets lessons through hooks and is asked for the record at the end of the work. |
 | 0.35.0 | The memory upgrade can set aside a page whose original evidence cannot be read. Asking for a memory optimization reviews those pages again. A go-ahead message counts as a reply to the previous request. The question about a decision asks what you wanted, and has three answers. |
 | 0.36.0 | Codex gets lessons right before a command or a file change (the agent reads them with the result of that call), and a guard can refuse a command there. A subagent assesses the lessons it received, in Claude Code, Codex and OpenCode 2.x. The assessment of a delivery is asked only of the session that received it. |
+| 0.36.1 | An agent assesses a delivered lesson in the same request it received it, so a lesson delivered in the last request of a session is assessed too. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -370,3 +371,11 @@ Now a subagent ends its final report with one line for each lesson it received, 
 Codex now gets what Claude Code had: a lesson right before a command or a file change, a guard that refuses a command before it runs, and the subagent's own assessment. A Codex subagent gets no lesson chosen by its task, because Codex does not let a hook read the task. It gets the rules for every request, how to report, and lessons right before its commands and file changes.
 
 We ran real agents in a sandbox. In Codex, a subagent received a lesson right before its file change, read it together with the result of the change, ran the check the lesson asks for afterwards and reported it, and the report was saved; a forbidden command was refused before it ran. In Claude Code, a subagent received a lesson at its start and reported it as unused, and the report was saved. In OpenCode 2.x, a subagent received a lesson at its start and reported what it did, and the report was saved. These are single runs, so they show that the path works, not how often a model writes the line.
+
+### In 0.36.1, a lesson is assessed in the request it was delivered in
+
+Until this version shikii asked about a delivered lesson at the session's next request. A session that ended after one request was never asked, so the lessons delivered in it stayed unassessed. Many sessions end that way: one request, one piece of work, and the session is closed.
+
+Now the agent assesses the lesson when it records its work, in the same request. It has just done the work and knows whether it used the lesson. If it records the work without the assessment, the reply names the lesson and asks for it before the agent answers you. What the agent still leaves out is asked about at the next request, as before. An assessment made in the same request is made before you have reacted to the work, so shikii marks it and it can be counted apart.
+
+We ran real agents in a sandbox, each in a session of one request, with one task and one lesson. With this version the assessment was saved in 16 runs out of 16 (Claude Code 6, Codex 6, OpenCode 4), for a lesson delivered with the request and for one delivered right before a file change. With 0.36.0 it was saved in 0 runs out of 8. The runs show that the flow works with the three agents; they do not show the rate for other tasks, for long work, or when several lessons arrive.
