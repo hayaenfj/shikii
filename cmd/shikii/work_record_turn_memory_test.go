@@ -455,3 +455,54 @@ func TestARecordThatStopsEarlyStillListsTheLessonsLeft(t *testing.T) {
 		t.Errorf("the reply asks for the record that assesses them: %s", reply)
 	}
 }
+
+// An assessment whose decision or evidence is longer than the store keeps is refused with what to shorten and to what size, in
+// one refusal that also names evidence it lacks: the agent shortens the same entry instead of sending it again unchanged or
+// dropping it. Nothing is saved, and the shortened entry is.
+func TestAnAssessmentThatIsTooLongSaysWhatToShorten(t *testing.T) {
+	st, scope, turn, atRequest, _ := turnDelivery(t)
+	long := strings.Repeat("The steps passed. ", 90) // 1620 bytes
+	limit := fmt.Sprint(store.FeedbackTextLimit)
+	for _, c := range []struct {
+		name               string
+		decision, evidence string
+		says, not          []string
+	}{
+		{"evidence", "Ran the steps before editing.", long, []string{"shorten evidence (1620 bytes)", limit + " bytes", "in the same entry", "send it again"}, []string{"decision (", "add evidence"}},
+		{"decision", long, "The steps passed.", []string{"shorten decision (1620 bytes)", limit + " bytes", "in the same entry", "send it again"}, []string{"evidence (1620", "add evidence"}},
+		{"both", long, long, []string{"shorten decision (1620 bytes) and evidence (1620 bytes)", limit + " bytes"}, []string{"add evidence"}},
+		{"decision, and no evidence", long, "", []string{"shorten decision (1620 bytes)", limit + " bytes", "add evidence"}, []string{"evidence (1620"}},
+	} {
+		entry := map[string]any{"ref": atRequest, "result": "helpful", "decision": c.decision}
+		if c.evidence != "" {
+			entry["evidence"] = c.evidence
+		}
+		r, err := workCall(t, notebook.Book{Root: st.Dir, Scope: scope}, "record", map[string]any{"session_id": "owner", "turn_id": turn, "memory": []any{entry}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		reply, _ := json.Marshal(r)
+		if got := assessed(t, st, scope); got[turn+" "+atRequest] != "" {
+			t.Fatalf("%s: it is not saved: %v", c.name, got)
+		}
+		for _, want := range c.says {
+			if !strings.Contains(string(reply), want) {
+				t.Errorf("%s: the refusal says %q: %s", c.name, want, reply)
+			}
+		}
+		for _, no := range c.not {
+			if strings.Contains(string(reply), no) {
+				t.Errorf("%s: the refusal does not say %q: %s", c.name, no, reply)
+			}
+		}
+	}
+	r, err := workCall(t, notebook.Book{Root: st.Dir, Scope: scope}, "record", map[string]any{"session_id": "owner", "turn_id": turn,
+		"memory": []any{map[string]any{"ref": atRequest, "result": "helpful", "decision": "Ran the steps before editing.", "evidence": long[:store.FeedbackTextLimit]}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := assessed(t, st, scope); got[turn+" "+atRequest] != "helpful" {
+		reply, _ := json.Marshal(r)
+		t.Errorf("the entry shortened to the limit is saved: %v\n%s", got, reply)
+	}
+}
