@@ -1,0 +1,22 @@
+{
+  "format": ["go"],
+  "minTokens": 50,
+  "minLines": 5,
+  "threshold": 1,
+  "reporters": ["console", "json"],
+  "output": ".jscpd-report",
+  "ignore": [
+    "**/vendor/**",
+    "**/node_modules/**",
+    "**/*_test.go",
+    "**/*.pb.go",
+    "**/*.gen.go",
+    "**/testdata/**",
+    "**/.claude/**",
+    "**/.shikii*/**",
+    "web/**",
+    "bin/**"
+  ],
+  "gitignore": true,
+  "noSymlinks": true
+}
