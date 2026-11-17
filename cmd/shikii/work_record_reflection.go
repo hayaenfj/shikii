@@ -153,7 +153,11 @@ type workLessonsToAssess struct {
 // lessonsToAssessMax is how many keys a reply names (a request receives two lessons at its start and one per tool call).
 const lessonsToAssessMax = 16
 
-const lessonsToAssessHow = "Lessons delivered during this request that you have not assessed. Only you saw whether they were used: send memory:[{ref,result,decision,evidence}] with ref one of these keys in a work record of this request (result helpful, unused, harmful, or unknown when you cannot tell)."
+// Measured with real agents (Codex 0.169.0, Claude Code; 2026-11-17): a reply with complete:true and lessons_to_assess ended the
+// request without the assessment. Agents are told to check next_action, so the record that assesses them is the reply's next step.
+const lessonsToAssessNext = "Before you answer, send another work record of this request with only its IDs and memory for each ref of lessons_to_assess."
+
+const lessonsToAssessHow = "Lessons delivered during this request that you have not assessed. Only you saw whether they were used: send memory:[{ref,result,decision,evidence}] with ref one of these keys in a work record of this request (result helpful, unused, harmful, or unknown when you cannot tell; decision and evidence are text, not lists)."
 
 // deliveredKey reports whether a memory reference has the form of a delivered quote's key, not of a prepared ref (memoryN).
 func deliveredKey(ref string) bool {

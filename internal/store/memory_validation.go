@@ -4,6 +4,20 @@ import (
 	"strings"
 )
 
+// memoryAssessmentRefusal says what a refused assessment lacks, so the agent that sent it sends it again whole instead of
+// dropping what it had (measured with a real Codex, 2026-11-17: after a refusal that named nothing it sent the result alone, and
+// it did so again after one that also said which assessments may leave both out). It only says what to add.
+func memoryAssessmentRefusal(a MemoryAssessment) string {
+	const again = " to the same entry and send it again"
+	switch {
+	case strings.TrimSpace(a.Evidence) == "":
+		return "a memory assessment needs evidence: add evidence (the check result, or what you did, that shows it)" + again
+	case strings.TrimSpace(a.Decision) == "":
+		return "a memory assessment needs decision: add decision (what you decided or did about the lesson)" + again
+	}
+	return "a provisional memory evaluation needs grounds for the target, the judgment and the result. Use unknown when unclear"
+}
+
 func validMemoryAssessment(a MemoryAssessment) bool {
 	if !validCorrectionResult(a.CorrectionResult) || (a.CorrectionResult != "" && a.CorrectionResult != "unknown" && strings.TrimSpace(a.Decision) == "") {
 		return false

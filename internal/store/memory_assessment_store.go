@@ -40,7 +40,7 @@ func (s Store) memoryAssessment(scope, id, key string) (*MemoryAssessment, error
 
 func (s Store) SaveMemoryAssessment(scope string, a MemoryAssessment) error {
 	if scope == "" || !validMemoryAssessment(a) {
-		return errors.New("a provisional memory evaluation needs grounds for the target, the judgment and the result. Use unknown when unclear")
+		return errors.New(memoryAssessmentRefusal(a))
 	}
 	unlock, err := s.memoryLock(scope)
 	if err != nil {

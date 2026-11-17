@@ -128,6 +128,15 @@ func TestAWorkRecordSaysWhichLessonsOfItsRequestAreNotAssessed(t *testing.T) {
 	if how, _ := left["how"].(string); !strings.Contains(how, "memory:[{ref,result,decision,evidence}]") || !strings.Contains(how, "unknown") {
 		t.Errorf("the reply says how to assess them: %q", how)
 	}
+	// real agents (OpenCode 2.3.0 twice, Codex 0.169.0 once) sent evidence as a list of refs, as result.evidence is, and were refused once
+	if how, _ := left["how"].(string); !strings.Contains(how, "decision and evidence are text, not lists") {
+		t.Errorf("the reply says the two are text: %q", how)
+	}
+	// agents are told to check next_action, and real ones (Codex 0.169.0, Claude Code) ended the request on complete:true with
+	// lessons_to_assess in the reply: the reply's next step is the record that assesses them
+	if next, _ := r["next_action"].(string); !strings.Contains(next, "another work record of this request") || !strings.Contains(next, "lessons_to_assess") {
+		t.Errorf("next_action sends the agent to the lessons left: %q", next)
+	}
 	// the rest goes in another record of the same request, with nothing else in it
 	r, err = workCall(t, b, "record", map[string]any{"session_id": "owner", "turn_id": turn,
 		"memory": []any{map[string]any{"ref": atRequest, "result": "unknown", "decision": "The steps were updated as the lesson says.", "evidence": "No check shows the lesson was the reason.", "correction_result": "followed"}}})
@@ -139,6 +148,9 @@ func TestAWorkRecordSaysWhichLessonsOfItsRequestAreNotAssessed(t *testing.T) {
 	}
 	if _, still := r["lessons_to_assess"]; still {
 		t.Errorf("nothing is left after the second record: %v", r["lessons_to_assess"])
+	}
+	if next, _ := r["next_action"].(string); strings.Contains(next, "lessons_to_assess") {
+		t.Errorf("with nothing left there is no such next step: %q", next)
 	}
 	if got := assessed(t, st, scope); got[turn+" "+atRequest] != "unknown" {
 		t.Errorf("the second record's assessment is saved: %v", got)
@@ -203,6 +215,56 @@ func TestHowToRecordSaysTheLessonsOfTheRequestAreAssessedByTheirKey(t *testing.T
 	for _, w := range []string{"a lesson delivered during this request", "{ref:<its key>,result,decision,evidence}"} {
 		if !strings.Contains(compactWorkHowTo, w) {
 			t.Errorf("how_to_record lacks %q", w)
+		}
+	}
+}
+
+// Real agents (Codex 0.169.0, OpenCode 2.3.0) write the record from step 2 of `## Prepare once; record the result` in the skill's
+// recording.md, the section how_to_record sends them to, and not from the list of fields far below it: a Codex that got its lesson
+// right before apply_patch sent a record without memory. Step 2 itself says it.
+func TestTheStepAgentsReadSaysTheLessonsOfTheRequestGoInItsRecord(t *testing.T) {
+	text := string(mustRead(t, "../../skills/shikii/references/recording.md"))
+	_, rest, found := strings.Cut(text, "\n## Prepare once; record the result\n")
+	_, step, has := strings.Cut(rest, "\n2. At the end, record the result")
+	if !found || !has {
+		t.Fatal("recording.md has no step 2 under `## Prepare once; record the result`")
+	}
+	step, _, _ = strings.Cut(step, "\n\n")
+	step = strings.Join(strings.Fields(step), " ")
+	for _, w := range []string{"delivered during this request", "`memory:[{ref:\"lesson:<id>:<revision>\",result,decision,evidence}]`", "`lessons_to_assess`"} {
+		if !strings.Contains(step, w) {
+			t.Errorf("step 2 lacks %s: %q", w, step)
+		}
+	}
+}
+
+// A real Codex (0.169.0) assessed its lesson with result unknown, correction_result followed and what it did, and no evidence. The
+// refusal said only that grounds were needed, so its next record dropped everything but the result. The refusal names what is
+// missing, and the assessment is not saved without it. A first wording ended with which assessments may leave both out, and the
+// same Codex took that way out again: the refusal only says what to add to the entry it was sent.
+func TestARefusedAssessmentOfTheRequestSaysWhatItLacks(t *testing.T) {
+	for _, c := range []struct {
+		lacks string
+		entry map[string]any
+	}{
+		{"needs evidence", map[string]any{"result": "unknown", "decision": "Ran the steps before editing.", "correction_result": "followed"}},
+		{"needs decision", map[string]any{"result": "helpful", "evidence": "The steps ran."}},
+	} {
+		st, scope, turn, atRequest, _ := turnDelivery(t)
+		c.entry["ref"] = atRequest
+		r, err := workCall(t, notebook.Book{Root: st.Dir, Scope: scope}, "record", map[string]any{"session_id": "owner", "turn_id": turn, "memory": []any{c.entry}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		reply, _ := json.Marshal(r)
+		if !strings.Contains(string(reply), c.lacks) || !strings.Contains(string(reply), "to the same entry and send it again") {
+			t.Errorf("the refusal says the assessment %s and to add it to the same entry: %s", c.lacks, reply)
+		}
+		if strings.Contains(string(reply), "may leave") {
+			t.Errorf("the refusal does not offer to drop what the entry has: %s", reply)
+		}
+		if got := assessed(t, st, scope); got[turn+" "+atRequest] != "" {
+			t.Errorf("an assessment that %s is not saved: %v", c.lacks, got)
 		}
 	}
 }

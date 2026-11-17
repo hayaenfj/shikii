@@ -38,6 +38,12 @@ func finishWorkRecordReply(book notebook.Book, w *workState, req workRequest, re
 		}
 		result.NextAction += next
 	}
+	if result.LessonsToAssess != nil {
+		if result.NextAction != "" {
+			result.NextAction += " "
+		}
+		result.NextAction += lessonsToAssessNext
+	}
 	limitSavedReviewArticles(req, result)
 }
 
