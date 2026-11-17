@@ -21,7 +21,7 @@ A lesson can cite a work record: capture an observation whose `reference` is the
 
 ## Worktrees
 
-Keep one wiki and one shared work-record location in the original project. A dedicated worktree is a code checkout, not another shikii project: do not run `shikii --init` there or create a separate wiki. Use the original project's absolute path for MCP `project`, and run CLI `work prepare/record`, wiki and handoff commands from that project. Run builds and tests in the dedicated worktree; save reports, diffs, logs and screenshots under the original project's `.shikii/handoff/<task>/`.
+Keep one wiki and one shared work-record location in the original project. A dedicated worktree is a code checkout, not another shikii project: do not run `shikii --init` there or create a separate wiki. Use the original project's absolute path for MCP `project`, and run CLI `work prepare/record`, wiki and handoff commands from that project. Run builds and tests in the dedicated worktree; save reports, diffs, logs and screenshots under the original project's `.shikii/handoff/<task>/`. From 0.37.0 a worktree kept under the project folder (`.claude/worktrees/`, `.chiten/wt/` and the like) finds the project by itself: the hooks and the CLI work from inside it and use the project's `.shikii/`. A worktree created elsewhere is not reached, so run the CLI from the original project there.
 
 Name both locations explicitly in assignments and reports. Include the dedicated worktree's absolute path, branch, checked commit and shared evidence path. If changes are still uncommitted, say so instead of presenting the base commit as the checked changes. Before committing or integrating, identify any pre-existing changes and preserve them.
 

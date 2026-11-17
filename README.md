@@ -12,9 +12,9 @@ AI agents can carry context forward through memory. A project also needs to use 
 [![Tests](https://img.shields.io/badge/tests-2241%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.36.1-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.37.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
-Version 0.36.1 lets an agent assess a delivered lesson in the same request it received it, so a lesson delivered in the last request of a session can be assessed too. Version 0.36.0 brought lessons to Codex right before it runs a command or changes a file, let a guard you enabled refuse a command in Codex before it runs, and had each subagent assess the lessons it received, in Claude Code, Codex and OpenCode 2.x. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
+Version 0.37.0 lets an agent working in a worktree kept under a project (Claude Code's `.claude/worktrees/`, chiten's `.chiten/wt/` and the like) use that project's wiki, guards and records: shikii now takes the nearest initialized folder above as the project. Version 0.36.1 let an agent assess a delivered lesson in the same request it received it, so a lesson delivered in the last request of a session can be assessed too. See the [changelog](CHANGELOG.md) and [how shikii relates to memory](docs/memory-and-learning.md).
 
 [The problem](#the-problem) · [What grows](#what-grows) · [What you do](#what-you-do) · [Requirements](#requirements) · [Get started](#get-started) · [How it works](#how-it-works) · [Delegate business decisions](#delegate-business-decisions) · [Memory belongs to a project](#memory-belongs-to-a-project) · [Read more](#read-more)
 
@@ -295,7 +295,7 @@ Calibration belongs to one question and one model; change either and it is measu
 
 ## Memory belongs to a project
 
-Conversations, lessons and their sources, provisional assessments, truths, lines, guards and work records live in that project's `.shikii/`. Unrelated projects stay apart. Working in a worktree still uses the original project's wiki and work records. The shared `~/.shikii/agent` holds the templates, the tools and the list of projects. Because `.shikii/` contains private conversations, initialization keeps it out of Git's untracked files.
+Conversations, lessons and their sources, provisional assessments, truths, lines, guards and work records live in that project's `.shikii/`. Unrelated projects stay apart. Working in a worktree still uses the original project's wiki and work records: a worktree kept under the project finds the project by itself, and in one created elsewhere the agent names the original project. The shared `~/.shikii/agent` holds the templates, the tools and the list of projects. Because `.shikii/` contains private conversations, initialization keeps it out of Git's untracked files.
 
 <p align="center"><img src="docs/assets/shikii-architecture-en.svg" alt="an initialized project's .shikii/ keeps what the agent learns (records, wiki, guards, handoff) apart from the questions, truths and lines used to delegate decisions" width="100%"></p>
 

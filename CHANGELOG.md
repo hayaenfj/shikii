@@ -2,6 +2,24 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.37.0 — A worktree kept under a project uses that project's wiki, guards and records
+
+### Highlights
+
+- shikii now takes the nearest initialized folder at or above the current folder as the project. An agent working in a worktree kept under the project (Claude Code's `.claude/worktrees/`, chiten's `.chiten/wt/` and the like), or in a subfolder of a project that does not use git, gets the project's lessons, is stopped by the project's guards, and its records go to the project's `.shikii/`. Before, shikii looked only at the top of the git working tree, so it was not running in such a worktree. git is not needed to find the project.
+- `shikii guard try` checks the working tree it runs in. In a worktree kept apart from the project's own tree, it checks what the worktree changed since it left the project's branch, with its commits and the files not tracked yet, and its first line says so. In the project's own tree it compares with HEAD as before.
+
+### Fixes
+
+- An assessment whose decision or evidence is too long is refused with the name of the field, its length and the limit, and the refusal asks for the same assessment again, shortened. Before, the refusal did not say that the length was the reason.
+- A decision and an evidence can each be 1500 characters long. Before, the limit was 1500 bytes, so Japanese text could be about a third as long as English text.
+
+### Limits
+
+- A folder under an initialized project now belongs to that project unless you run `shikii --init` in it. This includes another repository you keep under the project. Before, shikii was not running in such a repository.
+- A worktree created outside the project folder is not reached. Name the original project there, as before.
+- No worktree gets a `.shikii/` of its own. `shikii --init` still prepares the folder it runs in (the top of its git working tree), also below an initialized folder; from then on that nearer folder is the project.
+
 ## 0.36.1 — Lessons are assessed in the request they were delivered in
 
 ### Fixes

@@ -12,9 +12,9 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 [![Tests](https://img.shields.io/badge/tests-2241%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.36.1-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.37.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.36.1では、エージェントが、教訓を受け取ったその依頼の中で教訓を評価できるようになりました。セッションの最後の依頼に届いた教訓も、評価できます。0.36.0では、Codex でも、コマンドを流す直前とファイルを書き換える直前に教訓が届き、有効にした検査がコマンドを実行の前に断るようになりました。サブエージェントに届いた教訓は、そのサブエージェントが自分で評価します(Claude Code・Codex・OpenCode 2.x)。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
+0.37.0では、プロジェクトの下に置いた作業ツリー(Claude Code の `.claude/worktrees/`、chiten の `.chiten/wt/` など)で作業するエージェントにも、そのプロジェクトの wiki・止める検査・記録が働くようになりました。shikii は、上へたどって最初に見つかった初期化済みのフォルダをプロジェクトにします。0.36.1では、エージェントが、教訓を受け取ったその依頼の中で教訓を評価できるようになりました。セッションの最後の依頼に届いた教訓も、評価できます。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
 
 
 [困りごと](#困りごと) · [何が育つか](#何が育つか) · [人がすること](#人がすること) · [必要なもの](#必要なもの) · [始め方](#始め方) · [仕組み](#仕組み) · [業務の判定を任せる](#業務の判定を任せる) · [記憶はプロジェクトのもの](#記憶はプロジェクトのもの) · [もっと読む](#もっと読む)
@@ -296,7 +296,7 @@ shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…
 
 ## 記憶はプロジェクトのもの
 
-会話・教訓と原資料・仮採点・正解・線・止める検査・作業記録は、そのプロジェクトの `.shikii/` に入ります。関係ないプロジェクトとは分かれます。worktreeで作業しても、wikiと作業記録は元のプロジェクトのものを使います。共通の `~/.shikii/agent` には雛形・道具・プロジェクトの一覧があります。`.shikii/` には私的な会話が入るので、初期化がGitの未追跡ファイルから除きます。
+会話・教訓と原資料・仮採点・正解・線・止める検査・作業記録は、そのプロジェクトの `.shikii/` に入ります。関係ないプロジェクトとは分かれます。worktreeで作業しても、wikiと作業記録は元のプロジェクトのものを使います。プロジェクトの下に置いたworktreeでは、shikiiが自分で元のプロジェクトを見つけます。ほかの場所に作ったworktreeでは、エージェントが元のプロジェクトを指定します。共通の `~/.shikii/agent` には雛形・道具・プロジェクトの一覧があります。`.shikii/` には私的な会話が入るので、初期化がGitの未追跡ファイルから除きます。
 
 <p align="center"><img src="../assets/shikii-architecture.svg" alt="初期化したプロジェクトの .shikii/ に、エージェントが育てる知識(records・wiki・guards・handoff)と、判定を任せるための問い・正解・線を分けて持つ" width="100%"></p>
 
