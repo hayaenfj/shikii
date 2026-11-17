@@ -8,7 +8,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // The audit of 0.37.0. Walking up finds only a project of this machine: the folder shikii init prepares from there, or a project
@@ -631,5 +633,125 @@ func TestLinkedStoreAtAWorktreeTopBelowTheProjectIsPassedOver(t *testing.T) {
 	_, _, _, _, scope := treeStateWithScope(tree)
 	if cli != want || mcp != want || hook != want || scope != project || cerr != nil || merr != nil || herr != nil {
 		t.Errorf("want %q: the CLI uses %q (%v), the MCP server %q (%v), the hooks %q (%v), the hooks' project %q", want, cli, cerr, mcp, merr, hook, herr, scope)
+	}
+}
+
+// The MCP server finds the project of a folder as the CLI and the hooks do. A store placed later at a path that only an entry of
+// an older version names (no store id), and the home folder registered by its store's id, are not used for a folder below them:
+// the call is refused and nothing is written there.
+func TestMCPDoesNotUseAStoreTheIndexDoesNotVouchForBelowIt(t *testing.T) {
+	hookEnv(t, nil)
+	common, _ := agentHome()
+	shared := feedbackScope(t.TempDir())
+	entry, _ := json.Marshal(projectEntry{ID: projectID(shared), Name: filepath.Base(shared), Path: shared, URL: "/p/" + projectID(shared) + "/"})
+	if err := os.WriteFile(filepath.Join(common, "projects", projectID(shared)+".json"), entry, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	planted := filepath.Join(shared, ".shikii") // placed there later, by hand
+	if err := os.Mkdir(planted, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(planted, "project.json"), handMark(t, shared), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plain := filepath.Join(shared, "someone", "notes")
+	if err := os.MkdirAll(plain, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if root, scope, err := mcpProjectStore(plain); err == nil {
+		t.Errorf("the MCP server uses the store placed above for a folder below it: store %q, project %q (the CLI says %q)", root, scope, projectScopeAt(plain))
+	}
+	args, _ := json.Marshal(map[string]any{"operation": "handoff_write", "path": "zz/a.md", "content": "tangerine-4471\n", "project": plain})
+	params, _ := json.Marshal(map[string]any{"name": "shikii_wiki", "arguments": json.RawMessage(args)})
+	reply, _ := json.Marshal(handleRPC(rpcRequest{JSONRPC: "2.0", ID: json.RawMessage("1"), Method: "tools/call", Params: params}, &mcpRouter{}))
+	if hits := storeTextHits(planted, "tangerine-4471"); len(hits) > 0 {
+		t.Errorf("a tool call naming the folder below wrote into the store placed above: %v (reply %.300s)", hits, reply)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	home = feedbackScope(home)
+	root := filepath.Join(home, ".shikii")
+	if err := os.WriteFile(filepath.Join(root, "project.json"), handMark(t, home), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	id := storeID(root, true)
+	entry, _ = json.Marshal(projectEntry{ID: projectID(home), Name: filepath.Base(home), Path: home, URL: "/p/" + projectID(home) + "/", StoreID: id, StoreDir: storeDir(root)})
+	if err := os.WriteFile(filepath.Join(common, "projects", id+".json"), entry, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	work := filepath.Join(home, "work", "x")
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if mcp, scope, err := mcpProjectStore(work); err == nil {
+		t.Errorf("the MCP server uses the home folder's store for a folder below it: store %q, project %q (the CLI says %q)", mcp, scope, projectScopeAt(work))
+	}
+}
+
+// The MCP server still reaches the project from a worktree kept under it whose top holds a copy of the project's store (a project
+// that commits .shikii/project.json to git): the copy is passed over and the registered project above is used.
+func TestMCPUsesTheRegisteredProjectAboveACopiedStoreAtAWorktreeTop(t *testing.T) {
+	hookEnv(t, nil)
+	repo, tree := nestedWorktree(t)
+	tree = feedbackScope(tree)
+	if out, err := exec.Command("cp", "-R", filepath.Join(repo, ".shikii"), filepath.Join(tree, ".shikii")).CombinedOutput(); err != nil {
+		t.Fatalf("cp: %v %s", err, out)
+	}
+	want := filepath.Join(feedbackScope(repo), ".shikii")
+	if mcp, scope, err := mcpProjectStore(tree); err != nil || mcp != want {
+		t.Errorf("the MCP server names the project's store %q for the worktree: %q, project %q (%v)", want, mcp, scope, err)
+	}
+	docs := filepath.Join(tree, "docs")
+	if err := os.MkdirAll(docs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if mcp, _, err := mcpProjectStore(docs); err != nil || mcp != want {
+		t.Errorf("and for a folder in the worktree: %q (%v)", mcp, err)
+	}
+}
+
+// records/store-id of a store placed in a folder above is a FIFO whose writer never writes. The walk reads the id of every
+// initialized store it passes, so it reads only a regular file and does not wait.
+func TestStoreIDThatIsAFIFODoesNotHoldTheWalk(t *testing.T) {
+	hookEnv(t, nil)
+	shared := feedbackScope(t.TempDir())
+	planted := filepath.Join(shared, ".shikii")
+	if err := os.MkdirAll(filepath.Join(planted, "records"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(planted, "project.json"), handMark(t, shared), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fifo := filepath.Join(planted, "records", "store-id")
+	if err := syscall.Mkfifo(fifo, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	w, err := os.OpenFile(fifo, os.O_RDWR|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	plain := filepath.Join(shared, "someone", "notes")
+	if err := os.MkdirAll(plain, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan string, 1)
+	go func() { done <- projectScopeAt(plain) }()
+	select {
+	case got := <-done:
+		if got != plain {
+			t.Errorf("a folder below: got %q, want %q", got, plain)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("the walk from %s is still waiting after 5s on the FIFO placed as records/store-id of the store above", plain)
+	}
+	if _, err := w.WriteString("0123456789abcdef0123456789abcdef\n"); err != nil {
+		t.Fatal(err)
+	}
+	if id := storeID(planted, false); id != "" {
+		t.Errorf("an id written into a FIFO is read as the store's id: %q", id)
 	}
 }

@@ -193,6 +193,10 @@ func storeID(root string, create bool) string {
 			return ""
 		}
 		defer f.Close()
+		// only a regular file: walking up reads the id of every initialized store it passes, and a FIFO placed there would hold it
+		if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
+			return ""
+		}
 		b, _ := io.ReadAll(io.LimitReader(f, 64))
 		if id := strings.TrimSpace(string(b)); storeIDPattern.MatchString(id) {
 			return id

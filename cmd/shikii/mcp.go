@@ -138,29 +138,12 @@ func mcpProjectStore(project string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	// the project folder, found as the hook finds it (the git top folder), or the nearest registered folder above it (outside git)
+	// the project folder, found as the hooks find it, or the nearest project above it that this machine's index vouches for by its
+	// store's id (projectAbove: a copy of a store at the top of a worktree is passed over, and so are a store the index does not
+	// vouch for and the shared place; final confirmation audit of 0.37.0)
 	scope := projectScopeAt(project)
 	if !registeredProjectAt(agent, scope) {
-		scope = ""
-		for dir := feedbackScope(project); dir != "" && dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
-			if registeredProjectAt(agent, dir) {
-				scope = dir
-				break
-			}
-		}
-	}
-	if scope == "" {
-		// Retain the full legacy resolution for unusual registered spellings.
-		registered := map[string]bool{}
-		for _, p := range registeredProjects(agent) {
-			registered[p.Path] = true
-		}
-		for dir := feedbackScope(project); dir != "" && dir != filepath.Dir(dir); dir = filepath.Dir(dir) {
-			if registered[dir] {
-				scope = dir
-				break
-			}
-		}
+		scope = projectAbove(feedbackScope(project), "")
 	}
 	if scope == "" {
 		return "", "", fmt.Errorf("project %q is not in a shikii project registered on this machine: for a worktree pass the original project without initializing another wiki; for a new project run shikii init in that project's folder", project)
