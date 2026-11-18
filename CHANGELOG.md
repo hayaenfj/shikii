@@ -10,7 +10,7 @@
 - The Go library `golang.org/x/text` is updated to v0.44.0.
 - The GitHub Action (`action.yml`) now sets up Go with `actions/setup-go` v7. It was v5.
 - The audit guide in the shikii skill now also asks the auditor to look for duplicated code, tests, rules and documents, and to go through the classes of problem behind a change, not only its diff.
-- The Docker page says that the build containers provide Node.js 26.
+- The Dockerfile now builds with Node.js 26 and its final image is built on distroless Debian 13. It was Node.js 24 and Debian 12. The Docker page says so.
 
 ### Fixes
 

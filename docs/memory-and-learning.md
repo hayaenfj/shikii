@@ -392,4 +392,4 @@ We ran real agents in a sandbox: a project with one guard that forbids a word, a
 
 ### In 0.37.1, how shikii remembers does not change
 
-This version updates the libraries behind the web screen and the GitHub Action, and fixes a known issue in a library used only to build the screen. Nothing in how shikii stores, delivers or assesses lessons changed: no code of shikii itself changed apart from the version number and the updated Go library. We did not run real agents for this version for that reason.
+This version updates the libraries behind the web screen and the GitHub Action, and fixes a known issue in a library used only to build the screen. Nothing in how shikii stores, delivers or assesses lessons changed: the program code of shikii itself changed only in its version number and the updated Go library. The audit guide in the skill, which the program carries and hands to agents, has more text, but it does not touch how lessons are stored, delivered or assessed. We did not run real agents for this version for that reason.
