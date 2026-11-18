@@ -119,6 +119,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.36.1 | An agent assesses a delivered lesson in the same request it received it, so a lesson delivered in the last request of a session can be assessed too. |
 | 0.37.0 | An agent working in a worktree kept under a project gets that project's lessons and guards, and its records go to that project. |
 | 0.37.1 | No change in how shikii remembers. The libraries behind the web screen and the GitHub Action are updated. |
+| 0.37.2 | A subagent gets the rules for every request when it starts, instead of lessons picked from the text of its task. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -393,3 +394,9 @@ We ran real agents in a sandbox: a project with one guard that forbids a word, a
 ### In 0.37.1, how shikii remembers does not change
 
 This version updates the libraries behind the web screen and the GitHub Action, and fixes a known issue in a library used only to build the screen. Nothing in how shikii stores, delivers or assesses lessons changed: the program code of shikii itself changed only in its version number and the updated Go library. The audit guide in the skill, which the program carries and hands to agents, has more text, but it does not touch how lessons are stored, delivered or assessed. We did not run real agents for this version for that reason.
+
+### In 0.37.2, a subagent starts with the rules for every request
+
+Since 0.9.1, when a subagent started, shikii picked lessons from the text of the task it was given and delivered them with the start. We counted how the agents assessed those deliveries in this project's records from 2026-11-14 on. The lessons picked from the task text were useful about one time in twelve: the task text says what to do, not the situation the lesson was written for, so the pick was often off. The rules that apply to every request, delivered to the same subagents, were useful about four times in ten. Taking out the picks would have lost a few useful deliveries and a sixth of the unused ones, so the share of useful deliveries goes up.
+
+So a subagent now starts with the rules for every request and how to report what it did. What its task needs, it looks up in the wiki itself, as about a quarter of the subagents in this project already did. The lessons are kept: they are still delivered to the main agent for a request, and right before a command or a file change. These numbers come from one project's records, counted before the change. Whether the share goes up in use is not measured yet.

@@ -2,6 +2,13 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.37.2 — A subagent gets the rules for every request when it starts
+
+### Changes
+
+- When a subagent starts, shikii gives it only the rules that apply to every request and how to report what it did. It no longer picks lessons from the text of the subagent's task. In this project's records, the lessons picked that way were rarely useful to the subagent, while the rules for every request often were. A subagent can still look up what its task needs in the wiki. This is the same in Claude Code, Codex and OpenCode 2.x.
+- Claude Code now has 6 shikii hooks. The hook that kept the task given to a subagent is removed, and `shikii hook install` and `shikii update` take it out of the settings, also when it points to an older path.
+
 ## 0.37.1 — Libraries and the GitHub Action are updated
 
 ### Changes
