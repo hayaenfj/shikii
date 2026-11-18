@@ -17,6 +17,7 @@ func runHookEvent(event string) error {
 		return err
 	}
 	defer beginEventReads()() // the wiki reads of this event share validated parsing (hook_reads.go)
+	defer beginEventGit()()   // and git is asked once where the repository is (hook_git_place.go)
 	stopTurn := ""            // the request a Stop ends: the session's turn when the Stop came (a request that comes since is left open)
 	if event == "stop" {
 		stopTurn = sessionTurnAt(in.SessionID)

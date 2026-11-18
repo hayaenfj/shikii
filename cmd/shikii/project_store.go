@@ -97,15 +97,18 @@ func checkProjectStore(root string, create bool) error {
 func excludeProjectStore(scope string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--git-path", "info/exclude")
-	cmd.Dir = scope
-	raw, err := cmd.Output()
-	if err != nil {
-		return nil
-	} // outside git
-	path := strings.TrimSpace(string(raw))
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(scope, path)
+	path := ""
+	if place, ok := gitPlaceAt(ctx, scope); ok {
+		path = place.exclude
+	} else {
+		// no working tree here, but a bare repository or the inside of .git still has the file: ask for it alone
+		cmd := exec.CommandContext(ctx, "git", "rev-parse", "--git-path", "info/exclude")
+		cmd.Dir = scope
+		raw, err := cmd.Output()
+		if err != nil {
+			return nil
+		} // outside git
+		path = atFolder(scope, strings.TrimSpace(string(raw)))
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err

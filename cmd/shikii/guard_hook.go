@@ -107,11 +107,11 @@ func guardTurnInputStopped(root, cwd, before string, kept *keptLines, changed []
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*hookGitTimeout)
 	defer cancel()
-	top, ok := gitRun(ctx, cwd, "rev-parse", "--show-toplevel")
+	place, ok := gitPlaceAt(ctx, cwd)
 	if !ok {
 		return in
 	}
-	top = strings.TrimSpace(top)
+	top := place.top
 	in.repo = top
 	var stopped *stoppedTable
 	if root != "" {

@@ -221,11 +221,11 @@ func uncommittedLines(root, cwd, header, listing string) []byte {
 	deadline := time.Now().Add(hookGitTimeout)
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
-	out, ok := gitRun(ctx, cwd, "rev-parse", "--show-toplevel")
+	place, ok := gitPlaceAt(ctx, cwd)
 	if !ok {
 		return nil
 	}
-	top, err := os.OpenRoot(strings.TrimSpace(out))
+	top, err := os.OpenRoot(place.top)
 	if err != nil {
 		return nil
 	}

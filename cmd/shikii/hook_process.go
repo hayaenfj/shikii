@@ -53,20 +53,14 @@ func treeStateWithScope(cwd string) (hash, listing string, listed bool, project,
 		}
 		return strings.TrimSpace(out.String()), true
 	}
-	top, ok := run(nil, "rev-parse", "--show-toplevel")
+	place, ok := gitPlaceAt(ctx, cwd) // the top folder and the repo's object folder, in one question (the hook asked three times before)
 	if !ok {
 		return "", "", false, project, scope // outside git: the marker is the cwd's name
 	}
+	top, objects := place.top, place.objects // objects is absolute: a path git gave relative to a subdirectory is joined to it there
 	project = filepath.Base(top)
 	scope = treeProjectScope(cwd, top) // a worktree kept under a project is that project's work: its records are the project's, its files are compared here
 	dir = top                          // from here on, at the repo's root (even a session started in a subdirectory sees the whole repo)
-	objects, ok := run(nil, "rev-parse", "--git-path", "objects")
-	if !ok {
-		return "", "", false, project, scope
-	}
-	if !filepath.IsAbs(objects) {
-		objects = filepath.Join(top, objects) // git answered at the repo's root (dir), not at cwd: a subdirectory would name a folder that does not exist
-	}
 	scratch, err := os.MkdirTemp("", "shikii-git-*")
 	if err != nil {
 		return "", "", false, project, scope

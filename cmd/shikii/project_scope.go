@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -77,11 +76,9 @@ func projectTopAt(cwd string) string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
-	cmd.Dir = cwd
 	scope := feedbackScope(cwd)
-	if top, err := cmd.Output(); err == nil {
-		scope = feedbackScope(strings.TrimSpace(string(top)))
+	if place, ok := gitPlaceAt(ctx, cwd); ok {
+		scope = feedbackScope(place.top)
 	}
 	return canonicalScope(scope)
 }
