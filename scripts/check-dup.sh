@@ -9,6 +9,8 @@
 # Both tools are required. A missing tool fails, because a skipped check would read as a pass:
 #   npm i -g jscpd
 #   go install github.com/mibk/dupl@latest
+# JSCPD_CLONES and JSCPD_LINES were taken with jscpd 5.4.3; another version may count differently, and then the numbers
+# are taken again with it (lower or raise them to what this script prints).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
