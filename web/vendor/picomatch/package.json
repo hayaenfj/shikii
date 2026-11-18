@@ -1,0 +1,16 @@
+{
+  "name": "@shikii/picomatch",
+  "version": "4.0.7+shikii.1",
+  "private": true,
+  "description": "picomatch 4.0.7 with one fix: a repeated extglob whose only branch has a star (+(*), +(*a), *(a*)) no longer backtracks exponentially (GHSA-fc5q-39xc-vjpf). Drop this copy when upstream ships the fix",
+  "main": "index.js",
+  "license": "MIT",
+  "engines": {
+    "node": ">=12"
+  },
+  "files": [
+    "index.js",
+    "posix.js",
+    "lib"
+  ]
+}
