@@ -81,7 +81,7 @@ func TestSessionKeepsTheLatestDeliveriesOfEarlierRequests(t *testing.T) {
 	}
 }
 
-// A subagent of Claude Code or OpenCode does not see what the parent was given, so a lesson delivered to the parent (at its
+// A subagent of Claude Code does not see what the parent was given, so a lesson delivered to the parent (at its
 // request or at its own tool call) still reaches a subagent right before the subagent runs that command. The subagent does not get
 // it twice, and the parent does not get it again because a subagent got it.
 func TestToolLessonReachesASubagentEvenWhenTheParentGotIt(t *testing.T) {
@@ -106,5 +106,23 @@ func TestToolLessonReachesASubagentEvenWhenTheParentGotIt(t *testing.T) {
 	}
 	if out := toolHook(t, scope, "s", "", "Bash", map[string]any{"command": "git add . && git commit -m v"}); out != "" {
 		t.Errorf("the parent does not get it again:\n%s", cut(out, 400))
+	}
+}
+
+// A lesson a subagent got right before its command does not keep the parent's next request from getting it: deliveries are counted
+// per agent at the request too (audit of 0.37.2). The same flow without the subagent's delivery is the check of the test itself.
+func TestParentsNextRequestGetsALessonASubagentGot(t *testing.T) {
+	_, scope, _, ids := toolLessonFixture(t)
+	prompt := "check the exit code before committing in shikii: git commit"
+	if base := runHook(t, "user-prompt-submit", map[string]any{"session_id": "base", "cwd": scope, "prompt": prompt}); !strings.Contains(base, ids["commit"]) {
+		t.Fatalf("precondition: the request recalls the commit lesson:\n%s", cut(base, 300))
+	}
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": scope, "prompt": toolPrompt})
+	out := runHook(t, "tool-lesson", map[string]any{"session_id": "s", "cwd": scope, "agent_id": "agent-1", "agent_type": "general-purpose", "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": map[string]any{"command": "git commit -m y"}})
+	if !strings.Contains(out, ids["commit"]) {
+		t.Fatalf("precondition: the subagent gets it right before its commit:\n%s", cut(out, 300))
+	}
+	if next := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": scope, "prompt": prompt}); !strings.Contains(next, ids["commit"]) {
+		t.Errorf("the parent's next request gets the lesson though a subagent got it:\n%s", cut(next, 400))
 	}
 }

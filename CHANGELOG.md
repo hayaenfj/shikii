@@ -11,7 +11,7 @@
 
 ### Fixes
 
-- A lesson naming a command or a file now reaches a subagent of Claude Code or OpenCode right before the subagent runs that command or changes that file, also when the parent already got the same lesson during the request. Before, it did not reach the subagent, which does not see what the parent was given.
+- A lesson naming a command or a file now reaches a subagent of Claude Code right before the subagent runs that command or changes that file, also when the parent already got the same lesson during the request. Before, it did not reach the subagent, which does not see what the parent was given. A subagent of Codex, which starts from a copy of the parent's conversation, may now get such a lesson again at that call, and assesses it itself. A lesson a subagent got no longer keeps the parent's next request from getting it.
 
 ## 0.37.1 — Libraries and the GitHub Action are updated
 

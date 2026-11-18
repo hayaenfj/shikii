@@ -541,7 +541,8 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (out hoo
 	// not apply right now (lesson-applies, 0.12; asked outside the session lock). Its trace goes into the delivery for the outcome truth.
 	// and no lesson this request already got at a tool call, however long the request runs and whatever its revision is now (a
 	// request of several hours got the same lesson again every hour)
-	// Counted for the agent of this call only: a subagent of Claude Code or OpenCode does not see what the parent got (0.37.2).
+	// Counted for the agent of this call only: a subagent of Claude Code does not see what the parent got (0.37.2;
+	// a Codex subagent, which starts from a copy of the parent's conversation, may get it again and assesses it itself).
 	seen := map[string]bool{}
 	for _, m := range snapshot.Memories {
 		if age := time.Since(m.At); m.Agent == in.AgentID && age >= 0 && age < time.Hour {

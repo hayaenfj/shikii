@@ -16,8 +16,8 @@ import (
 type memoryDelivery struct {
 	Key string    `json:"key"`
 	At  time.Time `json:"at"`
-	// Agent is the subagent it was delivered to (its agent_id), empty for the session's own agent. A subagent of Claude Code or
-	// OpenCode does not see what the parent was given, so whether a lesson was already delivered is counted per agent (0.37.2).
+	// Agent is the subagent it was delivered to (its agent_id), empty for the session's own agent. A subagent of Claude Code
+	// does not see what the parent was given, so whether a lesson was already delivered is counted per agent (0.37.2).
 	Agent string `json:"agent,omitempty"`
 }
 
@@ -88,9 +88,10 @@ func deliverMemoryTracked(root, scope, request string, pages []notebook.Page, fe
 		}()
 	}
 
+	// counted for this agent only, as at a tool call: a lesson a subagent got does not keep the parent's request from getting it (0.37.2)
 	seen := map[string]bool{}
 	for _, previous := range session.Memories {
-		if age := time.Since(previous.At); age >= 0 && age < time.Hour {
+		if age := time.Since(previous.At); previous.Agent == agent && age >= 0 && age < time.Hour {
 			seen[previous.Key] = true
 		}
 	}
