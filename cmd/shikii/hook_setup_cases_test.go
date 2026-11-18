@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http/httptest"
@@ -1591,5 +1592,64 @@ func TestInstallRemovesTheAgentTaskHookOfThisBinary(t *testing.T) {
 	}
 	if after, _ := os.ReadFile(sessionPath(st.Dir, "old")); string(after) != string(before) {
 		t.Fatalf("hook agent-task keeps nothing:\n%s\n%s", before, after)
+	}
+}
+
+// Another tool's handler that uses the event name agent-task is the person's: install and uninstall keep it, with its matcher.
+// Only a binary named shikii is shikii's (audit of 0.37.2: making every agent-task handler shikii's passed every other test).
+func TestInstallKeepsAnotherToolsAgentTaskHook(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	person := []string{"/opt/other/tool hook agent-task", "/usr/local/bin/shikii-helper hook agent-task"}
+	handlers := []any{map[string]any{"type": "command", "command": "/old/path/shikii hook agent-task"}}
+	for _, c := range person {
+		handlers = append(handlers, map[string]any{"type": "command", "command": c})
+	}
+	body, _ := json.Marshal(map[string]any{"hooks": map[string]any{"PreToolUse": []any{map[string]any{"matcher": "Agent|Task", "hooks": handlers}}}})
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, install := range []bool{true, false} {
+		if _, err := editHooks(path, install, hookEventsFor("Claude Code")); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := os.ReadFile(path)
+		if strings.Contains(string(raw), "/old/path/shikii hook agent-task") {
+			t.Fatalf("install=%v: shikii's old agent-task hook is removed:\n%s", install, raw)
+		}
+		for _, c := range person {
+			if !strings.Contains(string(raw), c) {
+				t.Fatalf("install=%v removed another tool's hook %q:\n%s", install, c, raw)
+			}
+		}
+		if !strings.Contains(string(raw), `"Agent|Task"`) {
+			t.Fatalf("install=%v: the person's group keeps its matcher:\n%s", install, raw)
+		}
+	}
+}
+
+// An agent-task hook still in a settings file does not start the local model (it did nothing else up to 0.37 either: it only kept the
+// task). The audit of 0.37.2 found that starting it there passed every test.
+func TestOldAgentTaskHookDoesNotStartTheModel(t *testing.T) {
+	_, scope, _, _, _ := memoryEffectFixture(t)
+	t.Setenv("TYPESAFE_API_KEY", "")
+	t.Setenv("DECISIONS_API_KEY", "")
+	oldURL, oldLook := hookLocalURL, lookPath
+	looked := []string{}
+	hookLocalURL = "http://127.0.0.1:1"
+	lookPath = func(file string) (string, error) {
+		looked = append(looked, file)
+		return "", errors.New("not on PATH (test)")
+	}
+	t.Cleanup(func() { hookLocalURL, lookPath = oldURL, oldLook })
+	if out := runHook(t, "agent-task", map[string]any{"session_id": "s", "cwd": scope, "tool_name": "Agent", "tool_input": map[string]any{"prompt": "x"}}); out != "" {
+		t.Fatalf("hook agent-task outputs nothing: %q", out)
+	}
+	if len(looked) != 0 {
+		t.Fatalf("hook agent-task does not look for the local model to start it: %v", looked)
+	}
+	// the check itself: the same setting makes a request look for it
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": scope, "prompt": "README \u306e\u5c0e\u5165\u624b\u9806\u3092\u66f4\u65b0\u3057\u3066\u304f\u3060\u3055\u3044"})
+	if len(looked) == 0 {
+		t.Fatal("precondition: a request looks for the local model when it does not answer")
 	}
 }

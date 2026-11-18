@@ -112,8 +112,8 @@ type hookInput struct {
 	Prompt               string          `json:"prompt"`
 	StopHookActive       bool            `json:"stop_hook_active"`
 	LastAssistantMessage string          `json:"last_assistant_message"`
-	ToolName             string          `json:"tool_name"`  // PreToolUse: the tool about to be used (Agent / Task; the edit tools and Bash for tool-lesson)
-	ToolInput            json.RawMessage `json:"tool_input"` // PreToolUse: that tool's input (for Agent: prompt and subagent_type; file_path, notebook_path or command)
+	ToolName             string          `json:"tool_name"`  // PreToolUse: the tool about to be used (the edit tools and Bash for tool-lesson)
+	ToolInput            json.RawMessage `json:"tool_input"` // PreToolUse: that tool's input (file_path, notebook_path or command)
 	// stopRecords, when set, collects what a Stop would write to records/guards.jsonl (the routine check, the person's guards) until
 	// the session record is committed: a Stop the next request overtook writes none of it (keepStopRecords).
 	stopRecords *[]guardRecord
