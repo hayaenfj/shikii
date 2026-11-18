@@ -10,7 +10,7 @@
 - Go のライブラリ `golang.org/x/text` を v0.44.0 に上げました。
 - GitHub Action(`action.yml`)が Go の準備に使う `actions/setup-go` を、v5 から v7 に上げました。
 - shikii の skill にある監査の手引きが、差分だけでなく、重複したコード・テスト・決まり・文書と、変更の背後にある問題の種類も、監査者に調べさせるようになりました。
-- Dockerfile は、Node.js 26 でビルドし、最終イメージを distroless の Debian 13 の上に作るようになりました。これまでは Node.js 24 と Debian 12 でした。Docker のページにも書きました。
+- Dockerfile は、Node.js 26 でビルドし、最終イメージを distroless の Debian 13 の上に作るようになりました。これまでは Node.js 24 と Debian 12 でした。Docker のページには Node.js 26 と書きました。
 
 ### 修正
 

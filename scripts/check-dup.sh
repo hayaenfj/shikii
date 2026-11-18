@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Duplicate-code check for the Go sources (tests, generated code, testdata and web/ are left out).
-#   jscpd: share of duplicated lines in the whole tree; over "threshold" in .jscpd.json fails. The number of clones must
-#          also equal JSCPD_CLONES.
+#   jscpd: share of duplicated lines in the whole tree; over "threshold" in .jscpd.json fails. The number of clones and the
+#          number of duplicated lines must also equal JSCPD_CLONES and JSCPD_LINES.
 #   dupl : clones of DUPL_TOKENS tokens or more; the number of clone groups must equal DUPL_GROUPS.
-#   For both counts, more fails (new duplication) and fewer fails until the constant is lowered (freed room cannot be refilled).
+#   For each count, more fails (new duplication, or an existing one that grew) and fewer fails until the constant is lowered
+#   (freed room cannot be refilled). A count that is not a number fails too.
 # Both tools are required. A missing tool fails, because a skipped check would read as a pass:
 #   npm i -g jscpd
 #   go install github.com/mibk/dupl@latest
@@ -11,8 +12,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DUPL_TOKENS=100
-# Clones and clone groups that exist today
+# Clones, duplicated lines and clone groups that exist today
 JSCPD_CLONES=49
+JSCPD_LINES=438
 DUPL_GROUPS=0
 
 for tool in jscpd dupl; do
@@ -26,6 +28,12 @@ status=0
 
 # compare_count <what> <found> <allowed> <constant>: the found count must equal the allowed one
 compare_count() {
+  case "$2" in
+    '' | *[!0-9]*)
+      echo "check-dup: the $1 count is not a number: '$2'" >&2
+      exit 2
+      ;;
+  esac
   if [ "$2" -gt "$3" ]; then
     echo "check-dup: $2 $1, more than the allowed $3" >&2
     status=1
@@ -40,11 +48,14 @@ compare_count() {
 echo "== jscpd"
 # Exits 1 when the duplicated-line share is over the threshold in .jscpd.json
 jscpd . --config .jscpd.json --silent || status=1
-clones=$(python3 -c 'import json; print(json.load(open(".jscpd-report/jscpd-report.json"))["statistics"]["total"]["clones"])') || {
-  echo "check-dup: could not read the clone count from .jscpd-report/jscpd-report.json" >&2
-  exit 2
+jscpd_total() {
+  python3 -c 'import json, sys; print(json.load(open(".jscpd-report/jscpd-report.json"))["statistics"]["total"][sys.argv[1]])' "$1" || {
+    echo "check-dup: could not read $1 from .jscpd-report/jscpd-report.json" >&2
+    exit 2
+  }
 }
-compare_count "clones" "$clones" "$JSCPD_CLONES" JSCPD_CLONES
+compare_count "clones" "$(jscpd_total clones)" "$JSCPD_CLONES" JSCPD_CLONES
+compare_count "duplicated lines" "$(jscpd_total duplicatedLines)" "$JSCPD_LINES" JSCPD_LINES
 
 echo "== dupl (-t $DUPL_TOKENS)"
 # Keep these exclusions in step with "ignore" in .jscpd.json. dupl exits 0 even when it finds clones, so read its count.
