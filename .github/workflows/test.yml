@@ -16,13 +16,13 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       # Page (web/, Svelte): rebuild from source and check that it matches the committed web/dist
       # (fails if dist was edited by hand, or the source was changed and make web was forgotten). Also checks that the dictionary keys match
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 26
           cache: npm
@@ -50,10 +50,10 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # gitleaks looks at the whole history too
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       # gitleaks: the official Action needs a key for organization repositories.
@@ -66,4 +66,4 @@ jobs:
           /tmp/gitleaks git --redact --no-banner .
       # govulncheck: of the known vulnerabilities in the dependencies and the standard library, report only those actually called. There is no way to exclude them, so
       # when one shows up, raise go.mod's toolchain or the dependency to a fixed version (if there is no fixed version, remove this step only for that time and give the reason in the commit)
-      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...

@@ -385,6 +385,8 @@ func TestOnlyLockCalibrationTouchesTheCalibrationLock(t *testing.T) {
 // (govulncheck, version pinned). The Go version is aligned through go.mod's toolchain to a version with the vulnerabilities fixed.
 // Audit 0.8.2-2 B2: compare the security job's steps to a fixed sequence by exact match (an allowlist), not by whether strings are present.
 // Removing the hash check, commenting out govulncheck, or swallowing gitleaks failures all fail.
+// An action step is compared by its name, not its version tag (@v7): Dependabot bumps the tag every few months, and a bump
+// must not fail this test. Replacing the action, reordering or adding a step still fails. govulncheck's version stays exact (it is inside a run line).
 func TestCIScansSecretsAndVulnerabilities(t *testing.T) {
 	b, err := os.ReadFile("../../.github/workflows/test.yml")
 	if err != nil {
@@ -410,19 +412,20 @@ func TestCIScansSecretsAndVulnerabilities(t *testing.T) {
 	for _, st := range job.Steps {
 		switch {
 		case st.Uses != "":
-			got = append(got, "uses "+st.Uses+" "+st.With["fetch-depth"]+st.With["go-version-file"])
+			action, _, _ := strings.Cut(st.Uses, "@")
+			got = append(got, "uses "+action+" "+st.With["fetch-depth"]+st.With["go-version-file"])
 		default:
 			got = append(got, strings.TrimSpace(st.Run))
 		}
 	}
 	want := []string{
-		"uses actions/checkout@v4 0",
-		"uses actions/setup-go@v5 go.mod",
+		"uses actions/checkout 0",
+		"uses actions/setup-go go.mod",
 		`curl -fsSL -H 'Accept: application/octet-stream' -o /tmp/gitleaks.tar.gz https://api.github.com/repos/gitleaks/gitleaks/releases/assets/378332058
 echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
 tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
 /tmp/gitleaks git --redact --no-banner .`,
-		"go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...",
+		"go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...",
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("the security job's steps differ from the fixed sequence:\n got %q\nwant %q", got, want)
