@@ -8,7 +8,8 @@ import (
 )
 
 // Every module go.mod requires directly ships in the binaries, so its license notice must be in THIRD-PARTY-NOTICES (go-toml, added in
-// 0.9.7, was missing until 0.9.9). The check reads go.mod's require block and looks for each module's path in a notice heading.
+// 0.9.7, was missing until 0.9.9). The check reads go.mod's require block and looks for each module's path and version in a notice
+// heading, so a dependency bump (Dependabot opens one every week) cannot leave the notice naming the old version.
 func TestThirdPartyNoticesNameEveryDirectDependency(t *testing.T) {
 	notices, err := os.ReadFile("THIRD-PARTY-NOTICES")
 	if err != nil {
@@ -41,8 +42,8 @@ func thirdPartyMissing(t *testing.T, headings string) []string {
 		if len(fields) < 2 || strings.Contains(line, "// indirect") {
 			continue
 		}
-		if !strings.Contains(headings, "("+fields[0]+")") {
-			missing = append(missing, fields[0])
+		if !strings.Contains(headings, " "+fields[1]+" ("+fields[0]+")") {
+			missing = append(missing, fields[0]+" "+fields[1])
 		}
 	}
 	return missing
