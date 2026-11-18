@@ -14,6 +14,17 @@ trap 'rm -rf "$tmp"' EXIT
 # When interrupted, stop the groups running in the background too (they start ignoring SIGINT)
 trap 'trap "" TERM; kill -TERM 0 2>/dev/null; exit 130' INT TERM
 
+# macOS: /usr/bin/git is a stub that looks up the real git and starts it again, so each git call takes about 3 times as long (the tests
+# start git thousands of times). When git on PATH is that stub, put the real one first on PATH, for these tests only. Only git is put
+# there (the folder it lives in also holds python3 and make, which would hide the ones the tests expect). git finds its templates and
+# helper commands next to the folder it was started from, so share/ and libexec/ are linked beside the link to it.
+if [ "$(uname -s)" = Darwin ] && [ "$(command -v git)" = /usr/bin/git ] && real=$(xcrun --find git 2>/dev/null) && [ -x "$real" ]; then
+	prefix=$(dirname "$(dirname "$real")")
+	mkdir -p "$tmp/git/bin" && ln -s "$real" "$tmp/git/bin/git"
+	for d in share libexec; do [ -d "$prefix/$d" ] && ln -s "$prefix/$d" "$tmp/git/$d"; done
+	PATH="$tmp/git/bin:$PATH"
+fi
+
 # Build first (so that a failure does not leave go test running in the background)
 go test -c -o "$tmp/shikii.test" ./cmd/shikii
 others=$(go list ./... | grep -v '/cmd/shikii$')
