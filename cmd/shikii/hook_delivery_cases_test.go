@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
@@ -87,36 +86,6 @@ func TestHookNoticesAgentMemoryNotYetInTheWiki(t *testing.T) {
 	}
 	if namesProject("myapp の決まり", []string{"app"}) || !namesProject("app の決まり", []string{"app"}) || !namesProject("/work/app は古い", []string{"/work/app"}) {
 		t.Fatal("naming matches at word boundaries; a path matches as a substring")
-	}
-}
-
-// G2: start 2 children of the same type side by side. SubagentStart chooses from the same copy read outside the lock, so both pick the same note and one note remains
-func TestAudit091ParallelSubagentsPickDistinctTasks(t *testing.T) {
-	st, scope, _, _, _ := memoryEffectFixture(t)
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "g2", "cwd": scope, "prompt": "画面の色を直して"})
-	for _, p := range []string{"README の導入手順を更新してください ONE", "README の導入手順を更新してください TWO"} {
-		runHook(t, "agent-task", map[string]any{"session_id": "g2", "cwd": scope, "tool_name": "Agent", "tool_input": map[string]any{"prompt": p, "subagent_type": "Explore"}})
-	}
-	agent := st.Dir
-	snapshot := loadSession(agent, "g2") // the copy the 2 hooks read at the same time
-	o1, m1, err1 := hookSubagentStart(agent, &hookInput{SessionID: "g2", CWD: scope, AgentID: "c1", AgentType: "Explore"}, snapshot)
-	o2, m2, err2 := hookSubagentStart(agent, &hookInput{SessionID: "g2", CWD: scope, AgentID: "c2", AgentType: "Explore"}, snapshot)
-	if err1 != nil || err2 != nil {
-		t.Fatal(err1, err2)
-	}
-	for _, ms := range [][]func(*hookSession){m1, m2} {
-		if err := updateSession(agent, "g2", func(s *hookSession) {
-			for _, m := range ms {
-				m(s)
-			}
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	h1, h2 := strings.SplitN(o1.Context, "\n", 2)[0], strings.SplitN(o2.Context, "\n", 2)[0]
-	left := loadSession(agent, "g2").SubagentTasks
-	if h1 == h2 || len(left) != 0 || !strings.Contains(h1, "ONE") || !strings.Contains(h2, "TWO") { // c1 is ONE, c2 is TWO (so it does not pass even if one has no note; recheck GC)
-		t.Fatalf("2 children started side by side use separate notes, and no note remains:\n c1=%q\n c2=%q\n remaining=%+v", h1, h2, left)
 	}
 }
 
@@ -328,21 +297,33 @@ func TestSweepStaleDeferralByReflectQuery(t *testing.T) {
 // A subagent's (Claude Code's Agent tool) task text arrives in neither UserPromptSubmit nor SubagentStart. Since 0.7.3 lessons are delivered at SubagentStart.
 // 0.9.1: the task text the parent passed to the Agent tool is kept at PreToolUse and lessons are picked with it (picking by the parent's request delivered lessons unrelated to the child's work).
 // The parent session's record (request, delivered memory versions) is not changed, and the delivery is recorded under an ID separate from the parent's (so reflection can mark it helpful / unused). Nothing is output without a parent request.
-func TestSubagentStartDeliversLessonsForItsOwnTask(t *testing.T) {
+// A child gets the rules for every request at its start, never lessons chosen by the words of its task: in this project 2026-11-14
+// to 11-18, lessons chosen by the task text helped 3 times and went unused 33 times (a read-only auditor got the steps to commit),
+// while the rules for every request helped 37 times and went unused 58 times. A lesson about a command still reaches the child right
+// before that command (tool-lesson), when the child really runs it.
+func TestSubagentStartGetsOnlyAlwaysRulesEvenWithItsTask(t *testing.T) {
 	st, scope, _, draft, _ := memoryEffectFixture(t)
 	if out := runHook(t, "subagent-start", map[string]any{"session_id": "sub", "cwd": scope, "agent_id": "agent-1", "agent_type": "Explore"}); out != "" {
 		t.Fatalf("delivers nothing if there is no parent request yet: %s", out)
 	}
-	// the parent's request is unrelated to README. The child is given the README work
+	always := draft
+	always.ID, always.Title, always.Lesson, always.Kind, always.Scene, always.AppliesTo = "", "見える文は日本語", "報告も含めて見える文は日本語で書く。", "rule", "いつも", "どの依頼でも"
+	if _, err := (notebook.Book{Root: st.Dir, Scope: scope}).Ingest(always); err != nil {
+		t.Fatal(err)
+	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "sub", "cwd": scope, "prompt": "画面の色を直して、監査も頼みます"})
 	before := loadSession(st.Dir, "sub")
+	// the task kept from the Agent tool (Claude Code) and the task given with the start itself (OpenCode) choose nothing
 	ctx := subagentContext(t, startSubagent(t, "sub", scope, "agent-1", "Explore", "README の導入手順を更新してください"))
-	if !strings.Contains(ctx, draft.Lesson) || !strings.Contains(ctx, "close to its task") {
-		t.Fatalf("delivers lessons close to the task text given to the child: %s", ctx)
+	given := subagentContext(t, runHook(t, "subagent-start", map[string]any{"session_id": "sub", "cwd": scope, "agent_id": "agent-2", "agent_type": "Explore", "prompt": "README の導入手順を更新してください"}))
+	for _, c := range []string{ctx, given} {
+		if strings.Contains(c, draft.Lesson) || !strings.Contains(c, always.Lesson) || !strings.Contains(c, "the rules that apply to every request") {
+			t.Fatalf("a child gets the rules for every request and not the lesson close to its task: %s", c)
+		}
 	}
 	after := loadSession(st.Dir, "sub")
-	if after.Request != before.Request || after.TurnID != before.TurnID || len(after.Memories) != len(before.Memories) || len(after.SubagentTasks) != 0 {
-		t.Fatalf("the parent's record is unchanged except for dropping the used child task: before=%+v after=%+v", before, after)
+	if after.Request != before.Request || after.TurnID != before.TurnID || len(after.Memories) != len(before.Memories) {
+		t.Fatalf("the parent's record is unchanged: before=%+v after=%+v", before, after)
 	}
 	deliveries, err := st.MemoryDeliveries(scope)
 	if err != nil {
@@ -350,16 +331,12 @@ func TestSubagentStartDeliversLessonsForItsOwnTask(t *testing.T) {
 	}
 	var sub store.MemoryDelivery
 	for _, d := range deliveries {
-		if d.Parent == before.TurnID {
+		if d.Parent == before.TurnID && d.Agent == "agent-1" {
 			sub = d
 		}
 	}
-	if sub.Agent != "agent-1" || sub.Request != "README の導入手順を更新してください" || len(sub.Quotes) == 0 || sub.Quotes[0].ID != draft.ID {
-		t.Fatalf("records the delivery to the child under an ID separate from the parent's, with the child's task text and the quoted versions: %+v", deliveries)
-	}
-	// the same child starting again does not fail (if the task is passed again, the same ID and the same quotes are not saved again)
-	if ctx2 := subagentContext(t, startSubagent(t, "sub", scope, "agent-1", "Explore", "README の導入手順を更新してください")); !strings.Contains(ctx2, draft.Lesson) {
-		t.Fatalf("delivers the second time too: %s", ctx2)
+	if len(sub.Quotes) == 0 || sub.Quotes[0].Lesson != always.Lesson || sub.Phrase != "" {
+		t.Fatalf("records the delivery to the child under an ID separate from the parent's, with no door: %+v", deliveries)
 	}
 }
 
@@ -378,30 +355,16 @@ func TestSubagentWithoutItsTaskGetsOnlyAlwaysRules(t *testing.T) {
 	if !strings.Contains(ctx, always.Lesson) || strings.Contains(ctx, draft.Lesson) || !strings.Contains(ctx, "the rules that apply to every request") {
 		t.Fatalf("a child with no kept task gets only the \"いつも\" rules, not lessons close to the parent's request: %s", ctx)
 	}
-	// a kept task for a child of another type is not used. Kept tasks of the same type are used oldest first
-	runHook(t, "agent-task", map[string]any{"session_id": "s4", "cwd": scope, "tool_name": "Agent", "tool_input": map[string]any{"prompt": "README の導入手順を更新してください", "subagent_type": "Plan"}})
-	// WebFetch also has a prompt in its input. Tools other than Agent / Task are not kept even with a prompt
-	runHook(t, "agent-task", map[string]any{"session_id": "s4", "cwd": scope, "tool_name": "WebFetch", "tool_input": map[string]any{"url": "https://example.com", "prompt": "README の導入手順を更新してください"}})
-	if ctx := subagentContext(t, runHook(t, "subagent-start", map[string]any{"session_id": "s4", "cwd": scope, "agent_id": "a2", "agent_type": "Explore"})); strings.Contains(ctx, draft.Lesson) {
-		t.Fatalf("a task for a child of another type (Plan) is not used for an Explore child: %s", ctx)
-	}
-	if got := loadSession(st.Dir, "s4").SubagentTasks; len(got) != 1 || got[0].Type != "Plan" {
-		t.Fatalf("only Agent tool tasks are kept (not WebFetch), and unused records stay: %+v", got)
-	}
-	if ctx := subagentContext(t, runHook(t, "subagent-start", map[string]any{"session_id": "s4", "cwd": scope, "agent_id": "a3", "agent_type": "Plan"})); !strings.Contains(ctx, draft.Lesson) {
-		t.Fatalf("a child of the same type is picked with the kept task text: %s", ctx)
-	}
-	// a child started without a type starts as general-purpose
-	runHook(t, "agent-task", map[string]any{"session_id": "s4", "cwd": scope, "tool_name": "Task", "tool_input": map[string]any{"prompt": "README の導入手順を更新してください"}})
-	if ctx := subagentContext(t, runHook(t, "subagent-start", map[string]any{"session_id": "s4", "cwd": scope, "agent_id": "a4", "agent_type": "general-purpose"})); !strings.Contains(ctx, draft.Lesson) {
-		t.Fatalf("a record without a type is used for a general-purpose child: %s", ctx)
-	}
 	_ = page
 }
 
 // Audit (2026-10-23): deliveries to subagents can be assessed in reflection alongside the parent's conversation, and are not silent on a restart after the lesson's version changed.
 func TestSubagentDeliveriesSurviveRevisionsAndAreNotOwedByTheParent(t *testing.T) {
 	st, scope, h, draft, _ := memoryEffectFixture(t)
+	draft.Scene = "\u3044\u3064\u3082" // a subagent gets the rules for every request
+	if _, err := (notebook.Book{Root: st.Dir, Scope: scope}).Ingest(draft); err != nil {
+		t.Fatal(err)
+	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "sub2", "cwd": scope, "prompt": "README の導入手順を更新してください"})
 	parent := loadSession(st.Dir, "sub2").TurnID
 	startSubagent(t, "sub2", scope, "agent-x", "Explore", "README の導入手順を更新してください")
@@ -452,7 +415,13 @@ func TestSubagentDeliveriesSurviveRevisionsAndAreNotOwedByTheParent(t *testing.T
 // Audit R2: a delivery to a subagent can be assessed by the source_id (delivery id) in the reflection output and leaves the observation queue.
 // If the parent's conversation (reply and next message) is complete, the delivery id need not be a conversation id. Submit's conversation count also folds into the parent.
 func TestSubagentDeliveryCanBeAssessedByItsOwnSourceID(t *testing.T) {
-	st, scope, h, draft, revision := memoryEffectFixture(t)
+	st, scope, h, draft, _ := memoryEffectFixture(t)
+	draft.Scene = "\u3044\u3064\u3082" // a subagent gets the rules for every request
+	saved, err := (notebook.Book{Root: st.Dir, Scope: scope}).Ingest(draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision := saved.Page.Revision
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "sub3", "cwd": scope, "prompt": "README の導入手順を更新してください"})
 	parent := loadSession(st.Dir, "sub3").TurnID
 	startSubagent(t, "sub3", scope, "agent-y", "Explore", "README の導入手順を更新してください")
@@ -490,48 +459,6 @@ func TestSubagentDeliveryCanBeAssessedByItsOwnSourceID(t *testing.T) {
 	rep, err := st.MemoryReport(scope)
 	if err != nil || rep.Stats.Pending != 0 || rep.Stats.Subagent != 0 || rep.Stats.AwaitingFeedback != 0 || rep.Stats.Helpful != 2 || rep.Stats.Unused != 1 {
 		t.Fatalf("once assessed they leave the observation queue: %+v %v", rep.Stats, err)
-	}
-}
-
-// Audit 0.9.1 (test gaps GM2-4, 14): kept child tasks are used oldest first within the same type, and ones older than 10 minutes are not used.
-// When adding, expired ones are dropped and at most 8 are kept
-func TestSubagentTasksAreOldestFirstWithinLimits(t *testing.T) {
-	now := time.Now()
-	tasks := []subagentTask{
-		{Type: "Explore", Prompt: "古すぎる", At: now.Add(-11 * time.Minute)},
-		{Type: "Explore", Prompt: "古い", At: now.Add(-2 * time.Second)},
-		{Type: "Explore", Prompt: "新しい", At: now.Add(-1 * time.Second)},
-	}
-	if got, ok := pickSubagentTask(tasks, "Explore", now); !ok || got.Prompt != "古い" {
-		t.Fatalf("uses the oldest record within the time limit (not ones older than 10 minutes): %+v %v", got, ok)
-	}
-	add := func(s *hookSession, prompt string) {
-		in := &hookInput{ToolName: "Agent", ToolInput: json.RawMessage(`{"prompt":"` + prompt + `","subagent_type":"Plan"}`)}
-		for _, m := range hookAgentTask(in) {
-			m(s)
-		}
-	}
-	// when adding, expired ones (even of another type) are dropped
-	expired := &hookSession{SubagentTasks: []subagentTask{{Type: "Explore", Prompt: "期限切れ", At: now.Add(-11 * time.Minute)}}}
-	add(expired, "仕事 X")
-	if len(expired.SubagentTasks) != 1 || expired.SubagentTasks[0].Prompt != "仕事 X" {
-		t.Fatalf("drops expired records when adding: %+v", expired.SubagentTasks)
-	}
-	// dropping records older than 30 seconds applies only to the same type (records of other types stay. re-audit GB)
-	other := &hookSession{SubagentTasks: []subagentTask{{Type: "Explore", Prompt: "1 分前の Explore", At: now.Add(-time.Minute)}}}
-	add(other, "仕事 Y")
-	if len(other.SubagentTasks) != 2 || other.SubagentTasks[0].Prompt != "1 分前の Explore" {
-		t.Fatalf("records of another type are not dropped by the 30-second rule: %+v", other.SubagentTasks)
-	}
-	s := &hookSession{SubagentTasks: []subagentTask{{Type: "Plan", Prompt: "期限切れ", At: now.Add(-11 * time.Minute)}}}
-	for i := 0; i < 10; i++ {
-		in := &hookInput{ToolName: "Agent", ToolInput: json.RawMessage(`{"prompt":"仕事 ` + string(rune('A'+i)) + `","subagent_type":"Plan"}`)}
-		for _, m := range hookAgentTask(in) {
-			m(s)
-		}
-	}
-	if len(s.SubagentTasks) != subagentTaskMax || s.SubagentTasks[0].Prompt != "仕事 C" || s.SubagentTasks[len(s.SubagentTasks)-1].Prompt != "仕事 J" {
-		t.Fatalf("drops expired ones when adding and keeps only the newest 8: %+v", s.SubagentTasks)
 	}
 }
 

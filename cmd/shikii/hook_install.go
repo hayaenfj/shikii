@@ -37,7 +37,6 @@ func hookEvents() []hookEvent {
 		{"Stop", hookCommand(exe, "stop"), hookTimeout + 5, false, ""},
 		{"SubagentStart", hookCommand(exe, "subagent-start"), hookTimeout, false, ""},          // deliver lessons to subagents too (0.7.3)
 		{"SubagentStop", hookCommand(exe, "subagent-stop"), hookTimeout, false, ""},            // the child's own report of what it did with its lessons
-		{"PreToolUse", hookCommand(exe, "agent-task"), hookTimeout, true, "Agent|Task"},        // keep the task text passed to the child (0.9.1)
 		{"PreToolUse", hookCommand(exe, "tool-lesson"), hookTimeout, false, toolLessonMatcher}, // a lesson naming the file or command, right before it (0.11)
 	}
 }
@@ -88,9 +87,10 @@ func hookBinary(command string) (string, bool) {
 	return bin, true
 }
 
-// shikiiHookEvent reports whether event is one of shikii's own hook events (hookEvents), or the pre-tool-use older versions added.
+// shikiiHookEvent reports whether event is one of shikii's own hook events (hookEvents), or one older versions added and install now
+// removes: pre-tool-use, and agent-task (up to 0.37, it kept the task passed to the Agent tool).
 func shikiiHookEvent(event string) bool {
-	if event == "pre-tool-use" {
+	if event == "pre-tool-use" || event == "agent-task" {
 		return true
 	}
 	for _, ev := range hookEvents() {

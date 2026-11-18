@@ -38,8 +38,8 @@ func TestAudit011DocsMatchTheHooksAndTheGuards(t *testing.T) {
 		return string(b)
 	}
 	claude, codex := len(hookEventsFor("Claude Code")), len(hookEventsFor("Codex"))
-	if claude != 7 || codex != 6 {
-		t.Fatalf("precondition: 7 hooks for Claude Code and 6 for Codex, got %d and %d", claude, codex)
+	if claude != 6 || codex != 6 {
+		t.Fatalf("precondition: 6 hooks for Claude Code and 6 for Codex, got %d and %d", claude, codex)
 	}
 	if n := strings.Count(guardKinds, "|") + 1; n != 4 {
 		t.Fatalf("precondition: 4 kinds of guard, got %d", n)
@@ -114,10 +114,9 @@ func TestAudit011DocsMatchTheHooksAndTheGuards(t *testing.T) {
 		{"integrations/claude-code.md", fmt.Sprintf("(%d for Claude Code, %d for Codex)", claude, codex), "hook uninstall removes the hooks shikii added"},
 		{"integrations/claude-code.ja.md", fmt.Sprintf("(Claude Code %d \u3064\u3001Codex %d \u3064)", claude, codex), "hook uninstall removes the hooks shikii added"},
 		{"integrations/claude-code.md", fmt.Sprintf("2. Adds %d to the `hooks` of", codex), "install adds that many to both agents"},
-		{"integrations/claude-code.md", fmt.Sprintf("Claude Code gets %d more", claude-codex), "Claude Code has agent-task besides"},
 		{"integrations/claude-code.ja.md", fmt.Sprintf("\u306e `hooks` \u306b %d \u3064\u3092\u8db3\u3059", codex), "install adds that many to both agents"},
-		{"docs/guide.md", fmt.Sprintf("(%d in both; Claude Code has %d more", codex, claude-codex), "the guide counts the hooks"},
-		{"docs/guide.ja.md", fmt.Sprintf("(\u3069\u3061\u3089\u3082 %d \u3064\u3002Claude Code \u306f\u3082\u3046 %d \u3064", codex, claude-codex), "the guide counts the hooks"},
+		{"docs/guide.md", fmt.Sprintf("(%d in both)", codex), "the guide counts the hooks"},
+		{"docs/guide.ja.md", fmt.Sprintf("(\u3069\u3061\u3089\u3082 %d \u3064)", codex), "the guide counts the hooks"},
 		{"integrations/claude-code.md", "`" + toolLessonMatcher + "` in Claude Code, `" + toolLessonMatcherCodex + "` in Codex", "the matchers of tool-lesson"},
 		{"integrations/claude-code.ja.md", "Claude Code \u3067\u306f `" + toolLessonMatcher + "`\u3001Codex \u3067\u306f `" + toolLessonMatcherCodex + "`", "the matchers of tool-lesson"},
 	}

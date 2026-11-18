@@ -139,11 +139,11 @@ func TestAlwaysRulesAreOnlyLiveAlwaysRules(t *testing.T) {
 	// without "いつも" rules, the original text of unorganized conversations is not returned either, and nothing is delivered
 	st2, scope2, _ := reviewFixture(t) // a base without lessons
 	reviewSeed(t, st2, scope2, 2)      // conversations not organized yet, close to the request
-	if ctx, err := memoryContextFor(st2.Dir, scope2, "README の起動手順を日本語にする 0000000000000002", &hookSession{TurnID: "dddddddddddddddd"}, "", ""); err != nil || !strings.Contains(ctx, "0000000000000002") {
+	if ctx, err := memoryContext(st2.Dir, scope2, "README の起動手順を日本語にする 0000000000000002", &hookSession{TurnID: "dddddddddddddddd"}); err != nil || !strings.Contains(ctx, "0000000000000002") {
 		t.Fatalf("precondition of this check: picking by closeness to the request returns the original text of unorganized conversations: %v %q", err, ctx)
 	}
 	if ctx, err := alwaysContextFor(st2.Dir, scope2, "README の起動手順を日本語にする 0000000000000002", &hookSession{TurnID: "cccccccccccccccc"}, "p", "a"); err != nil || ctx != "" {
-		t.Fatalf("a child without a kept task is not given the original text of unorganized conversations: %v %q", err, ctx)
+		t.Fatalf("a child is not given the original text of unorganized conversations: %v %q", err, ctx)
 	}
 }
 

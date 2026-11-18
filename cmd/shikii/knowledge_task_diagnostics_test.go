@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
@@ -12,15 +11,15 @@ import (
 
 func TestKnowledgeTaskCaseKeepsParentTurn(t *testing.T) {
 	b, source := loopBook(t)
-	p := loopPage(t, b, source, nil)
+	p := loopPage(t, b, source, map[string]any{"kind": "rule", "scene": "\u3044\u3064\u3082"})
 	const parent = "0000000000000171"
-	snapshot := &hookSession{Scope: b.Scope, TurnID: parent, Request: "parent synthetic request", SubagentTasks: []subagentTask{{Type: "audit", Prompt: "workflow design", At: time.Now()}}}
+	snapshot := &hookSession{Scope: b.Scope, TurnID: parent, Request: "parent synthetic request"}
 	if err := saveSession(b.Root, "audit-task", snapshot); err != nil {
 		t.Fatal(err)
 	}
-	out, _, err := hookSubagentStart(b.Root, &hookInput{SessionID: "audit-task", AgentID: "child-a", AgentType: "audit"}, snapshot)
+	out, err := hookSubagentStart(b.Root, &hookInput{SessionID: "audit-task", AgentID: "child-a", AgentType: "audit"}, snapshot)
 	if err != nil || !strings.Contains(out.Context, p.ID) {
-		t.Fatal("expected task delivery", err)
+		t.Fatal("expected always delivery", err)
 	}
 	ds, err := (store.Store{Dir: b.Root}).MemoryDeliveries(b.Scope)
 	if err != nil || len(ds) != 1 || ds[0].Parent != parent {
@@ -43,7 +42,7 @@ func TestKnowledgeAlwaysTaskIsDiagnosed(t *testing.T) {
 	if err := saveSession(b.Root, "audit-always", snapshot); err != nil {
 		t.Fatal(err)
 	}
-	out, _, err := hookSubagentStart(b.Root, &hookInput{SessionID: "audit-always", AgentID: "child-b", AgentType: "audit"}, snapshot)
+	out, err := hookSubagentStart(b.Root, &hookInput{SessionID: "audit-always", AgentID: "child-b", AgentType: "audit"}, snapshot)
 	if err != nil || !strings.Contains(out.Context, p.ID) {
 		t.Fatal("expected always delivery", err)
 	}
@@ -68,7 +67,7 @@ func TestKnowledgeAlwaysComparisonKeepsHistory(t *testing.T) {
 	if err := saveSession(b.Root, "audit-history", snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := hookSubagentStart(b.Root, &hookInput{SessionID: "audit-history", AgentID: "child-c", AgentType: "audit"}, snapshot); err != nil {
+	if _, err := hookSubagentStart(b.Root, &hookInput{SessionID: "audit-history", AgentID: "child-c", AgentType: "audit"}, snapshot); err != nil {
 		t.Fatal(err)
 	}
 	cases, err := b.DeliveryCases()

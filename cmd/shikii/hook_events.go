@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -98,11 +97,11 @@ func runHookEvent(event string) error {
 		// carries the id of a subagent is not the end of the person's request.
 		muts = append(muts, func(s *hookSession) { summary = stopSummary(agent, s) }) // the waiting-answers summary is counted on the record after this turn's decisions are added
 	case "subagent-start":
-		out, muts, err = hookSubagentStart(agent, &in, snapshot) // the parent's record only drops the used task for the child
+		out, err = hookSubagentStart(agent, &in, snapshot)
 	case "subagent-stop":
 		hookSubagentStop(agent, &in, snapshot) // saves what the child reported about its lessons; outputs nothing and never keeps the child working
 	case "agent-task":
-		muts = hookAgentTask(&in) // output nothing (do not stop the tool)
+		// 0.9.1 to 0.37 kept the task passed to the Agent tool here; settings installed then still call it. It outputs nothing and keeps nothing
 	case "tool-lesson":
 		// a guard the person enabled refuses a command matching a pattern before it runs (0.11); otherwise a lesson naming the file or
 		// command: context only (never stops the tool); records the delivery under the session lock itself
@@ -318,110 +317,35 @@ func isNotification(prompt string) bool {
 	return strings.Contains(head, "[SYSTEM NOTIFICATION - NOT USER INPUT]")
 }
 
-// hookSubagentStart delivers lessons in the same form when a subagent (Claude Code's Agent tool) starts.
-// The subagent's task text arrives in neither UserPromptSubmit nor SubagentStart. Since 0.9.1 the task text the parent passed to the Agent tool is
-// kept at PreToolUse (agent-task), and the oldest kept task of a child of the same type picks the lessons. Without one, only the rules that apply to every request (scene "いつも") are delivered.
-// Up to 0.9.0 lessons were picked by the parent's request, and lessons unrelated to the child's work arrived (measured: of 37 deliveries to children, 4 helped).
-// An agent that gives the child's task with the start itself (OpenCode: the plugin passes it as prompt) needs no kept task: that text picks the lessons.
-// Deliveries are recorded under an ID separate from the parent's (a hash of the turn and the subagent). Nothing is output if there is no parent request yet. No decisions (the 2 questions) are made.
-func hookSubagentStart(agent string, in *hookInput, snapshot *hookSession) (hookOut, []func(*hookSession), error) {
+// hookSubagentStart delivers, when a subagent starts, the rules that apply to every request (rules with the scene "いつも") and where
+// the child puts its reports. It never chooses lessons by the words of the child's task (0.9.1 to 0.37 did, with the task kept from the
+// Agent tool or given with the start by OpenCode's plugin): in this project, from 2026-11-14 to 11-18, those lessons helped 3 times and
+// went unused 33 times, mostly the steps to commit or release reaching a read-only auditor, while the rules for every request helped 37
+// times and went unused 58 times over all deliveries to children. A lesson naming a command or a file still reaches the child right
+// before that command or file (tool-lesson), when the child really runs it. Up to 0.9.0 lessons were chosen by the parent's request
+// (4 of 37 deliveries to children helped). Deliveries are recorded under an ID separate from the parent's (a hash of the turn and the
+// subagent). Nothing is output if there is no parent request yet. No decisions (the 2 questions) are made.
+func hookSubagentStart(agent string, in *hookInput, snapshot *hookSession) (hookOut, error) {
 	if snapshot.Request == "" || snapshot.Scope == "" || snapshot.TurnID == "" {
-		return hookOut{}, nil, nil
+		return hookOut{}, nil
 	}
 	kind := in.AgentType
 	if kind == "" {
 		kind = "subagent"
 	}
-	// the kept task is picked and dropped inside the lock (picking from a copy outside the lock lets children of the same type started side by side use the same task. audit 0.9.1 mid-2)
-	var task subagentTask
-	var ok bool
-	if given := strings.TrimSpace(in.Prompt); given != "" {
-		task, ok = subagentTask{Type: in.AgentType, Prompt: given}, true
-	} else if err := updateSession(agent, in.SessionID, func(s *hookSession) {
-		if task, ok = pickSubagentTask(s.SubagentTasks, in.AgentType, time.Now()); ok {
-			s.SubagentTasks = dropSubagentTask(s.SubagentTasks, task)
-		}
-	}); err != nil {
-		return hookOut{}, nil, err
-	}
-	var muts []func(*hookSession)
 	sub := hookSession{Scope: snapshot.Scope, session: in.SessionID} // no record of delivered versions: deliver to the subagent even if the parent already received them
-	var context, head string
-	var err error
-	if ok {
-		context, err = memoryContextFor(agent, snapshot.Scope, cut(task.Prompt, requestMax), &sub, snapshot.TurnID, in.AgentID)
-		head = "shikii: delivering to this subagent (" + kind + ") memories close to its task \"" + cut(strings.Join(strings.Fields(task.Prompt), " "), 80) + "\"."
-	} else {
-		context, err = alwaysContextFor(agent, snapshot.Scope, snapshot.Request, &sub, snapshot.TurnID, in.AgentID)
-		head = "shikii: delivering to this subagent (" + kind + ") the rules that apply to every request."
-	}
+	context, err := alwaysContextFor(agent, snapshot.Scope, snapshot.Request, &sub, snapshot.TurnID, in.AgentID)
 	if err != nil {
-		return hookOut{}, muts, err
+		return hookOut{}, err
 	}
 	// the report location is delivered to subagents too (do not scatter audit and investigation reports inside the repo. 0.8.1), and
 	// how the child reports what it did with a lesson: a lesson may still reach it right before a command or a file
 	notices := joinLines(subagentHandoffNotice, subagentAssessNotice)
 	if context == "" {
-		return hookOut{Context: notices}, muts, nil
+		return hookOut{Context: notices}, nil
 	}
-	return hookOut{Context: joinLines(joinLines(head, context), notices)}, muts, nil
-}
-
-// hookAgentTask, at PreToolUse (only the Agent / Task tools), adds the task text and type passed to the child agent to the parent's record. The tool is not stopped
-func hookAgentTask(in *hookInput) []func(*hookSession) {
-	if in.ToolName != "Agent" && in.ToolName != "Task" {
-		return nil
-	}
-	var input struct {
-		Prompt       string `json:"prompt"`
-		SubagentType string `json:"subagent_type"`
-	}
-	if json.Unmarshal(in.ToolInput, &input) != nil || strings.TrimSpace(input.Prompt) == "" {
-		return nil
-	}
-	typ := input.SubagentType
-	if typ == "" {
-		typ = "general-purpose" // a child started without a type starts as general-purpose (treated as the same type for the 30-second drop rule)
-	}
-	task := subagentTask{Type: typ, Prompt: cut(strings.TrimSpace(input.Prompt), requestMax), At: time.Now().UTC()}
-	return []func(*hookSession){func(s *hookSession) {
-		kept := []subagentTask{}
-		for _, t := range s.SubagentTasks {
-			if time.Since(t.At) >= subagentTaskTTL || t.Type == task.Type && task.At.Sub(t.At) > subagentTaskBurst {
-				continue
-			}
-			kept = append(kept, t)
-		}
-		kept = append(kept, task)
-		if len(kept) > subagentTaskMax {
-			kept = kept[len(kept)-subagentTaskMax:]
-		}
-		s.SubagentTasks = kept
-	}}
-}
-
-// pickSubagentTask picks, among records of the same type as the started child, the oldest one that is not too old. A child started without a type starts as general-purpose
-func pickSubagentTask(tasks []subagentTask, agentType string, now time.Time) (subagentTask, bool) {
-	for _, t := range tasks {
-		typ := t.Type
-		if typ == "" {
-			typ = "general-purpose"
-		}
-		if typ == agentType && now.Sub(t.At) < subagentTaskTTL {
-			return t, true
-		}
-	}
-	return subagentTask{}, false
-}
-
-// dropSubagentTask drops exactly one used record (if two records have the same text, one stays)
-func dropSubagentTask(tasks []subagentTask, used subagentTask) []subagentTask {
-	for i, t := range tasks {
-		if t.Type == used.Type && t.Prompt == used.Prompt && t.At.Equal(used.At) {
-			return append(append([]subagentTask{}, tasks[:i]...), tasks[i+1:]...)
-		}
-	}
-	return tasks
+	head := "shikii: delivering to this subagent (" + kind + ") the rules that apply to every request."
+	return hookOut{Context: joinLines(joinLines(head, context), notices)}, nil
 }
 
 // habitsNotice is a one-line note on working habits that arrives even without working rules (once per session). subagentHandoffNotice is where subagents put their reports.

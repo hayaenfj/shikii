@@ -4,18 +4,25 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// subagentStopFixture starts a parent turn that received the lesson and a subagent whose task reaches the same lesson. It returns
-// the store, the scope, the lesson's key, the context the subagent was given and the task that reaches the lesson.
+// subagentStopFixture starts a parent turn that received the lesson and a subagent that gets a rule for every request at its start. It
+// returns the store, the scope, the rule's key, the context the subagent was given and the task it was started with.
 func subagentStopFixture(t *testing.T, session, agentID string) (store.Store, string, string, string, string) {
 	t.Helper()
-	st, scope, _, draft, revision := memoryEffectFixture(t)
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	always := draft
+	always.ID, always.Title, always.Lesson, always.Kind, always.Scene, always.AppliesTo = "", "Visible text in Japanese", "Write every visible text, reports too, in Japanese.", "rule", "\u3044\u3064\u3082", "every request"
+	page, err := (notebook.Book{Root: st.Dir, Scope: scope}).Ingest(always)
+	if err != nil {
+		t.Fatal(err)
+	}
 	memoryEffectPrompt(t, scope, session)
 	task := draft.Title + " " + draft.AppliesTo
 	ctx := subagentContext(t, startSubagent(t, session, scope, agentID, "general-purpose", task))
-	key := "lesson:" + draft.ID + ":" + revision
+	key := "lesson:" + page.Page.ID + ":" + page.Page.Revision
 	if !strings.Contains(ctx, key) {
 		t.Fatalf("precondition: the subagent received the lesson: %s", ctx)
 	}
@@ -61,7 +68,7 @@ func TestSubagentAssessesItsOwnDeliveriesInItsFinalReport(t *testing.T) {
 	}
 	subagentStop(t, "s", scope, "agent-1", "Updated the steps and ran the check.\n\n- shikii: "+key+" helpful - Added the check step before the install command.")
 	got := subagentAssessments(t, st, scope, "agent-1")
-	if len(got) != 1 || got[0] == nil || got[0].Result != "helpful" || got[0].Agent != "agent-1" || got[0].Decision != "Added the check step before the install command." || got[0].Phrase != "task" {
+	if len(got) != 1 || got[0] == nil || got[0].Result != "helpful" || got[0].Agent != "agent-1" || got[0].Decision != "Added the check step before the install command." || got[0].Phrase != "" {
 		t.Fatalf("the subagent's own report is saved as the assessment of its delivery: %+v", got)
 	}
 	rep, err := st.MemoryReport(scope)
@@ -123,30 +130,30 @@ func TestASubagentAssessesOnlyWhatWasDeliveredToIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var own, child string
+	var own, child, ownKey string
 	for _, d := range deliveries {
 		if d.Agent == "agent-1" {
 			child = d.ID
-		} else if d.Agent == "" {
-			own = d.ID
+		} else if d.Agent == "" && len(d.Quotes) > 0 {
+			own, ownKey = d.ID, d.Quotes[0].Key
 		}
 	}
 	if own == "" || child == "" {
 		t.Fatalf("precondition: one delivery to the parent and one to the subagent: %+v", deliveries)
 	}
 	a := store.MemoryAssessment{Key: key, Result: "helpful", Decision: "Followed it.", Evidence: "The final report."}
-	for name, c := range map[string]struct{ source, agent, want string }{
-		"another subagent":                       {child, "agent-2", "delivered to itself"},
-		"a subagent on the parent's delivery":    {own, "agent-1", "delivered to itself"},
-		"the parent before the next message":     {own, "", "the person's next message"},
-		"the parent on the subagent's, likewise": {child, "", "the person's next message"},
+	for name, c := range map[string]struct{ source, agent, key, want string }{
+		"another subagent":                       {child, "agent-2", key, "delivered to itself"},
+		"a subagent on the parent's delivery":    {own, "agent-1", ownKey, "delivered to itself"},
+		"the parent before the next message":     {own, "", ownKey, "the person's next message"},
+		"the parent on the subagent's, likewise": {child, "", key, "the person's next message"},
 	} {
-		a.SourceID, a.Agent = c.source, c.agent
+		a.SourceID, a.Agent, a.Key = c.source, c.agent, c.key
 		if err := st.SaveMemoryAssessment(scope, a); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Fatalf("%s: refused with %q, got %v", name, c.want, err)
 		}
 	}
-	a.SourceID, a.Agent = child, "agent-1"
+	a.SourceID, a.Agent, a.Key = child, "agent-1", key
 	if err := st.SaveMemoryAssessment(scope, a); err != nil {
 		t.Fatalf("the subagent assesses its own delivery while the parent's turn runs: %v", err)
 	}
@@ -167,39 +174,5 @@ func TestSubagentStopAssessesTheDeliveryToTheReportingSubagent(t *testing.T) {
 	subagentStop(t, "s", scope, "agent-2", "shikii: "+key+" unused")
 	if second := subagentAssessments(t, st, scope, "agent-2"); len(second) != 1 || second[0] == nil || second[0].Result != "unused" || second[0].Agent != "agent-2" {
 		t.Fatalf("the second subagent assesses its own: %+v", second)
-	}
-}
-
-// An agent whose subagent start carries the task itself (OpenCode's plugin passes it as prompt) keeps no task at a tool call: the
-// task given with the start picks the lessons, a task kept for another child stays for that child, and the subagent's report is
-// saved the same way.
-func TestSubagentStartPicksLessonsByTheTaskGivenWithTheStart(t *testing.T) {
-	st, scope, _, draft, revision := memoryEffectFixture(t)
-	memoryEffectPrompt(t, scope, "s")
-	key := "lesson:" + draft.ID + ":" + revision
-	task := draft.Title + " " + draft.AppliesTo
-	if out := runHook(t, "agent-task", map[string]any{"session_id": "s", "cwd": scope, "tool_name": "Agent", "tool_input": map[string]any{"description": "d", "prompt": task, "subagent_type": "general"}}); out != "" {
-		t.Fatalf("keeping a task outputs nothing: %q", out)
-	}
-	start := func(agentID string, extra map[string]any) string {
-		in := map[string]any{"session_id": "s", "cwd": scope, "agent_id": agentID, "agent_type": "general"}
-		for k, v := range extra {
-			in[k] = v
-		}
-		return subagentContext(t, runHook(t, "subagent-start", in))
-	}
-	if ctx := start("agent-far", map[string]any{"prompt": "Count the words of an unrelated poem about the sea."}); strings.Contains(ctx, key) {
-		t.Fatalf("a task given with the start picks the lessons, not a task kept for another child: %s", ctx)
-	}
-	if ctx := start("agent-given", map[string]any{"prompt": "  " + task + "\n"}); !strings.Contains(ctx, key) || !strings.Contains(ctx, "shikii: <its key> unused") {
-		t.Fatalf("the task given with the start reaches its lesson and the way to report it: %s", ctx)
-	}
-	if ctx := start("agent-kept", nil); !strings.Contains(ctx, key) {
-		t.Fatalf("the kept task is still there for the child that brings none: %s", ctx)
-	}
-	subagentStop(t, "s", scope, "agent-given", "shikii: "+key+" helpful - Added the check step before the install command.")
-	got := subagentAssessments(t, st, scope, "agent-given")
-	if len(got) != 1 || got[0] == nil || got[0].Result != "helpful" || got[0].Phrase != "task" {
-		t.Fatalf("the report of a subagent started with its task is saved: %+v", got)
 	}
 }

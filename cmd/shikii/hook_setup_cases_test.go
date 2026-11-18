@@ -209,7 +209,7 @@ func TestHookAuditGaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 7 {
+	if cmds := hookCommands(settings); len(cmds) != 6 {
 		t.Fatalf("an empty settings.json must be treated as {}: %v", cmds)
 	}
 }
@@ -239,34 +239,32 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	cmds := hookCommands(settings)
-	if len(cmds) != 7 || !strings.HasSuffix(cmds[0], " hook agent-task") || !strings.HasSuffix(cmds[1], " hook session-start") || !strings.HasSuffix(cmds[2], " hook stop") || !strings.HasSuffix(cmds[3], " hook subagent-start") || !strings.HasSuffix(cmds[4], " hook subagent-stop") || !strings.HasSuffix(cmds[5], " hook tool-lesson") || !strings.HasSuffix(cmds[6], " hook user-prompt-submit") || !filepath.IsAbs(strings.Fields(cmds[0])[0]) {
+	if len(cmds) != 6 || !strings.HasSuffix(cmds[0], " hook session-start") || !strings.HasSuffix(cmds[1], " hook stop") || !strings.HasSuffix(cmds[2], " hook subagent-start") || !strings.HasSuffix(cmds[3], " hook subagent-stop") || !strings.HasSuffix(cmds[4], " hook tool-lesson") || !strings.HasSuffix(cmds[5], " hook user-prompt-submit") || !filepath.IsAbs(strings.Fields(cmds[0])[0]) {
 		t.Fatalf("hooks after install must run the binary by its absolute path: %v", cmds)
 	}
-	// the hook that keeps child tasks (0.9.1) is attached only to PreToolUse for Agent / Task, and does not join someone else's PreToolUse group (rtk's Bash)
+	// shikii's PreToolUse hook does not join someone else's PreToolUse group (rtk's Bash), and no hook keeps the child's task any more
 	{
 		var cfg map[string]any
 		b, _ := os.ReadFile(settings)
 		_ = json.Unmarshal(b, &cfg)
-		agentGroup, rtkGroup := false, false
+		rtkGroup, agentTask := false, false
 		for _, g := range cfg["hooks"].(map[string]any)["PreToolUse"].([]any) {
 			gm := g.(map[string]any)
 			for _, h := range gm["hooks"].([]any) {
 				c := h.(map[string]any)["command"].(string)
-				if strings.HasSuffix(c, " hook agent-task") {
-					agentGroup = gm["matcher"] == "Agent|Task" && len(gm["hooks"].([]any)) == 1
-				}
+				agentTask = agentTask || strings.HasSuffix(c, " hook agent-task")
 				if c == "rtk hook claude" {
 					rtkGroup = gm["matcher"] == "Bash" && len(gm["hooks"].([]any)) == 1
 				}
 			}
 		}
-		if !agentGroup || !rtkGroup {
-			t.Fatalf("agent-task must be its own PreToolUse group matching Agent|Task, and the other group must stay as it was:\n%s", b)
+		if agentTask || !rtkGroup {
+			t.Fatalf("no agent-task hook, and the other group must stay as it was:\n%s", b)
 		}
 	}
-	// Codex gets all but agent-task: the task handed to a Codex subagent reaches the hooks encrypted, so there is none to keep
+	// Codex gets the same hooks
 	if codex := hookCommands(filepath.Join(home, ".codex", "hooks.json")); len(codex) != 6 || !strings.Contains(strings.Join(codex, " "), "subagent-start") || !strings.Contains(strings.Join(codex, " "), "subagent-stop") || !strings.Contains(strings.Join(codex, " "), "tool-lesson") || strings.Contains(strings.Join(codex, " "), "agent-task") {
-		t.Fatalf("Codex gets the 6 hooks without agent-task: %v", codex)
+		t.Fatalf("Codex gets the 6 hooks: %v", codex)
 	}
 	b, _ := os.ReadFile(settings)
 	if !strings.Contains(string(b), "node other.mjs") || !strings.Contains(string(b), "rtk hook claude") || !strings.Contains(string(b), `"language": "Japanese"`) || !strings.Contains(string(b), `"SessionStart"`) {
@@ -295,7 +293,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 7 {
+	if cmds := hookCommands(settings); len(cmds) != 6 {
 		t.Fatalf("second install must not duplicate: %v", cmds)
 	}
 	if !strings.Contains(out, "already there") {
@@ -316,7 +314,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	out = capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	if cmds := hookCommands(settings); len(cmds) != 7 || !strings.Contains(out, "hooks added") {
+	if cmds := hookCommands(settings); len(cmds) != 6 || !strings.Contains(out, "hooks added") {
 		t.Fatalf("install must remove the old pre-tool-use hook: %v\n%s", cmds, out)
 	}
 	if b, _ = os.ReadFile(settings); !strings.Contains(string(b), "rtk hook claude") || strings.Contains(string(b), "Bash|Edit") {
@@ -918,41 +916,6 @@ func TestAudit090ClassifyKeepsChangeReason(t *testing.T) {
 	}
 	if res.Page.ChangeReason != "人の訂正で範囲を狭めた" {
 		t.Fatalf("the change reason was overwritten: %q", res.Page.ChangeReason)
-	}
-}
-
-// The parent called the Agent tool but the child never started (the person refused, etc.); a minute later a child of the same type is
-// started for different work. The refused note must not choose that child's lessons.
-//   - G1: both calls have the same subagent_type: the child was chosen with the text of the refused work.
-//   - R2: the refused call has no type (it starts as general-purpose) and the later one says general-purpose: the discard compared types
-//     raw ("" and "general-purpose" looked different), so the refused note stayed and was used by the later child.
-func TestRefusedAgentTaskIsNotUsedByALaterChild(t *testing.T) {
-	for _, c := range []struct{ name, refused, child string }{
-		{"same type", "Explore", "Explore"},
-		{"no type, then general-purpose", "", "general-purpose"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			st, scope, _, _, _ := memoryEffectFixture(t)
-			runHook(t, "user-prompt-submit", map[string]any{"session_id": "g1", "cwd": scope, "prompt": "画面の色を直して"})
-			input := map[string]any{"prompt": "断られた仕事 AAA の調査"}
-			if c.refused != "" {
-				input["subagent_type"] = c.refused
-			}
-			// the refused Agent tool (only PreToolUse arrives)
-			runHook(t, "agent-task", map[string]any{"session_id": "g1", "cwd": scope, "tool_name": "Agent", "tool_input": input})
-			// the time until the person refuses and the parent reconsiders (1 minute), within the 10-minute limit
-			if err := updateSession(st.Dir, "g1", func(s *hookSession) {
-				for i := range s.SubagentTasks {
-					s.SubagentTasks[i].At = s.SubagentTasks[i].At.Add(-time.Minute)
-				}
-			}); err != nil {
-				t.Fatal(err)
-			}
-			ctx := subagentContext(t, startSubagent(t, "g1", scope, "child-2", c.child, "README の導入手順を更新してください"))
-			if !strings.Contains(ctx, "README の導入手順") {
-				t.Fatalf("the started child is chosen by the text of its own work. heading: %q\nremaining notes: %+v", strings.SplitN(ctx, "\n", 2)[0], loadSession(st.Dir, "g1").SubagentTasks)
-			}
-		})
 	}
 }
 
@@ -1598,5 +1561,35 @@ func TestHookInstallLeavesAWrappedCommandAndKeepsOldPaths(t *testing.T) {
 		if strings.HasPrefix(line, "MISSING") || !strings.Contains(line, "by hand") {
 			t.Fatalf("doctor names the wrapped command as written by hand: %s", line)
 		}
+	}
+}
+
+// Up to 0.37 install added a hook that kept the task passed to the Agent tool. Install now removes that hook, whether it runs this
+// binary or one at an older path, and a settings file that still calls it gets no output and nothing kept.
+func TestInstallRemovesTheAgentTaskHookOfThisBinary(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	own, old := hookCommand(shikiiBinaryPath(), "agent-task"), "/old/path/shikii hook agent-task"
+	body, _ := json.Marshal(map[string]any{"hooks": map[string]any{"PreToolUse": []any{map[string]any{"matcher": "Agent|Task", "hooks": []any{map[string]any{"type": "command", "command": own}, map[string]any{"type": "command", "command": old}}}}}})
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := editHooks(path, true, hookEventsFor("Claude Code")); err != nil {
+		t.Fatal(err)
+	}
+	// read the file itself: hookCommands lists only what isShikiiHook recognizes, and an unrecognized agent-task would stay unseen
+	if raw, _ := os.ReadFile(path); len(hookCommands(path)) != 6 || strings.Contains(string(raw), "hook agent-task") {
+		t.Fatalf("install removes the agent-task hook and adds the 6 hooks:\n%s", raw)
+	}
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "old", "cwd": scope, "prompt": "README の導入手順を更新してください"})
+	before, err := os.ReadFile(sessionPath(st.Dir, "old"))
+	if err != nil || len(before) == 0 {
+		t.Fatalf("precondition: the session record exists: %v", err)
+	}
+	if out := runHook(t, "agent-task", map[string]any{"session_id": "old", "cwd": scope, "tool_name": "Agent", "tool_input": map[string]any{"prompt": "x", "subagent_type": "Explore"}}); out != "" {
+		t.Fatalf("hook agent-task outputs nothing: %q", out)
+	}
+	if after, _ := os.ReadFile(sessionPath(st.Dir, "old")); string(after) != string(before) {
+		t.Fatalf("hook agent-task keeps nothing:\n%s\n%s", before, after)
 	}
 }

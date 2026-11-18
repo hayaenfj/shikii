@@ -88,11 +88,11 @@
 4 cmd/shikii/guard.go
 12 cmd/shikii/guard_evaluate.go
 1 cmd/shikii/hook_decision.go
-76 cmd/shikii/hook_delivery_cases_test.go
+58 cmd/shikii/hook_delivery_cases_test.go
 2 cmd/shikii/hook_events.go
 1 cmd/shikii/hook_language.go
 32 cmd/shikii/hook_outcomes_cases_test.go
-30 cmd/shikii/hook_setup_cases_test.go
+27 cmd/shikii/hook_setup_cases_test.go
 1 cmd/shikii/hook_stop.go
 3 cmd/shikii/hook_test.go
 3 cmd/shikii/init_contracts_cases_test.go

@@ -217,30 +217,13 @@ type hookSession struct {
 	PageNoticed      bool               `json:"page_noticed,omitempty"`       // told the page location in this session (0.8.0)
 	HabitsNoticed    bool               `json:"habits_noticed,omitempty"`     // told in this session how to keep work records and rules (0.8.1)
 	// requests since the full organizing and reflection notices (0 = none yet in this session); the short form is used in between (0.9.7)
-	ClassifyAsked     []string       `json:"classify_asked,omitempty"`      // pages asked before the request to get a kind and a scene (the ritual check wiki-kinds looks at it at Stop. 0.9.0)
-	ClassifyAskedTurn string         `json:"classify_asked_turn,omitempty"` // the turn ClassifyAsked was asked in
-	SubagentTasks     []subagentTask `json:"subagent_tasks,omitempty"`      // task text passed to the Agent tool (SubagentStart picks lessons with that text. 0.9.1)
+	ClassifyAsked     []string `json:"classify_asked,omitempty"`      // pages asked before the request to get a kind and a scene (the ritual check wiki-kinds looks at it at Stop. 0.9.0)
+	ClassifyAskedTurn string   `json:"classify_asked_turn,omitempty"` // the turn ClassifyAsked was asked in
 	// GuardTurn is the stretch a slash command opened, until the next request: not a request (nothing is asked, delivered or judged),
 	// only the person's guards compare the present with the working tree and HEAD kept when it began. The request's own record above is left as it is
 	GuardTurn *guardTurn `json:"guard_turn,omitempty"`
 	At        time.Time  `json:"at"`
 }
-
-// subagentTask is a task the parent passed to a child agent with the Agent tool (kept at PreToolUse; at SubagentStart the oldest one of the same type is used).
-// When several children of the same type start at once, only the order tells which text belongs to which child (the texts come from the parent's work, so a mix-up is still closer than picking by the parent's request)
-type subagentTask struct {
-	Type   string    `json:"type"`
-	Prompt string    `json:"prompt"`
-	At     time.Time `json:"at"`
-}
-
-// Records older than subagentTaskTTL are not used. Up to subagentTaskMax are kept. When a new record is added, records of the same type older than subagentTaskBurst
-// are dropped (so a record whose child never started, because the Agent tool was refused, is not used for a later child and shifts everything by one. audit 0.9.1 mid-1)
-const (
-	subagentTaskTTL   = 10 * time.Minute
-	subagentTaskMax   = 8
-	subagentTaskBurst = 30 * time.Second // records for children of the same type started side by side arrive within this span
-)
 
 type pendingItem struct {
 	Trace string    `json:"trace"`

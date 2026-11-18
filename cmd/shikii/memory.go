@@ -25,15 +25,9 @@ const memoryPrefix = "shikii: project memory quotes, hypotheses with sources, ne
 
 // memoryContext is called inside the session lock. It prefers lessons whose conditions match,
 // and does not repeat the same revision within an hour. An updated revision, or another session, gets it right away.
-func memoryContext(root, scope, request string, session *hookSession) (string, error) {
-	return memoryContextFor(root, scope, request, session, "", "")
-}
-
-// memoryContextFor carries where the delivery comes from. An empty parent means a person's request (delivery id = turn); otherwise a delivery from parent turn parent to subagent agent
-// (the id is derived from the parent, the agent and the quoted revisions: the same quotes give the same id, a new revision gives a separate delivery).
 // Automatic delivery covers pages other than history (0.9.1). History is "why it came to be", read when the agent searches for it (wiki query).
 // Measured (haya1, 70 evaluations): history pages were delivered 7 times and used 0 of those 7. Pages without a kind (from before the version bump) are still delivered as before
-func memoryContextFor(root, scope, request string, session *hookSession, parent, agent string) (string, error) {
+func memoryContext(root, scope, request string, session *hookSession) (string, error) {
 	if scope == "" {
 		return "", nil
 	}
@@ -42,15 +36,11 @@ func memoryContextFor(root, scope, request string, session *hookSession, parent,
 		return "", err
 	}
 	attempt.TurnID = session.TurnID
-	if parent != "" {
-		attempt.Mode = "task"
-		attempt.TurnID = parent
-	}
-	return deliverMemoryTracked(root, scope, request, pages, true, session, parent, agent, &attempt)
+	return deliverMemoryTracked(root, scope, request, pages, true, session, "", "", &attempt)
 }
 
-// alwaysContextFor delivers only the rules that apply to every request (rules whose scene is "いつも", always) (0.9.1). For subagents, whose task text is unknown:
-// choosing by the parent's request pulled in lessons unrelated to the child's task, drawn by words in the parent's conversation (measured: 4 of 37 deliveries to children helped)
+// alwaysContextFor delivers only the rules that apply to every request (rules whose scene is "いつも", always) (0.9.1): what a subagent
+// gets at its start (hookSubagentStart says why no lesson is chosen by the parent's request or the child's task)
 func alwaysContextFor(root, scope, request string, session *hookSession, parent, agent string) (string, error) {
 	if scope == "" {
 		return "", nil
@@ -117,15 +107,12 @@ func deliverMemoryTracked(root, scope, request string, pages []notebook.Page, fe
 	if len(answers) > 0 {
 		lessonSeats = 1
 	}
-	// the door these quotes come through (0.12): "request" when chosen by the person's request's words, "task" by a subagent's task
-	// (a child's unused deliveries do not silence the person's door); the always rules have none
+	// the door these quotes come through (0.12): "request" when chosen by the person's request's words; the always rules have none
+	// ("task", lessons chosen by a subagent's task until 0.37, is still read in older assessments)
 	door := ""
 	effects := map[string]store.PairEffect{}
 	if feedback && len(pages) > 0 {
 		door = "request"
-		if parent != "" {
-			door = "task"
-		}
 		effects, _ = memoryEffects(root, scope)
 	}
 	quotes, keys := []memoryQuote{}, []string{}

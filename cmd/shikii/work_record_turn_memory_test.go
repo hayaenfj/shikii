@@ -393,6 +393,14 @@ func TestFollowedWithAnotherResultSaysToKeepTheResultWhateverElseIsMissing(t *te
 // parent's record neither assesses that delivery by the key nor lists it.
 func TestASubagentStartWithoutAnAgentIDIsNotTheParentsLesson(t *testing.T) {
 	st, scope, turn, atRequest, atTool := turnDelivery(t)
+	book := notebook.Book{Root: st.Dir, Scope: scope}
+	o, err := book.CaptureObserved(notebook.Observation{Kind: "test", Title: "rule check", Content: "PASS", Reference: "rule", Version: "v1", ObservedAt: time.Unix(1, 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := book.Ingest(notebook.Draft{Sources: []string{o.ID}, Title: "Visible text in Japanese", Lesson: "Write every visible text, reports too, in Japanese.", Kind: "rule", Scene: "\u3044\u3064\u3082", AppliesTo: "every request"}); err != nil {
+		t.Fatal(err)
+	}
 	ctx := runUnreviewedHook(t, "subagent-start", map[string]any{"session_id": "owner", "cwd": scope, "agent_type": "Explore", "prompt": "README \u306e\u5c0e\u5165\u624b\u9806\u3092\u66f4\u65b0\u3057\u3066\u304f\u3060\u3055\u3044"})
 	ds, err := st.MemoryDeliveries(scope)
 	if err != nil {
