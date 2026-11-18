@@ -16,6 +16,9 @@ import (
 type memoryDelivery struct {
 	Key string    `json:"key"`
 	At  time.Time `json:"at"`
+	// Agent is the subagent it was delivered to (its agent_id), empty for the session's own agent. A subagent of Claude Code or
+	// OpenCode does not see what the parent was given, so whether a lesson was already delivered is counted per agent (0.37.2).
+	Agent string `json:"agent,omitempty"`
 }
 
 type memoryQuote = store.MemoryQuote
@@ -258,7 +261,7 @@ func deliverQuotes(root, scope, request string, quotes []memoryQuote, keys []str
 		}
 	}
 	for _, key := range keys {
-		session.Memories = append(session.Memories, memoryDelivery{Key: key, At: time.Now().UTC()})
+		session.Memories = append(session.Memories, memoryDelivery{Key: key, At: time.Now().UTC(), Agent: agent})
 	}
 	session.Memories = keepMemories(session.Memories, session.HeadAt)
 	return prefix + strings.TrimSpace(string(data)), true, nil

@@ -80,3 +80,31 @@ func TestSessionKeepsTheLatestDeliveriesOfEarlierRequests(t *testing.T) {
 		t.Errorf("a session without a request time keeps the latest 16: %d", len(kept))
 	}
 }
+
+// A subagent of Claude Code or OpenCode does not see what the parent was given, so a lesson delivered to the parent (at its
+// request or at its own tool call) still reaches a subagent right before the subagent runs that command. The subagent does not get
+// it twice, and the parent does not get it again because a subagent got it.
+func TestToolLessonReachesASubagentEvenWhenTheParentGotIt(t *testing.T) {
+	_, scope, _, ids := toolLessonFixture(t)
+	commit := map[string]any{"command": "git commit -m x"}
+	if ctx := feedbackContext(t, toolHook(t, scope, "s", toolPrompt, "Bash", commit)); !strings.Contains(ctx, ids["commit"]) {
+		t.Fatalf("precondition: the parent gets the lesson at its commit:\n%s", ctx)
+	}
+	child := func(id, command string) string {
+		out := runHook(t, "tool-lesson", map[string]any{"session_id": "s", "cwd": scope, "agent_id": id, "agent_type": "general-purpose", "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": map[string]any{"command": command}})
+		assertOnlyContext(t, out)
+		return out
+	}
+	if out := child("agent-1", "git commit -m y"); !strings.Contains(out, ids["commit"]) {
+		t.Fatalf("the subagent gets the lesson right before its own commit, though the parent already got it:\n%s", cut(out, 400))
+	}
+	if out := child("agent-1", "git status && git commit -m z"); out != "" {
+		t.Errorf("the same subagent does not get it a second time:\n%s", cut(out, 400))
+	}
+	if out := child("agent-2", "git commit -m w"); !strings.Contains(out, ids["commit"]) {
+		t.Errorf("another subagent gets it too:\n%s", cut(out, 400))
+	}
+	if out := toolHook(t, scope, "s", "", "Bash", map[string]any{"command": "git add . && git commit -m v"}); out != "" {
+		t.Errorf("the parent does not get it again:\n%s", cut(out, 400))
+	}
+}

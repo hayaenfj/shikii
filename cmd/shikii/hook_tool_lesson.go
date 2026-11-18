@@ -541,13 +541,14 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (out hoo
 	// not apply right now (lesson-applies, 0.12; asked outside the session lock). Its trace goes into the delivery for the outcome truth.
 	// and no lesson this request already got at a tool call, however long the request runs and whatever its revision is now (a
 	// request of several hours got the same lesson again every hour)
+	// Counted for the agent of this call only: a subagent of Claude Code or OpenCode does not see what the parent got (0.37.2).
 	seen := map[string]bool{}
 	for _, m := range snapshot.Memories {
-		if age := time.Since(m.At); age >= 0 && age < time.Hour {
+		if age := time.Since(m.At); m.Agent == in.AgentID && age >= 0 && age < time.Hour {
 			seen[m.Key] = true
 		}
 	}
-	inRequest := lessonsDeliveredSince(snapshot.Memories, snapshot.HeadAt)
+	inRequest := lessonsDeliveredSince(snapshot.Memories, snapshot.HeadAt, in.AgentID)
 	var chosen *toolCandidate
 	var quote memoryQuote
 	asked := 0
@@ -583,12 +584,12 @@ func hookToolLesson(agent string, in *hookInput, snapshot *hookSession) (out hoo
 			return // a new request arrived meanwhile: this tool call belongs to it, and the next one gets its lesson
 		}
 		for _, m := range s.Memories {
-			if age := time.Since(m.At); age >= 0 && age < time.Hour && m.Key == quoteCacheKey(quote) {
+			if age := time.Since(m.At); m.Agent == in.AgentID && age >= 0 && age < time.Hour && m.Key == quoteCacheKey(quote) {
 				attempt.Set(chosen.page.ID, "recently_delivered", quote.Trace)
 				return // delivered meanwhile by another call of this turn
 			}
 		}
-		if lessonsDeliveredSince(s.Memories, s.HeadAt)[chosen.page.ID] {
+		if lessonsDeliveredSince(s.Memories, s.HeadAt, in.AgentID)[chosen.page.ID] {
 			attempt.Set(chosen.page.ID, "recently_delivered", quote.Trace)
 			return
 		}
@@ -647,13 +648,13 @@ func keepMemories(memories []memoryDelivery, since time.Time) []memoryDelivery {
 // lessonsDeliveredSince are the ids of the lessons delivered to the session at or after since (the time of the request), read from
 // the session's record of deliveries (keys lesson:<id>:<revision>...). A zero since (a session record from before requests kept
 // their time) names none: the hour rule alone applies.
-func lessonsDeliveredSince(memories []memoryDelivery, since time.Time) map[string]bool {
+func lessonsDeliveredSince(memories []memoryDelivery, since time.Time, agentID string) map[string]bool {
 	out := map[string]bool{}
 	if since.IsZero() {
 		return out
 	}
 	for _, m := range memories {
-		if m.At.Before(since) {
+		if m.At.Before(since) || m.Agent != agentID {
 			continue
 		}
 		if rest, ok := strings.CutPrefix(m.Key, "lesson:"); ok {
@@ -748,7 +749,12 @@ func deliverToolLesson(agent string, s *hookSession, q memoryQuote, target toolT
 		if len(prefix)+len(data) > 1800 {
 			continue
 		}
-		sum := sha256.Sum256([]byte(s.TurnID + "/tool/" + target.label + "/" + quoteCacheKey(q)))
+		// a subagent's delivery has its own id: the same lesson at the same command may reach the parent and each subagent (0.37.2)
+		name := s.TurnID + "/tool/" + target.label + "/" + quoteCacheKey(q)
+		if agentID != "" {
+			name += "/agent/" + agentID
+		}
+		sum := sha256.Sum256([]byte(name))
 		d := store.MemoryDelivery{ID: hex.EncodeToString(sum[:])[:16], Scope: s.Scope, Request: cut(s.Request, requestMax), Quotes: clipped, Parent: s.TurnID, Agent: agentID, Tool: target.label, Phrase: phrase}
 		if agentID != "" {
 			d.Session = sessionID
@@ -756,7 +762,7 @@ func deliverToolLesson(agent string, s *hookSession, q memoryQuote, target toolT
 		if err := (store.Store{Dir: agent}).SaveMemoryDelivery(d); err != nil {
 			return "", err
 		}
-		s.Memories = keepMemories(append(s.Memories, memoryDelivery{Key: quoteCacheKey(q), At: time.Now().UTC()}), s.HeadAt)
+		s.Memories = keepMemories(append(s.Memories, memoryDelivery{Key: quoteCacheKey(q), At: time.Now().UTC(), Agent: agentID}), s.HeadAt)
 		return prefix + string(data), nil
 	}
 	return "", nil
