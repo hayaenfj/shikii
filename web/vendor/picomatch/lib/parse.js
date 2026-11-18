@@ -694,7 +694,7 @@ const parse = (input, options) => {
       const outputs = branchOutputs(tokens.slice(token.tokensIndex + 2));
       analysis = outputs.length === analysis.rewrite.count
         ? { risky: true, safeOutput: buildStarBranches(outputs, analysis.rewrite, token.type === 'star') }
-        : { risky: true };
+        : { risky: false }; // the tokens do not match the plan (not seen in 67,500 patterns): keep upstream's output, do not guess
     }
 
     if ((token.type === 'plus' || token.type === 'star') && analysis.risky) {
