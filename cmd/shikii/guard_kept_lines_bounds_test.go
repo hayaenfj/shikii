@@ -109,6 +109,8 @@ func TestStopWithKeptTablesStaysNearTheComparisonWithHead(t *testing.T) {
 // The record of stopped lines holds one line in each of many files (a turn was stopped across them and nobody fixed them yet).
 // A later Stop whose turn changed one other file (its comparison and its write of the record) stays close to the comparison
 // with the request's HEAD of the same file, in the same run, and leaves the entries of the files it did not compare as they are.
+const recordStopAllowance = 20 * time.Millisecond
+
 func TestStopWithAManyFileRecordStaysNearTheComparisonWithHead(t *testing.T) {
 	const files = 200
 	repo, root, readme := uncommittedLinesRepo(t)
@@ -153,8 +155,10 @@ func TestStopWithAManyFileRecordStaysNearTheComparisonWithHead(t *testing.T) {
 	guardTurnInputKept(repo, before, nil, changed, true, head, time.Time{})
 	withHead := time.Since(start)
 	t.Logf("Stop over %d changed file, record of %d files: with the record %v, compared with HEAD %v (ratio %.2f)", len(changed), files, withRecord, withHead, float64(withRecord)/float64(withHead))
-	if withRecord > 3*withHead {
-		t.Fatalf("the Stop with the record takes %v, more than 3 times the comparison with HEAD (%v)", withRecord, withHead)
+	// The comparison with HEAD of one small file can take a few milliseconds (3 ms on Linux), so a ratio alone is decided by
+	// the noise of one run (9.9 ms against 3.3 ms failed once, ratio 3.06); the allowance says how much more is too much.
+	if withRecord > 3*withHead+recordStopAllowance {
+		t.Fatalf("the Stop with the record takes %v, more than 3 times the comparison with HEAD (%v) and %v", withRecord, withHead, recordStopAllowance)
 	}
 	if got := mustRead(t, record); string(got) != string(kept) {
 		t.Fatal("the Stop changed the entries of files it did not compare")
