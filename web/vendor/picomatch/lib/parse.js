@@ -354,10 +354,134 @@ const analyzeRepeatedExtglob = (body, options) => {
     return { risky: false, collapse: true };
   }
 
+  // The same defect with several branches (`+(a|*b)`, `+(foo*|bar*)`, `*(*.js|*.ts)`): the star of one branch can end
+  // anywhere, and the next repeat can start anywhere after it, so the number of ways to split a non-matching input grows
+  // exponentially. planStarBranches proves an equal pattern without a nested quantifier, or says it cannot.
+  if (branches.length > 1 && splitTopLevel(body).every((branch, i) => branch === branches[i])) {
+    const plan = planStarBranches(branches);
+    if (plan) {
+      return plan.unsafe ? { risky: true } : { risky: false, rewrite: plan };
+    }
+  }
+
   return { risky: false };
 };
 
 const COLLAPSIBLE_BRANCH = /^[^()[\]{}|\\/"'`]+$/;
+
+// Sardinas-Patterson: true when no text can be cut into the given words in two different ways. Then a repeat of the
+// words has at most one way to reach each position, so backtracking over it stays linear.
+const dangling = (prefixes, words) => {
+  const out = new Set();
+  for (const prefix of prefixes) {
+    for (const word of words) {
+      if (word.length > prefix.length && word.startsWith(prefix)) out.add(word.slice(prefix.length));
+    }
+  }
+  return out;
+};
+
+const isUniquelyDecodable = words => {
+  const code = [...new Set(words)];
+  let current = new Set();
+  for (const word of code) {
+    for (const other of dangling([word], code)) current.add(other);
+  }
+  const seen = new Set();
+  while (current.size > 0) {
+    if (code.some(word => current.has(word))) return false;
+    const key = [...current].sort().join('\0');
+    if (seen.has(key)) return true;
+    seen.add(key);
+    const next = dangling(code, current);
+    for (const other of dangling(current, code)) next.add(other);
+    current = next;
+  }
+  return true;
+};
+
+// shikii patch (see analyzeRepeatedExtglob). Plan for `+(B1|B2|...)` / `*(B1|B2|...)` when every branch is plain text and
+// wildcards, none contains a slash, and at least one has a `*`. A branch that starts with `*` takes in any text before it;
+// one that ends with `*` takes in any text after it (the star matches any run of non-slash text, and every branch is
+// slash-free). So a string is a sequence of branches exactly when it is
+//   [one leading branch] [any number of plain branches] [one trailing branch]
+// (at least one part present; any leading branches before the last leading one are inside it, any trailing branches after
+// the first trailing one are inside it). The plain branches (neither end starred) are the only part left repeated; they must
+// be fixed text that is uniquely decodable (no `*`, and `?` only when they all have the same length), so repeating them is
+// linear. Returns undefined when this does not apply, { unsafe: true } when no equal pattern can be proven (the caller
+// reads the group as literal text, as upstream already does for its other risky shapes), or the plan.
+const planStarBranches = branches => {
+  if (!branches.every(branch => COLLAPSIBLE_BRANCH.test(branch)) || !branches.some(branch => branch.includes('*'))) {
+    return undefined;
+  }
+
+  if (branches.some(branch => branch.includes('**'))) {
+    return { unsafe: true };
+  }
+
+  const lead = [];
+  const trail = [];
+  const plain = [];
+
+  branches.forEach((branch, index) => {
+    const starts = branch.startsWith('*');
+    const ends = branch.endsWith('*');
+    if (starts) lead.push(index);
+    if (ends) trail.push(index);
+    if (!starts && !ends) plain.push(index);
+  });
+
+  const words = plain.map(index => branches[index]);
+
+  if (words.some(word => word.includes('*'))) {
+    return { unsafe: true };
+  }
+
+  if (words.some(word => word.includes('?'))) {
+    if (!words.every(word => word.length === words[0].length)) {
+      return { unsafe: true };
+    }
+  } else if (!isUniquelyDecodable(words)) {
+    return { unsafe: true };
+  }
+
+  return { lead, plain, trail, count: branches.length };
+};
+
+// The regular expression text of each branch, taken from the tokens the parser already made for it, so the parts keep the
+// parser's own output for `?`, `.`, `*` and escaped characters.
+const branchOutputs = inner => {
+  const outputs = [''];
+
+  for (const tok of inner) {
+    const output = tok.output != null ? tok.output : tok.value;
+
+    if (tok.type === 'text') {
+      // the parser merges neighbouring text tokens, so a `|` can sit inside one (`a|` is a single token)
+      const [first, ...rest] = output.split('|');
+      outputs[outputs.length - 1] += first;
+      outputs.push(...rest);
+    } else {
+      outputs[outputs.length - 1] += output;
+    }
+  }
+
+  return outputs;
+};
+
+const buildStarBranches = (outputs, plan, optional) => {
+  const union = indexes => `(?:${indexes.map(index => outputs[index]).join('|')})`;
+  const lead = plan.lead.length > 0 ? union(plan.lead) : '';
+  const plain = plan.plain.length > 0 ? union(plan.plain) : '';
+  const trail = plan.trail.length > 0 ? `(?:${union(plan.trail)})?` : '';
+  const alternatives = [];
+
+  if (lead) alternatives.push(lead + (plain ? `${plain}*` : '') + trail);
+  if (plain) alternatives.push(`${plain}+${trail}`);
+  if (plan.trail.length > 0) alternatives.push(union(plan.trail));
+
+  return `(?:${alternatives.join('|')})${optional ? '?' : ''}`;
+};
 
 /**
  * Parse the given input string.
@@ -552,7 +676,15 @@ const parse = (input, options) => {
   const extglobClose = token => {
     const literal = input.slice(token.startIndex, state.index + 1);
     const body = input.slice(token.startIndex + 2, state.index);
-    const analysis = analyzeRepeatedExtglob(body, opts);
+    let analysis = analyzeRepeatedExtglob(body, opts);
+
+    // shikii patch: several branches with a star. The branches' own output is regrouped into one pass (see planStarBranches).
+    if (analysis.rewrite && (token.type === 'plus' || token.type === 'star')) {
+      const outputs = branchOutputs(tokens.slice(token.tokensIndex + 2));
+      analysis = outputs.length === analysis.rewrite.count
+        ? { risky: true, safeOutput: buildStarBranches(outputs, analysis.rewrite, token.type === 'star') }
+        : { risky: true };
+    }
 
     if ((token.type === 'plus' || token.type === 'star') && analysis.risky) {
       const safeOutput = analysis.safeOutput
