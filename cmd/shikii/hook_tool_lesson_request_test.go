@@ -126,3 +126,44 @@ func TestParentsNextRequestGetsALessonASubagentGot(t *testing.T) {
 		t.Errorf("the parent's next request gets the lesson though a subagent got it:\n%s", cut(next, 400))
 	}
 }
+
+// The session's record keeps the latest deliveries of earlier requests per agent: many subagents getting one lesson do not push out
+// what the parent got, so the parent does not get it again within the hour (second confirmation audit of 0.37.2). Without subagents,
+// the same flow is the check of the test itself.
+func TestManySubagentsDoNotPushOutWhatTheParentGot(t *testing.T) {
+	for _, children := range []int{0, 16} {
+		_, scope, _, ids := toolLessonFixture(t)
+		prompt := "check the exit code before committing in shikii: git commit"
+		if first := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": scope, "prompt": prompt}); !strings.Contains(first, ids["commit"]) {
+			t.Fatalf("precondition: the first request gets the commit lesson:\n%s", cut(first, 300))
+		}
+		runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": scope, "prompt": toolPrompt})
+		for i := 0; i < children; i++ {
+			out := runHook(t, "tool-lesson", map[string]any{"session_id": "s", "cwd": scope, "agent_id": fmt.Sprintf("agent-%d", i), "agent_type": "general-purpose", "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": map[string]any{"command": "git commit -m y"}})
+			if !strings.Contains(out, ids["commit"]) {
+				t.Fatalf("precondition: subagent %d gets it", i)
+			}
+		}
+		if third := runHook(t, "user-prompt-submit", map[string]any{"session_id": "s", "cwd": scope, "prompt": prompt}); strings.Contains(third, ids["commit"]) {
+			t.Errorf("with %d subagents, the parent's third request within the hour gets the lesson again:\n%s", children, cut(third, 400))
+		}
+	}
+}
+
+// Trimming keeps the latest sixteen of earlier requests of the parent and of all subagents together, and everything of the running
+// request.
+func TestSessionKeepsTheLatestDeliveriesOfTheParentAndOfTheSubagents(t *testing.T) {
+	now := time.Now()
+	memories := []memoryDelivery{{Key: "lesson:parent:1", At: now.Add(-time.Hour)}}
+	for i := 0; i < 40; i++ {
+		memories = append(memories, memoryDelivery{Key: fmt.Sprintf("lesson:child:%d", i), At: now.Add(-time.Hour), Agent: fmt.Sprintf("agent-%d", i%2)})
+	}
+	kept := keepMemories(memories, now)
+	count := map[string]int{}
+	for _, m := range kept {
+		count[m.Agent]++
+	}
+	if count[""] != 1 || count["agent-0"]+count["agent-1"] != 16 || kept[0].Key != "lesson:parent:1" || kept[len(kept)-1].Key != "lesson:child:39" {
+		t.Errorf("the parent's delivery and the latest 16 of the subagents are kept, in order: %v (first %s, last %s)", count, kept[0].Key, kept[len(kept)-1].Key)
+	}
+}

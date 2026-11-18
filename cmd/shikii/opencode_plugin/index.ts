@@ -29,7 +29,8 @@ const SHIKII: string = "__SHIKII_BIN__"
 const TIMEOUT_MS: Record<string, number> = { "user-prompt-submit": 15_000, "session-start": 15_000, stop: 20_000 }
 const CONTINUE_KEY = "stop-continue" // metadata of a turn this plugin started: the next stop is stop_hook_active
 const CONTINUE_MAX = 8 // a safety net: after this many continuations in a row for one request, the plugin stops continuing
-// measured on 2.3.0: OpenCode puts this line before the task the parent gave a subagent. shikii picks lessons by the task alone
+// measured on 2.3.0: OpenCode puts this line before the task the parent gave a subagent. The task is passed without it (since 0.37.2
+// shikii no longer picks lessons by the task: a subagent starts with the rules for every request)
 const SUBAGENT_PREFACE = "You are a subagent spawned by another session.\n"
 
 // run starts `shikii hook <event>` in the project's folder (cwd; as Claude Code and Codex run their hooks), passes input as JSON on
@@ -145,8 +146,8 @@ export default Plugin.define({
     const turnNumber = (sessionID: string): number => generation.get(sessionID) ?? 0
     const bump = (sessionID: string) => generation.set(sessionID, turnNumber(sessionID) + 1)
 
-    // The task of a subagent goes to shikii hook subagent-start under the parent's session (as Claude Code's SubagentStart does), and
-    // what shikii gives goes on the task's message. Only the first message of a subagent's session is its task; a later one (the
+    // The start of a subagent goes to shikii hook subagent-start under the parent's session (as Claude Code's SubagentStart does), with
+    // its task, and what shikii gives (the rules for every request and how to report) goes on the task's message. Only the first message of a subagent's session is its task; a later one (the
     // parent steering it) starts another turn of the same subagent, whose end is reported again.
     const subagentPrompt = async (sessionID: string, sub: { parent: string; agent: string }, e: any) => {
       working.add(sessionID)

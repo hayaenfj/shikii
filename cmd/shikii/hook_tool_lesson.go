@@ -628,7 +628,8 @@ func (c toolCandidate) before(o toolCandidate) bool {
 	return c.helpful > o.helpful
 }
 
-// keepMemories trims the session's record of deliveries to the latest 16 and every delivery since the running request began
+// keepMemories trims the session's record of deliveries to the latest 16 of the parent, the latest 16 of its subagents, and every
+// delivery since the running request began
 // (since): the rule that a request gets a lesson once at a tool call reads this record, so the request's own deliveries are not
 // trimmed away by the other lessons it got. A request's deliveries are bounded: each lesson once at a tool call, two quotes at
 // the request.
@@ -637,9 +638,20 @@ func keepMemories(memories []memoryDelivery, since time.Time) []memoryDelivery {
 	if len(memories) <= latest {
 		return memories
 	}
+	// the latest sixteen of the parent and the latest sixteen of all subagents are kept apart: deliveries to many subagents do not
+	// push out what the parent got (0.37.2), as the deliveries already made are counted per agent. The record stays bounded however
+	// many subagents a session starts.
+	later := map[bool]int{}
+	keep := make([]bool, len(memories))
+	for i := len(memories) - 1; i >= 0; i-- {
+		m := memories[i]
+		child := m.Agent != ""
+		keep[i] = later[child] < latest || !since.IsZero() && !m.At.Before(since)
+		later[child]++
+	}
 	out := make([]memoryDelivery, 0, latest)
 	for i, m := range memories {
-		if i >= len(memories)-latest || !since.IsZero() && !m.At.Before(since) {
+		if keep[i] {
 			out = append(out, m)
 		}
 	}
