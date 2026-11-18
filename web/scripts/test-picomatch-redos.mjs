@@ -153,6 +153,24 @@ test('the patched patterns still match exactly what the unpatched ones did', () 
   }
 });
 
+// Results of the unpatched 4.0.7 for patterns the patch rewrites and that have more after the group: text with a dot, and
+// a `?` right after the closing paren (a lazy `+?` in the unpatched output, so the group is still needed once).
+test('what follows a rewritten group keeps its meaning', () => {
+  const cases = [
+    ['+(a|*b)x.js', 'axzjs', false], ['+(a|*b)x.js', 'ax.js', true],
+    ['+(foo*|bar*)/index.js', 'foo/indexXjs', false], ['+(foo*|bar*)/index.js', 'foo/index.js', true],
+    ['*(a|*b)x.js', 'xzjs', false], ['*(a|*b)x.js', 'x.js', true],
+    ['+(*.js|*.ts)/lib.js', 'a.js/libXjs', false], ['+(*.js|*.ts)/lib.js', 'a.js/lib.js', true],
+    ['a+(a*)?', 'a', false], ['a+(a*)?', 'aa', true],
+    ['+(a*)?a', 'a', false], ['+(a*)?a', 'aa', true],
+    ['+(a*|b)?x', 'x', false], ['+(a*|b)?x', 'bx', true]
+  ];
+
+  for (const [pattern, input, expected] of cases) {
+    assert.equal(pm.isMatch(input, pattern), expected, `${pattern} against ${JSON.stringify(input)}`);
+  }
+});
+
 test('case-insensitive matching is kept', () => {
   const nocase = { nocase: true };
   assert.equal(pm.isMatch('ABAB', '+(a|ab|b)', nocase), true);

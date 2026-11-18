@@ -678,15 +678,19 @@ const parse = (input, options) => {
     const body = input.slice(token.startIndex + 2, state.index);
     let analysis = analyzeRepeatedExtglob(body, opts);
 
-    // shikii patch: a `+` right after the closing paren is a regular expression quantifier on the group's own `)+` or `)*`.
-    // Upstream's output is then not a valid regular expression (`(?:X)++`), so the pattern never matches. The shortcuts below
-    // would turn it into a working one, which is not what this fix is for, so that form keeps upstream's output.
-    if (!analysis.risky && input[state.index + 1] === '+') {
+    // shikii patch: a `+` or `?` right after the closing paren is a regular expression quantifier on the group's own `)+` or
+    // `)*`. After `+` upstream's output is not a valid regular expression (`(?:X)++`), so the pattern never matches; after `?`
+    // it is a lazy `+?`, so the group is still needed once. The shortcuts below would turn the first into a working pattern and
+    // the second into an optional group, which is not what this fix is for, so those forms keep upstream's output.
+    if (!analysis.risky && (input[state.index + 1] === '+' || input[state.index + 1] === '?')) {
       analysis = { risky: false };
     }
 
     // shikii patch: several branches with a star. The branches' own output is regrouped into one pass (see planStarBranches).
+    let rewritten = false;
+
     if (analysis.rewrite && (token.type === 'plus' || token.type === 'star')) {
+      rewritten = true;
       const outputs = branchOutputs(tokens.slice(token.tokensIndex + 2));
       analysis = outputs.length === analysis.rewrite.count
         ? { risky: true, safeOutput: buildStarBranches(outputs, analysis.rewrite, token.type === 'star') }
@@ -710,7 +714,11 @@ const parse = (input, options) => {
       }
 
       state.output = token.output + open.output;
-      state.backtrack = true;
+
+      // shikii patch: a group this patch rewrote is one upstream would not have rewritten, so its output is built as upstream
+      // builds it for any such group: token by token as it is read, with every `.` in the text around it escaped. Upstream's own
+      // risky groups keep the rebuild from the tokens, which joins text by its raw value and so leaves a `.` in `x.js` unescaped.
+      if (!rewritten) state.backtrack = true;
 
       push({ type: 'paren', extglob: true, value, output: '' });
       decrement('parens');

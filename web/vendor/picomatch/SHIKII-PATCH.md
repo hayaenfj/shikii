@@ -40,8 +40,14 @@ Three layers, cheapest first. Each one gives a regular expression that accepts e
 What stays as upstream has it:
 
 - Anything the rewriter does not rewrite: the output is upstream's own, never a guess. The rewrite is exact or absent.
-- A `+` right after the closing paren of `+(X)` or `*(X)`: upstream's output is then not a valid regular expression
-  (`(?:X)++`) and the pattern never matches. That is kept as it is; this change is about the hang only.
+- A `+` or `?` right after the closing paren of `+(X)` or `*(X)`: after `+` upstream's output is not a valid regular
+  expression (`(?:X)++`) and the pattern never matches; after `?` it is a lazy `+?`, so the group is still needed once
+  (`a+(a*)?` does not match `a`). Collapsing the group would change both, so they are kept as they are; this change is about
+  the hang only.
+- Upstream's own risky groups (`+(*(a)|b)`, a group with an empty or all-star branch, ...): they keep their output, and so
+  their rebuild from the tokens, which joins text by its raw value and leaves a `.` in `x.js` after the group unescaped
+  (`+(*(a)|b)x.js` matches `xajs`). A group this patch rewrites is output the way upstream outputs any other group, token by
+  token as it is read, so the `.` stays escaped.
 - `maxExtglobRecursion: false`, or a number above the default: these are upstream's explicit requests to switch its safeguard
   off or to allow nested repeats, so the source is left as built (upstream's own test suite asserts this).
 - Capturing groups inside a rewritten repeat are not kept, so the numbers of the groups after it move. This shows only
@@ -55,6 +61,8 @@ What stays as upstream has it:
   that names the pattern it stopped on, killed after 10 seconds: the unpatched code needs about 2^40 steps there);
 - a table of results taken from the unpatched 4.0.7 (87 patterns, 36 texts) is unchanged, including the patterns that never
   match because of the `++` above;
+- what follows a rewritten group keeps its meaning: a `.` in the text after it stays a dot (`+(a|*b)x.js` does not match
+  `axzjs`), and a `?` right after it keeps the group needed once (`a+(a*)?` does not match `a`);
 - what picomatch returns holds no repeat that is still ambiguous;
 - the rewriter, on plain regular expressions: 19 hand-picked ambiguous repeats and 4 that are ambiguous only when case is
   ignored are rewritten and accept the same texts, the repeats that are not ambiguous and everything it cannot prove
@@ -82,7 +90,10 @@ repeated groups such as classes, braces, nested extglobs, `**`, `!(...)` and a `
 
 A first version of these random generators used a linear congruential generator with a modulus, whose low bits repeat, so
 some combinations (a `+` after the group) were never generated and a difference went unseen for a while. They use
-mulberry32 now.
+mulberry32 now. They also put almost no text after the group, so two differences (a `.` after the group, a `?` right after
+it) were found only by the independent audit before 0.37.1. A comparison with every shape of group, four kinds of prefix
+and 23 kinds of text after it (14,812 patterns against 2,801 texts, with the default, `dot` and `nocase` options) found no
+difference after the fix.
 
 ## Not covered
 
