@@ -16,15 +16,12 @@ const picomatchDir = requireTinyglobby.resolve('picomatch/package.json').replace
 const pm = requireTinyglobby('picomatch');
 const { transform } = requireTinyglobby(`${picomatchDir}lib/safe-regex.js`);
 
-// Shapes whose only branch has a star, which the vulnerable code turned into (?:...*...)+ or (?:...*...)*.
-const vulnerable = ['+(*)', '*(*)', '+(*a)', '*(*a)', '+(a*)', '*(a*)', '+(*a*)', '+(a*b)', '+(?*)', '+(.*)', '+(**)', '*(a*b*)'];
-
-// The same, with several branches and at least one star (the advisory covers the single-branch form; these are the same defect).
-const vulnerableMulti = ['+(a|*b)', '*(a|*b)', '+(a*|b)', '*(a*|b)', '+(*a|*b)', '+(foo*|bar*)', '*(foo*|bar*)', '+(*.js|*.ts)', '+(a*|*b)', '+(a|b|*c)', '+(a?|*b)', '+(a|b*|*c)'];
-
-// The rest of the family: a star inside a branch, branches that can be cut two ways, a class, a brace or a nested group
-// next to a star, and a `+` after the group (a quantifier of its own).
-const vulnerableRest = [
+// Every shape that took exponential time in the unpatched 4.0.7 (the advisory names the first group; the rest is the same
+// defect): one branch with a star, several branches with a star, a star inside a branch, branches that can be cut two
+// ways, a class, a brace or a nested group next to a star, and a `+` after the group (a quantifier of its own).
+const hung = [
+  '+(*)', '*(*)', '+(*a)', '*(*a)', '+(a*)', '*(a*)', '+(*a*)', '+(a*b)', '+(?*)', '+(.*)', '+(**)', '*(a*b*)',
+  '+(a|*b)', '*(a|*b)', '+(a*|b)', '*(a*|b)', '+(*a|*b)', '+(foo*|bar*)', '*(foo*|bar*)', '+(*.js|*.ts)', '+(a*|*b)', '+(a|b|*c)', '+(a?|*b)', '+(a|b*|*c)',
   '+(a*b|c)', '+(a*b|c*d)', '*(a*b|*c)', '+(a|ab|b|*c)', '+(a|**b)', '+(a|ab|b)', '*(a|ab|b)', '+(ab|a|b)', '*(ab|a|b)x',
   '+(a|[ab]*)', '*(a|[ab]*)', '+(a|{b,c}*)', '+(a|[!b]*)', '+(a|b+(c)*)', '+(*(a)|b*)',
   '@(a|*b)+', '@(a*|b)+', '(a*|b)+', '{a*,b*}+', '{+(b),a}+', '(c[!a]|ab|+(b))+', 'x@(a|*b)+y'
@@ -133,18 +130,19 @@ test('picomatch used by the build is the patched copy', () => {
 
 test('a repeated group that backtracked exponentially finishes at once on a long input', () => {
   const inputs = ['a'.repeat(40) + '/', 'ab'.repeat(20) + '/', 'foobar'.repeat(7) + '/', 'abc'.repeat(13) + '/', 'a.b'.repeat(13) + '\n'];
-
-  for (const pattern of [...vulnerable, ...vulnerableMulti, ...vulnerableRest]) {
-    // The vulnerable code needs 2^40 steps here (28 characters took 6 to 31 seconds), so a hang is the failure.
-    // It runs in a child process because a regular expression that never finishes cannot be interrupted in this one.
-    const script = `const pm = require(${JSON.stringify(picomatchDir)}); const re = pm.makeRe(${JSON.stringify(pattern)});
-      process.stdout.write(${JSON.stringify(inputs)}.map(input => String(re.test(input))).join(','));`;
-    const run = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 4000, killSignal: 'SIGKILL' });
-    assert.equal(run.error, undefined, `${pattern} did not finish within 4 seconds on ${inputs.length} long inputs`);
-    // only that it finishes matters here (+(**) matches these inputs because ** crosses the slash); what each
-    // pattern matches is checked against the table below
-    assert.match(run.stdout, new RegExp(`^(true|false)(,(true|false)){${inputs.length - 1}}$`), `${pattern}: ${run.stderr}`);
-  }
+  // The unpatched code needs about 2^40 steps on these (28 characters took 6 to 31 seconds), so the limit is a hang, not a
+  // close call. A regular expression that never finishes cannot be interrupted in this process, so one child process runs
+  // them all and writes each pattern's name when it is through: a hang then names the pattern it stopped on.
+  const script = `const pm = require(${JSON.stringify(picomatchDir)});
+    for (const pattern of ${JSON.stringify(hung)}) {
+      const re = pm.makeRe(pattern);
+      for (const input of ${JSON.stringify(inputs)}) re.test(input);
+      process.stdout.write(pattern + '\\n');
+    }`;
+  const run = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 10000, killSignal: 'SIGKILL' });
+  const finished = run.stdout.split('\n').filter(Boolean);
+  assert.equal(run.error, undefined, `${hung[finished.length]} did not finish within 10 seconds (${finished.length} of ${hung.length} were through)`);
+  assert.deepEqual(finished, hung, run.stderr);
 });
 
 test('the patched patterns still match exactly what the unpatched ones did', () => {
@@ -173,7 +171,7 @@ test('a request to loosen upstream\'s safeguard keeps upstream\'s output', () =>
 });
 
 test('no repeat that backtracks exponentially is left in what picomatch returns', () => {
-  for (const pattern of [...vulnerable, ...vulnerableMulti, ...vulnerableRest]) {
+  for (const pattern of hung) {
     const re = pm.makeRe(pattern);
     // transform finds nothing more to rewrite, and understands the whole expression
     const again = transform(re.source, re.flags);

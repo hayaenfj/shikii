@@ -51,8 +51,8 @@ What stays as upstream has it:
 
 `web/scripts/test-picomatch-redos.mjs` and `web/scripts/test-safe-regex.mjs` (both part of `npm run check`):
 
-- the copy in use is this one, and every shape above finishes on 40-character non-matching inputs (child process, killed
-  after 4 seconds);
+- the copy in use is this one, and every shape above finishes on 40-character non-matching inputs (one child process
+  that names the pattern it stopped on, killed after 10 seconds: the unpatched code needs about 2^40 steps there);
 - a table of results taken from the unpatched 4.0.7 (87 patterns, 36 texts) is unchanged, including the patterns that never
   match because of the `++` above;
 - what picomatch returns holds no repeat that is still ambiguous;

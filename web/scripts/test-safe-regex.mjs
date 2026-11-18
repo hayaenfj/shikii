@@ -139,9 +139,13 @@ test('what cannot be proven equal is left exactly as it was', () => {
   for (const [source, flags] of left) {
     assert.equal(transform(source, flags).source, source, `${source} (${flags})`);
   }
+});
 
-  // a repeat of a letter outside ASCII is fine when case does not matter
-  assert.ok(transform('(?:é|éa|a)+', '').rewritten >= 0);
+test('a letter outside ASCII is rewritten when case does not matter', () => {
+  const source = '(?:é|éa|a)+';
+  const done = transform(source, '');
+  assert.equal(done.rewritten, 1);
+  sameLanguage(source, '', done.source, textsOver(['é', 'a', 'É', 'b'], 5));
 });
 
 test('a source over the size limits is left as it was, and nothing throws', () => {
