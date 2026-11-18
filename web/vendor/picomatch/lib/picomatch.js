@@ -4,6 +4,7 @@ const scan = require('./scan');
 const parse = require('./parse');
 const utils = require('./utils');
 const constants = require('./constants');
+const safeRegex = require('./safe-regex');
 const isObject = val => val && typeof val === 'object' && !Array.isArray(val);
 
 /**
@@ -340,7 +341,13 @@ picomatch.makeRe = (input, options = {}, returnOutput = false, returnState = fal
 picomatch.toRegex = (source, options) => {
   try {
     const opts = options || {};
-    return new RegExp(source, opts.flags || (opts.nocase ? 'i' : ''));
+    const flags = opts.flags || (opts.nocase ? 'i' : '');
+    // shikii patch (GHSA-fc5q-39xc-vjpf): make repeated groups that backtrack exponentially linear. See SHIKII-PATCH.md.
+    // `maxExtglobRecursion: false` or a number above the default is upstream's explicit request to switch its safeguard off
+    // or to allow nested repeats, so a source built under it is left as it is.
+    const max = opts.maxExtglobRecursion;
+    const loosened = max === false || (typeof max === 'number' && max > constants.DEFAULT_MAX_EXTGLOB_RECURSION);
+    return new RegExp(loosened ? source : safeRegex.transform(source, flags).source, flags);
   } catch (err) {
     if (options && options.debug === true) throw err;
     return /$^/;

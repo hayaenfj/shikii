@@ -1,8 +1,9 @@
-# picomatch 4.0.7 with one fix
+# picomatch 4.0.7 with a ReDoS fix
 
 This directory is picomatch 4.0.7 (https://github.com/micromatch/picomatch, MIT, see LICENSE) with changes in
-`lib/parse.js` only. It is installed in place of the upstream package for every consumer (vite, tinyglobby, fdir) through
-`devDependencies.picomatch` and `overrides.picomatch` in `web/package.json`.
+`lib/parse.js` and `lib/picomatch.js`, and one added file, `lib/safe-regex.js`. It is installed in place of the upstream
+package for every consumer (vite, tinyglobby, fdir) through `devDependencies.picomatch` and `overrides.picomatch` in
+`web/package.json`.
 
 ## Why
 
@@ -11,54 +12,94 @@ star, such as `+(*)`, `+(*a)` or `*(a*)`, compiles to a quantifier nested in a q
 backtracks exponentially on a non-matching input. 28 characters took 6 to 31 seconds, 40 characters never finish.
 `npm audit` reports it as high, and CI runs `npm audit --audit-level=low`.
 
-The same defect exists with several branches when one of them has a star (`+(a|*b)`, `+(foo*|bar*)`, `+(*.js|*.ts)`):
-the advisory does not name them, upstream still hangs on them, and they are fixed here too.
+The advisory names one shape, but the defect is any repeat whose body can be split in more than one way, and upstream
+hangs on all of them: several branches with a star (`+(a|*b)`, `+(foo*|bar*)`, `+(*.js|*.ts)`), a star inside a branch
+(`+(a*b|c)`), branches that can be cut two ways (`+(a|ab|b)`), a class, a brace or a nested group next to a star
+(`+(a|[ab]*)`, `+(a|{b,c}*)`, `+(a|b+(c)*)`), and a `+` after a group, which is a quantifier of its own
+(`@(a|*b)+`, `{a*,b*}+`, `(a*|b)+`). All of these are fixed here.
 
 ## What changed
 
-Both fixes are in `analyzeRepeatedExtglob` (decides) and `extglobClose` (emits). They apply to `+(...)` and `*(...)` whose
-branches are plain text and wildcards (`*`, `?`) with no slash, group, class, brace, alternation, escape or quote.
+Three layers, cheapest first. Each one gives a regular expression that accepts exactly the texts upstream's accepts.
 
-- One branch with a `*`: the repeat is dropped. A branch with a star already matches any run of non-slash text, so
-  `+(X)` matches what `X` matches and `*(X)` what `X` or the empty string matches.
-- Several branches, at least one with a `*`: a branch that starts with `*` takes in any text before it, and one that ends
-  with `*` takes in any text after it. So a string is a sequence of the branches exactly when it is
-  `[one leading branch] [any number of plain branches] [one trailing branch]` (at least one part present). The group is
-  emitted that way, from the parser's own output for each branch, so nothing is repeated except the plain branches. Those
-  must be fixed text with no `*` that cannot be cut two ways (Sardinas-Patterson test; `?` only when they all have the same
-  length), so repeating them is linear. `+(a|*b)` becomes `(?:(?:[^/]*?b)(?:a)*|(?:a)+)`.
-- When no equal pattern is proven (a branch with a star inside, such as `a*b`; `**` in a branch; plain branches that can
-  be cut two ways), the group is read as literal text, which is what upstream already does for its other risky shapes.
-  Those patterns stop matching as extglobs.
+1. `lib/parse.js`, one branch with a `*` (`+(*)`, `+(a*b)`): the repeat is dropped. A branch with a star already matches any run
+   of non-slash text, so `+(X)` matches what `X` matches and `*(X)` what `X` or the empty string matches.
+2. `lib/parse.js`, several plain branches, at least one with a `*`: a branch that starts with `*` takes in any text before
+   it, and one that ends with `*` takes in any text after it, so a string is a sequence of the branches exactly when it is
+   `[one leading branch] [any number of plain branches] [one trailing branch]`. The group is emitted that way, so only the
+   plain branches are repeated, and those must be fixed text that cannot be cut two ways (Sardinas-Patterson test).
+   `+(a|*b)` becomes `(?:(?:[^/]*?b)(?:a)*|(?:a)+)`.
+3. `lib/safe-regex.js`, called from `picomatch.toRegex` on the finished regular expression source, so it covers whatever
+   the first two layers do not, whichever way the source was produced. It reads the source into a tree (plain
+   syntax only: literals, classes, groups, alternation, `* + ?`), counts for every move of its position automaton in how
+   many ways the expression can make it, and tests for exponential ambiguity (two different paths on the same text that
+   leave a state and come back to it). Only a repeat that is ambiguous is touched: it is made deterministic (subset
+   construction), minimized and written back by state elimination, so every text has one way to match and the time is
+   linear. A repeat that is not ambiguous, and every other part of the source, is left byte for byte.
 
-Everything else compiles exactly as before.
+What stays as upstream has it:
+
+- Anything the rewriter does not rewrite: the output is upstream's own, never a guess. The rewrite is exact or absent.
+- A `+` right after the closing paren of `+(X)` or `*(X)`: upstream's output is then not a valid regular expression
+  (`(?:X)++`) and the pattern never matches. That is kept as it is; this change is about the hang only.
+- `maxExtglobRecursion: false`, or a number above the default: these are upstream's explicit requests to switch its safeguard
+  off or to allow nested repeats, so the source is left as built (upstream's own test suite asserts this).
+- Capturing groups inside a rewritten repeat are not kept, so the numbers of the groups after it move. This shows only
+  in `exec` results of a `capture: true` pattern, and only for patterns that hung before.
 
 ## How it is checked
 
-`web/scripts/test-picomatch-redos.mjs` (part of `npm run check`) resolves picomatch the way the build does and checks
-that the copy in use is this one, that the vulnerable shapes finish on 40 characters, that a table of results taken
-from the unpatched 4.0.7 is unchanged, that the shapes read as literal text still do, and that no quantifier is left on
-a group that holds a star.
+`web/scripts/test-picomatch-redos.mjs` and `web/scripts/test-safe-regex.mjs` (both part of `npm run check`):
 
-Also checked by hand when the patch was made (against the unpatched 4.0.7):
+- the copy in use is this one, and every shape above finishes on 40-character non-matching inputs (child process, killed
+  after 4 seconds);
+- a table of results taken from the unpatched 4.0.7 (87 patterns, 36 texts) is unchanged, including the patterns that never
+  match because of the `++` above;
+- what picomatch returns holds no repeat that is still ambiguous;
+- the rewriter, on plain regular expressions: 19 hand-picked ambiguous repeats and 4 that are ambiguous only when case is
+  ignored are rewritten and accept the same texts, the repeats that are not ambiguous and everything it cannot prove
+  (lookahead, anchor, back reference, counted repeat, `u`/`v`/`m`/`s` flags, non-ASCII letters with case folding, size
+  limits) are left unchanged, and 400 seeded random expressions accept the same texts before and after.
+
+Each check was seen failing against a deliberately broken copy (the rewriter not called, the ambiguity test always no,
+routes not counted, an edge label cut short, the empty text not accepted, case not folded, a lookahead read as plain
+syntax, the `+` rule removed, the loosening request ignored).
+
+Also checked by hand when the patch was made (against the unpatched 4.0.7, with a seeded generator of 20 shapes of
+repeated groups such as classes, braces, nested extglobs, `**`, `!(...)` and a `+` after the group):
 
 - upstream's own suite (1983 tests) passes on this copy;
 - one branch: 21,840 patterns against all 29.8 million (pattern, text) pairs gave the same match results;
-- several branches: 15,935 branch sets (all pairs of the words of up to 3 characters over `a b * ? .`, and 4,000 random
-  triples) with `+`, `*` and three surroundings. The 37,026 patterns an independent classifier calls exact gave the same
-  match results on all 1,366 texts of up to 5 characters, and none of the 95,610 patterns took more than 50 ms on four
-  30-character non-matching inputs.
+- several branches: 15,935 branch sets with `+`, `*` and three surroundings; the 37,026 patterns an independent classifier
+  calls exact gave the same results on all 1,366 texts of up to 5 characters;
+- any shape: about 1.5 million generated patterns, with the default options and with `nocase`, `dot`, `capture`,
+  `windows`, `bash` and `strictBrackets`, each against about 4,000 texts: the same match results on every pattern;
+- the rewriter alone: random regular expressions up to nesting depth 4 and texts up to 7 characters, 800 million
+  comparisons, with V8's linear-time engine (`--enable-experimental-regexp-engine`, flag `l`) as the reference for the
+  original: no difference;
+- time: of the generated patterns, the ones that still take over 1.5 seconds on non-matching input all contain a lookahead
+  (see below); none without one does.
+
+A first version of these random generators used a linear congruential generator with a modulus, whose low bits repeat, so
+some combinations (a `+` after the group) were never generated and a difference went unseen for a while. They use
+mulberry32 now.
 
 ## Not covered
 
-Still slow in 4.0.7 and here: repeated extglobs whose branches hold a bracket class, a brace or a nested group together with
-a star (`+(a|[ab]*)`), a regex-style quantifier after a group (`@(a|*b)+`), and star-free branches that can be cut two ways
-(`+(a|ab|b)`, which grows by about 1.6 times per character: 69 ms on 40 characters).
-They are outside the advisory. The build only passes fixed globs from its own configuration to picomatch.
+A repeated group whose regular expression holds a lookahead is not rewritten: a negated extglob inside it
+(`+(!(a)b|c)`), a `**` that is a whole path segment (`+(a|b/**)`), or a branch that starts with `.` (the dot rule adds
+`(?!\.{0,1}(?:\/|$))`). A lookahead can see past the end of the repeat, into what follows it, so no equal expression can be built
+from the repeat alone. These compile as upstream does and can still backtrack exponentially. They are outside the advisory, and
+the build only passes fixed globs from its own configuration to picomatch.
+
+Also left as upstream has it: a repeat whose automaton has more than 160 positions, 200 distinct character sets, 256 states,
+or whose rewritten expression would pass 64 KB; a source over 20,000 characters; the `u`, `v`, `m` and `s` flags; and, under
+case-insensitive matching, a letter outside ASCII.
 
 ## When to remove it
 
 When upstream publishes a version after 4.0.7 that fixes GHSA-fc5q-39xc-vjpf: delete this directory, the
 `picomatch` entries in `devDependencies` and `overrides` of `web/package.json`, and `web/scripts/test-picomatch-redos.mjs`
-(and its name in the `check` script), run `npm --prefix web install`, then `npm --prefix web audit`. Check that the new
-upstream also handles the several-branch shapes (`+(a|*b)`) before relying on it for them.
+and `web/scripts/test-safe-regex.mjs` (and their names in the `check` script), run `npm --prefix web install`, then
+`npm --prefix web audit`. Check that the new upstream also handles the shapes listed under Why (start with `+(a|*b)`,
+`+(a|ab|b)` and `@(a|*b)+`) before relying on it for them.

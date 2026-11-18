@@ -360,7 +360,7 @@ const analyzeRepeatedExtglob = (body, options) => {
   if (branches.length > 1 && splitTopLevel(body).every((branch, i) => branch === branches[i])) {
     const plan = planStarBranches(branches);
     if (plan) {
-      return plan.unsafe ? { risky: true } : { risky: false, rewrite: plan };
+      return { risky: false, rewrite: plan };
     }
   }
 
@@ -408,15 +408,15 @@ const isUniquelyDecodable = words => {
 // (at least one part present; any leading branches before the last leading one are inside it, any trailing branches after
 // the first trailing one are inside it). The plain branches (neither end starred) are the only part left repeated; they must
 // be fixed text that is uniquely decodable (no `*`, and `?` only when they all have the same length), so repeating them is
-// linear. Returns undefined when this does not apply, { unsafe: true } when no equal pattern can be proven (the caller
-// reads the group as literal text, as upstream already does for its other risky shapes), or the plan.
+// linear. Returns undefined when this does not apply or cannot prove an equal pattern (the group then keeps upstream's output,
+// and safe-regex.js rewrites it when the finished regular expression is built), or the plan.
 const planStarBranches = branches => {
   if (!branches.every(branch => COLLAPSIBLE_BRANCH.test(branch)) || !branches.some(branch => branch.includes('*'))) {
     return undefined;
   }
 
   if (branches.some(branch => branch.includes('**'))) {
-    return { unsafe: true };
+    return undefined;
   }
 
   const lead = [];
@@ -434,15 +434,15 @@ const planStarBranches = branches => {
   const words = plain.map(index => branches[index]);
 
   if (words.some(word => word.includes('*'))) {
-    return { unsafe: true };
+    return undefined;
   }
 
   if (words.some(word => word.includes('?'))) {
     if (!words.every(word => word.length === words[0].length)) {
-      return { unsafe: true };
+      return undefined;
     }
   } else if (!isUniquelyDecodable(words)) {
-    return { unsafe: true };
+    return undefined;
   }
 
   return { lead, plain, trail, count: branches.length };
@@ -677,6 +677,13 @@ const parse = (input, options) => {
     const literal = input.slice(token.startIndex, state.index + 1);
     const body = input.slice(token.startIndex + 2, state.index);
     let analysis = analyzeRepeatedExtglob(body, opts);
+
+    // shikii patch: a `+` right after the closing paren is a regular expression quantifier on the group's own `)+` or `)*`.
+    // Upstream's output is then not a valid regular expression (`(?:X)++`), so the pattern never matches. The shortcuts below
+    // would turn it into a working one, which is not what this fix is for, so that form keeps upstream's output.
+    if (!analysis.risky && input[state.index + 1] === '+') {
+      analysis = { risky: false };
+    }
 
     // shikii patch: several branches with a star. The branches' own output is regrouped into one pass (see planStarBranches).
     if (analysis.rewrite && (token.type === 'plus' || token.type === 'star')) {
