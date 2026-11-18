@@ -8,7 +8,7 @@ MODEL   ?= jev-1.14.0
 .PHONY: build test check-english dup install check status drift server demo fake web
 
 # Build the page (web/, Svelte + Tailwind CSS). The result web/dist is embedded in the binary and also committed to the repo (Node is not needed just to use it).
-# After changing the page, make web → commit. Needs Node 24 and npm
+# After changing the page, make web → commit. Needs Node 26 and npm
 web:
 	cd web && npm ci && npm run build
 

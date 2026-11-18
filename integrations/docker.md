@@ -10,7 +10,7 @@ The container entry point is for the business decision API and the answer page. 
 |---|---|
 | Docker | a running Docker Engine and Docker Compose, and a clone of the repository |
 | Podman | a running Podman engine and an external Compose provider, and a clone of the repository |
-| When building the image | a network connection. The build containers provide Node.js 24 and Go 1.27 |
+| When building the image | a network connection. The build containers provide Node.js 26 and Go 1.27 |
 | When running the decision model for the first time | a connection to download the model and space to store it. The default is Ternary-Bonsai-27B Q2_g64 (about 7.6GB. An ordinary chat model; shikii-readout answers in the decision model's shape) |
 
 [About Docker Compose](https://docs.docker.com/compose/). Podman's `compose` calls an external provider such as docker-compose or podman-compose, so a provider is needed besides Podman itself. [Podman's official description](https://docs.podman.io/en/latest/markdown/podman-compose.1.html).

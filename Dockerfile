@@ -2,7 +2,7 @@
 # Usage: docker compose up → the answer-checking page at http://127.0.0.1:8095
 # 3 stages: (a) build the page (web/) with node → (b) build the binaries with Go (embedding the page) → (c) put only the binaries on distroless.
 # People who use Docker need neither Node nor Go.
-FROM node:24-alpine AS web
+FROM node:26-alpine AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 COPY web/vendor/ ./vendor/
@@ -21,7 +21,7 @@ COPY --from=web /web/dist ./web/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/shikii ./cmd/shikii \
  && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/shikii-readout ./cmd/shikii-readout
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 LABEL org.opencontainers.image.licenses="Apache-2.0 OR MIT"
 COPY --from=build /out/shikii /out/shikii-readout /usr/local/bin/
 COPY --from=build /src/LICENSE /src/LICENSE-APACHE /src/LICENSE-MIT /src/THIRD-PARTY-NOTICES /usr/share/licenses/shikii/
