@@ -4,7 +4,8 @@
 #          number of duplicated lines must also equal JSCPD_CLONES and JSCPD_LINES.
 #   dupl : clones of DUPL_TOKENS tokens or more; the number of clone groups must equal DUPL_GROUPS.
 #   For each count, more fails (new duplication, or an existing one that grew) and fewer fails until the constant is lowered
-#   (freed room cannot be refilled). A count that is not a number fails too.
+#   (freed room cannot be refilled). A count that is not a number fails too. A change that shrinks one clone and grows
+#   another by the same amount is not seen; that is the room left by counting totals, not individual clones.
 # Both tools are required. A missing tool fails, because a skipped check would read as a pass:
 #   npm i -g jscpd
 #   go install github.com/mibk/dupl@latest
@@ -29,8 +30,8 @@ status=0
 # compare_count <what> <found> <allowed> <constant>: the found count must equal the allowed one
 compare_count() {
   case "$2" in
-    '' | *[!0-9]*)
-      echo "check-dup: the $1 count is not a number: '$2'" >&2
+    '' | *[!0-9]* | ?????????????*) # not digits only, or over 12 digits (the shell compares only what fits in 64 bits)
+      echo "check-dup: the $1 count is not a number I can compare: '$2'" >&2
       exit 2
       ;;
   esac
@@ -46,6 +47,8 @@ compare_count() {
 }
 
 echo "== jscpd"
+# A report left by an earlier run must not stand in for this one
+rm -f .jscpd-report/jscpd-report.json
 # Exits 1 when the duplicated-line share is over the threshold in .jscpd.json
 jscpd . --config .jscpd.json --silent || status=1
 jscpd_total() {

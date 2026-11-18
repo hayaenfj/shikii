@@ -44,13 +44,14 @@ What stays as upstream has it:
   expression (`(?:X)++`) and the pattern never matches; after `?` it is a lazy `+?`, so the group is still needed once
   (`a+(a*)?` does not match `a`). Collapsing the group would change both, so the first two layers leave them as upstream
   has them; this change is about the hang only. The third layer may still rewrite the finished expression (`+(a*)?` becomes
-  `(?:a[^/]*)`), which accepts the same texts. Only the invalid `+` form stays exactly as upstream has it.
+  `(?:a[^/]*)`), which accepts the same texts. The invalid `+` form, and a `?` form with nothing for the third layer to
+  rewrite (`+(a)?`, `*(a)?`), stay exactly as upstream has them.
 - Upstream's own risky groups (`+(*(a)|b)`, a group with an empty or all-star branch, ...): they keep their output, and so
   their rebuild from the tokens, which joins text by its raw value and leaves a `.` in `x.js` after the group unescaped
   (`+(*(a)|b)x.js` matches `xajs`). A group this patch rewrites is output the way upstream outputs any other group, token by
   token as it is read, so the `.` stays escaped, unless something after the group makes upstream rebuild the output as it does
-  for its own risky groups (`+(a|*b)x.js{1..3}`: a brace range, `[[:alpha:]]`, `***`); then the output is upstream's, with
-  the same unescaped `.`.
+  for its own risky groups (`+(a|*b)x.js{1..3}`: a brace range, `[[:alpha:]]`, `*/***`); then the `.` is treated as upstream
+  treats it, and stays unescaped.
 - `maxExtglobRecursion: false`, or a number above the default: these are upstream's explicit requests to switch its safeguard
   off or to allow nested repeats, so the source is left as built (upstream's own test suite asserts this).
 - Capturing groups inside a rewritten repeat are not kept, so the numbers of the groups after it move. This shows only
