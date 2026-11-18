@@ -42,6 +42,13 @@ func gitHead(cwd string) string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), hookGitTimeout)
 	defer cancel()
+	if eventPlaces != nil {
+		// in a hook event HEAD comes with the answer about the repository (hook_git_place.go): no process of its own. Where git has no
+		// working tree to answer about (a bare repository), it is asked alone below, as outside an event.
+		if place, ok := gitPlaceAt(ctx, cwd); ok {
+			return place.head
+		}
+	}
 	out, ok := gitRun(ctx, cwd, "rev-parse", "HEAD")
 	if !ok {
 		return ""

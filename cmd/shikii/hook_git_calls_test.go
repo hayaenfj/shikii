@@ -42,7 +42,7 @@ func gitCallLog(t *testing.T) func() []string {
 // its exclude file; one question now gives all three. This lists the git calls an event may make, in order, so a call added to the
 // hook's path shows up here and has to be argued for.
 func TestAHookEventAsksGitWhereTheRepositoryIsOnce(t *testing.T) {
-	const place = "rev-parse --show-toplevel --git-path objects --git-path info/exclude"
+	const place = "rev-parse --show-toplevel --git-path objects --git-path info/exclude --verify -q HEAD" // HEAD is in the same answer
 	snapshot := []string{"add -A -- .", "ls-files -z --cached --ignored --exclude-standard", "rm --cached -r -f --ignore-unmatch -- .shikii", "write-tree", "ls-files --stage --full-name"}
 	repo, _, _ := planningFixture(t)
 	sub := filepath.Join(repo, "pkg", "inner")
@@ -54,7 +54,7 @@ func TestAHookEventAsksGitWhereTheRepositoryIsOnce(t *testing.T) {
 	for _, cwd := range []string{repo, sub} {
 		session := "calls-" + filepath.Base(cwd)
 		runManualHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": cwd, "prompt": planningTestRequest})
-		want := append(append([]string{place}, snapshot...), "rev-parse HEAD") // HEAD: where this turn's commits start
+		want := append([]string{place}, snapshot...)
 		if got := calls(); !reflect.DeepEqual(got, want) {
 			t.Errorf("a request from %s made these git calls:\n%s\nwant:\n%s", cwd, strings.Join(got, "\n"), strings.Join(want, "\n"))
 		}
@@ -75,8 +75,8 @@ func TestAHookEventOutsideGitAsksGitOnce(t *testing.T) {
 	hookEnv(t, nil, folder)
 	calls := gitCallLog(t)
 	runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "outside", "cwd": folder, "prompt": planningTestRequest})
-	// the one question, the exclude file (asked alone: a bare repository has no top folder but does have the file), and HEAD
-	want := []string{"rev-parse --show-toplevel --git-path objects --git-path info/exclude", "rev-parse --git-path info/exclude", "rev-parse HEAD"}
+	// the one question, then the exclude file and HEAD each alone (a bare repository has no top folder but does have both)
+	want := []string{"rev-parse --show-toplevel --git-path objects --git-path info/exclude --verify -q HEAD", "rev-parse --git-path info/exclude", "rev-parse HEAD"}
 	if got := calls(); !reflect.DeepEqual(got, want) {
 		t.Errorf("a request outside git made these git calls:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
@@ -99,5 +99,34 @@ func TestAGitCallThatTimedOutIsNotKeptForTheRestOfTheEvent(t *testing.T) {
 	}
 	if _, ok := gitPlaceAt(expired, repo); !ok {
 		t.Error("the answer git gave is kept for the event: asked again with the time out, it still answers")
+	}
+}
+
+// HEAD, where this turn's commits start, comes with the answer about the repository, in a repository that has a commit and in one
+// that does not (an unborn HEAD is an empty answer, not a reason to ask again).
+func TestTheHeadComesWithTheAnswerAboutTheRepository(t *testing.T) {
+	committed := gitRepo(t)
+	if err := os.WriteFile(filepath.Join(committed, "a.txt"), []byte("a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAll(t, committed, "one")
+	unborn := gitRepo(t)
+	calls := gitCallLog(t)
+	for _, c := range []struct{ dir, head string }{
+		{committed, strings.TrimSpace(run(t, "git", "-C", committed, "rev-parse", "HEAD"))},
+		{unborn, ""},
+	} {
+		calls()
+		end := beginEventGit()
+		if _, ok := gitPlaceAt(context.Background(), c.dir); !ok {
+			t.Fatalf("premise: git answers about %s", c.dir)
+		}
+		if got := gitHead(c.dir); got != c.head {
+			t.Errorf("HEAD of %s is %q, want %q", c.dir, got, c.head)
+		}
+		end()
+		if got := calls(); len(got) != 1 {
+			t.Errorf("the place of %s and its HEAD took %d git calls, want 1:\n%s", c.dir, len(got), strings.Join(got, "\n"))
+		}
 	}
 }
