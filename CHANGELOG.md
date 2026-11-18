@@ -2,6 +2,20 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.37.1 — Libraries and the GitHub Action are updated
+
+### Changes
+
+- The web screen is rebuilt with newer versions of Svelte (5.57.3), Vite (8.3.8) and Tailwind CSS (4.3.5). It is not meant to look or work differently.
+- The Go library `golang.org/x/text` is updated to v0.44.0.
+- The GitHub Action (`action.yml`) now sets up Go with `actions/setup-go` v7. It was v5.
+- The audit guide in the shikii skill now also asks the auditor to look for duplicated code, tests, rules and documents, and to go through the classes of problem behind a change, not only its diff.
+- The Docker page says that the build containers provide Node.js 26.
+
+### Fixes
+
+- A known issue in a library used only to build the screen (picomatch, advisory GHSA-fc5q-39xc-vjpf) is fixed in the build tools, and `npm audit` now reports nothing. The released program does not contain that library.
+
 ## 0.37.0 — A worktree kept under a project uses that project's wiki, guards and records
 
 ### Highlights

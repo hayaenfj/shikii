@@ -118,6 +118,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.36.0 | Codex gets lessons right before a command or a file change (the agent reads them with the result of that call), and a guard can refuse a command there. A subagent assesses the lessons it received, in Claude Code, Codex and OpenCode 2.x. The assessment of a delivery is asked only of the session that received it. |
 | 0.36.1 | An agent assesses a delivered lesson in the same request it received it, so a lesson delivered in the last request of a session can be assessed too. |
 | 0.37.0 | An agent working in a worktree kept under a project gets that project's lessons and guards, and its records go to that project. |
+| 0.37.1 | No change in how shikii remembers. The libraries behind the web screen and the GitHub Action are updated. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -388,3 +389,7 @@ Agents often work in a worktree kept under the project: Claude Code puts the wor
 Now shikii takes the nearest folder at or above the current folder that was initialized on this machine as the project, without asking git. Such a worktree gets no `.shikii/` of its own, so the wiki, the guards and the records stay in one place. `shikii guard try` in such a worktree checks what the worktree changed since it left the project's branch, with its commits, so another tool can apply the project's guards to a worker's finished work.
 
 We ran real agents in a sandbox: a project with one guard that forbids a word, a worktree under it, and a request to add that word to a file. With this version Claude Code and Codex were each stopped by the project's guard, which named the file, in every run (one each with the released code, and a few with earlier forms of this change). Their records went to the project's `.shikii/`, and the worktree got no `.shikii/`. With 0.36.1 the same run in Claude Code was not stopped, and nothing was recorded. After the stop, Codex took the word out again every time; Claude Code sometimes took it out, and sometimes left it in and asked you to choose. This is one task and a small number of runs: they show that the hooks reach the worktree, not how often an agent then fixes the work. A worktree created outside the project folder is still not reached.
+
+### In 0.37.1, how shikii remembers does not change
+
+This version updates the libraries behind the web screen and the GitHub Action, and fixes a known issue in a library used only to build the screen. Nothing in how shikii stores, delivers or assesses lessons changed: no code of shikii itself changed apart from the version number and the updated Go library. We did not run real agents for this version for that reason.
