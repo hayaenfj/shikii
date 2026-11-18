@@ -11,7 +11,8 @@ from urllib.parse import urlsplit
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-if len(sys.argv) != 2:
+# an option is not an output folder: `--help` used to build the release into ./--help
+if len(sys.argv) != 2 or sys.argv[1].startswith("-"):
     sys.exit("usage: python3 -I scripts/build-release.py <output folder>")
 source = Path.cwd()
 out = Path(sys.argv[1]).resolve()
