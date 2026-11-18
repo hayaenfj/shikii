@@ -107,7 +107,7 @@ func dependabotNeeded(t *testing.T) map[string]bool {
 		switch base := path.Base(f); {
 		case base == "go.mod":
 			need["gomod "+dir] = true
-		case base == "Dockerfile":
+		case strings.Contains(strings.ToLower(base), "dockerfile"): // Dependabot reads Dockerfile, Dockerfile.dev, web.Dockerfile
 			need["docker "+dir] = true
 		case base == "package.json" && packageJSONPinsDependencies(t, f):
 			need["npm "+dir] = true
