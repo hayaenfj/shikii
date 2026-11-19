@@ -2,6 +2,14 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.37.3 — The hooks start git much less often
+
+### Changes
+
+- shikii's hooks now start git far less often. They used to ask git the same questions again at every request, tool call and end of a turn. They now ask where the repository is once, remember the answer, and read the current commit from the repository's files. In a project that uses git, a request starts 3 git processes instead of 11, a tool call 0 instead of 2, and the end of a turn 3 instead of 9. The `shikii` commands and MCP tools use the remembered answer too. This makes the hooks faster, most of all on macOS, where each git start is slow.
+- In a folder that is not in a git repository, the hooks no longer start git at all.
+- The remembered answers are small files in `~/.shikii/agent/places/`. A file is used only while the folders still say the same, and files not used for a week are removed. When you update to this version, a request that was open at that moment is not marked as having changed files.
+
 ## 0.37.2 — A subagent gets the rules for every request when it starts
 
 ### Changes

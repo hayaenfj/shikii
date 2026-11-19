@@ -12,9 +12,9 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 [![Tests](https://img.shields.io/badge/tests-2283%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.37.2-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.37.3-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
-0.37.2では、サブエージェントが始まる時に、仕事の文から選んだ教訓ではなく、どの依頼にも効く決まりだけを届けるようにしました。このプロジェクトの記録では、仕事の文から選んだ教訓はサブエージェントの役にほとんど立っていませんでした。仕事に要る知識は、サブエージェントが今までどおり wiki から引きます。0.37.0では、プロジェクトの下に置いた作業ツリー(Claude Code の `.claude/worktrees/`、chiten の `.chiten/wt/` など)で作業するエージェントにも、そのプロジェクトの wiki・止める検査・記録が働くようになりました。shikii は、上へたどって最初に見つかった、この機械で初期化したフォルダをプロジェクトにします。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
+0.37.3では、hook が git を起動する回数を大きく減らしました。リポジトリの場所は 1 回だけ聞いて答えを覚えるので、依頼 1 回の git の起動は 11 回から 3 回に、ツールの呼び出しは 0 回になります。0.37.2では、サブエージェントが始まる時に、仕事の文から選んだ教訓ではなく、どの依頼にも効く決まりだけを届けるようにしました。このプロジェクトの記録では、仕事の文から選んだ教訓はサブエージェントの役にほとんど立っていませんでした。仕事に要る知識は、サブエージェントが今までどおり wiki から引きます。0.37.0では、プロジェクトの下に置いた作業ツリー(Claude Code の `.claude/worktrees/`、chiten の `.chiten/wt/` など)で作業するエージェントにも、そのプロジェクトの wiki・止める検査・記録が働くようになりました。shikii は、上へたどって最初に見つかった、この機械で初期化したフォルダをプロジェクトにします。[変更履歴](../../CHANGELOG_ja.md)と[メモリーとの関係](../memory-and-learning.ja.md)をご覧ください。
 
 
 [困りごと](#困りごと) · [何が育つか](#何が育つか) · [人がすること](#人がすること) · [必要なもの](#必要なもの) · [始め方](#始め方) · [仕組み](#仕組み) · [業務の判定を任せる](#業務の判定を任せる) · [記憶はプロジェクトのもの](#記憶はプロジェクトのもの) · [もっと読む](#もっと読む)
