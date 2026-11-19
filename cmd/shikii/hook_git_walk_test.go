@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -327,6 +328,88 @@ func TestAKeptPlaceThatNamesAnotherFolderIsNotUsed(t *testing.T) {
 	})
 	if got := calls(); len(got) != 1 {
 		t.Errorf("git was asked %d times, want once:\n%s", len(got), strings.Join(got, "\n"))
+	}
+}
+
+// The test above writes the kept answer in the form 0.37.3 wrote it, which is refused for its missing fields before its top is looked at.
+// A kept answer in the current form, with the git folder and the ids of the configuration files all in order but a top that names another
+// folder, must be refused for its top: it is what a copied or edited file looks like.
+func TestAKeptPlaceOfAnotherTopIsNotUsedWhenTheRestOfItAgrees(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo, other := gitRepo(t), gitRepo(t)
+	calls := gitCallLog(t)
+	event(func() { gitPlaceAt(context.Background(), repo) })
+	calls()
+	event(func() { gitPlaceAt(context.Background(), repo) })
+	if got := calls(); len(got) != 0 {
+		t.Fatalf("control: the kept answer is used while nothing differs, but git was asked: %v", got)
+	}
+	at, _ := filepath.EvalSymlinks(repo)
+	file, ok := placeEntryFile(at)
+	if !ok {
+		t.Fatal("premise: the kept answer has a file")
+	}
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("premise: the kept answer is on disk: %v", err)
+	}
+	var e placeEntry
+	if err := json.Unmarshal(raw, &e); err != nil {
+		t.Fatal(err)
+	}
+	if e.Git == "" || e.Common == "" {
+		t.Fatalf("premise: the kept answer has the fields of the current form: %s", raw)
+	}
+	e.Top = other // typed, so the 64-bit times of the configuration ids are written back exactly
+	raw, _ = json.Marshal(e)
+	if err := os.WriteFile(file, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var got gitPlace
+	event(func() { got, _ = gitPlaceAt(context.Background(), repo) })
+	if n := len(calls()); n != 1 || !sameFolder(got.top, repo) {
+		t.Errorf("top %q, git calls %d: the kept answer that names %s was used for %s", got.top, n, other, repo)
+	}
+}
+
+// An answer is kept only where git says the same as the files do. A git that names another top than the folder with the `.git` (stood in
+// for here: the first line of what it says is replaced while SHIKII_TEST_FAKE_TOP is set) is believed for that event, and nothing is kept.
+// Two checks guard this, one where the answer is trusted and one where it is written, so the test is for both: it fails only without both.
+func TestAnAnswerWhoseTopIsNotTheFolderWithTheGitFolderIsNotKept(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("no git")
+	}
+	bin := t.TempDir()
+	script := "#!/bin/sh\nout=$('" + real + "' \"$@\"); rc=$?\ncase \"$*\" in\n*--show-toplevel*) if [ -n \"$SHIKII_TEST_FAKE_TOP\" ]; then printf '%s\\n' \"$SHIKII_TEST_FAKE_TOP\"; printf '%s\\n' \"$out\" | tail -n +2; else printf '%s\\n' \"$out\"; fi;;\n*) printf '%s\\n' \"$out\";;\nesac\nexit $rc\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	faked, honest, other := gitRepo(t), gitRepo(t), t.TempDir()
+	entryOf := func(repo string) bool {
+		at, _ := filepath.EvalSymlinks(repo)
+		file, ok := placeEntryFile(at)
+		if !ok {
+			t.Fatal("premise: the kept answer has a file")
+		}
+		_, err := os.Stat(file)
+		return err == nil
+	}
+	t.Setenv("SHIKII_TEST_FAKE_TOP", "")
+	var got gitPlace
+	event(func() { got, _ = gitPlaceAt(context.Background(), honest) })
+	if !sameFolder(got.top, honest) || !entryOf(honest) {
+		t.Fatalf("control: an answer that agrees with the files is kept (top %q, kept %v)", got.top, entryOf(honest))
+	}
+	t.Setenv("SHIKII_TEST_FAKE_TOP", other)
+	event(func() { got, _ = gitPlaceAt(context.Background(), faked) })
+	if !sameFolder(got.top, other) {
+		t.Fatalf("premise: git's answer is the one given for the event (top %q)", got.top)
+	}
+	if entryOf(faked) {
+		t.Errorf("an answer whose top is %s was kept for the repository at %s", other, faked)
 	}
 }
 
