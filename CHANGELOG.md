@@ -6,10 +6,10 @@
 
 ### Changes
 
-- The hooks now start git far fewer times, which makes them faster, most of all on macOS, where starting git is slow. In a project that uses git, a request starts 3 git processes instead of 11, a tool call 0 instead of 2, and finishing a task 3 instead of 9.
-- In a folder that is not in a git repository, the hooks no longer start git at all.
-- In a linked worktree or a submodule, each hook still asks git once: a request starts 4 git processes, a tool call 1 and finishing a task 4.
-- The numbers are a little higher now and then (for example after a command that changes the repository's settings, such as `git remote add`), while a guard is enabled, and while a Codex memory file waits to be moved to the wiki.
+- The hooks now run git far less often in the background. They used to ask git the same questions again every time the agent did something; now they remember the answers and reuse them.
+- This saves the most time on macOS, where starting git is slow. In a typical project that uses git, a request now runs git 3 times instead of 11, each tool call 0 times instead of 2, and the agent finishing its reply 3 times instead of 9.
+- In a folder that is not a git repository, the hooks no longer run git at all.
+- Inside a git worktree or a submodule, the remembered answers are not used, so the drop is smaller: a request runs git 4 times, each tool call once, and finishing a reply 4 times.
 - A request that is still open when you update to this version gets no record of whether it changed files.
 
 ## 0.37.2 — A subagent gets the rules for every request when it starts
