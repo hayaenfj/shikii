@@ -42,12 +42,18 @@ func gitHead(cwd string) string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), hookGitTimeout)
 	defer cancel()
-	if eventPlaces != nil {
-		// in a hook event HEAD comes with the answer about the repository when git was asked just now (hook_git_place.go): no process of
-		// its own. When the place was kept from an earlier event (HEAD changes with every commit), or git has no working tree to answer
-		// about (a bare repository), it is asked alone below, as outside an event.
-		if place, ok := gitPlaceAt(ctx, cwd); ok && place.headKnown {
+	// HEAD comes with the answer about the repository when git was asked just now (hook_git_place.go): no process of its own. When the
+	// place was kept from an earlier request, HEAD (which every commit changes) is read from the files of a plain `.git` folder. Where
+	// the files are not the whole story (a worktree, a reftable) or git has no working tree to answer about (a bare repository), git is
+	// asked alone below.
+	if place, ok := gitPlaceAt(ctx, cwd); ok {
+		if place.headKnown {
 			return place.head
+		}
+		if place.gitDir != "" {
+			if head, known := headFromFiles(place.gitDir); known {
+				return head
+			}
 		}
 	}
 	if outsideGit(cwd) {

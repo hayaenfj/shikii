@@ -69,6 +69,10 @@ func TestAFolderThatMayBeARepositoryStillAsksGit(t *testing.T) {
 			d := gitRepo(t)
 			return filepath.Join(d, ".git", "refs")
 		}},
+		{"GIT_NAMESPACE in the environment", func(t *testing.T) string {
+			t.Setenv("GIT_NAMESPACE", "other")
+			return gitRepo(t)
+		}},
 		{"GIT_DIR in the environment", func(t *testing.T) string {
 			d := t.TempDir()
 			t.Setenv("GIT_DIR", filepath.Join(d, "nowhere"))
@@ -89,7 +93,7 @@ func TestAFolderThatMayBeARepositoryStillAsksGit(t *testing.T) {
 
 // What git said about a repository is kept for the next events (a tool call asked git every time, and each is a process). The repository
 // is told by the folders above the one asked about (the nearest `.git`), so a subfolder shares it; HEAD is not kept, as every commit
-// changes it, and is asked alone when an event needs it. The CLI and the page, which live longer than a request, never use it.
+// changes it, and is read from the files of the repository (TestHeadIsReadFromTheFiles...).
 func TestThePlaceOfTheRepositoryIsKeptBetweenEvents(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	repo := gitRepo(t)
@@ -130,11 +134,13 @@ func TestThePlaceOfTheRepositoryIsKeptBetweenEvents(t *testing.T) {
 			t.Errorf("HEAD is %q, want %q", got, head)
 		}
 	})
-	if got := calls(); !reflect.DeepEqual(got, []string{"rev-parse HEAD"}) {
-		t.Errorf("HEAD is not kept: it is asked alone: %v", got)
+	if got := calls(); len(got) != 0 {
+		t.Errorf("HEAD, which is not kept, is read from the files of the repository: %v", got)
 	}
-	if _, ok := gitPlaceAt(context.Background(), repo); !ok || len(calls()) != 1 {
-		t.Error("outside an event git is asked every time")
+	// the CLI and the MCP server use the kept answer too: it is checked against the folders at every use, so a process that lives long
+	// does not hold a stale one (what is not kept is the in-process memo of one event)
+	if got, ok := gitPlaceAt(context.Background(), repo); !ok || !sameFolder(got.top, repo) || len(calls()) != 0 {
+		t.Errorf("outside an event the kept answer is used too: %+v (%v), %d calls", got, ok, len(calls()))
 	}
 }
 
@@ -165,6 +171,9 @@ func TestAKeptPlaceIsLeftOnceTheRepositoryHasChanged(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, 1, func(repo, sub string) string { return "" }},
+		{"the environment names a namespace", func(t *testing.T, repo, sub string) {
+			t.Setenv("GIT_NAMESPACE", "other") // the refs git reads are another set: left to git
+		}, 1, func(repo, sub string) string { return repo }},
 		{"the environment names a repository", func(t *testing.T, repo, sub string) {
 			t.Setenv("GIT_DIR", filepath.Join(repo, ".git")) // git then takes the folder it is asked from as the top of the work tree
 		}, 1, func(repo, sub string) string { return sub }},
@@ -275,5 +284,129 @@ func TestAKeptPlaceThatNamesAnotherFolderIsNotUsed(t *testing.T) {
 	})
 	if got := calls(); len(got) != 1 {
 		t.Errorf("git was asked %d times, want once:\n%s", len(got), strings.Join(got, "\n"))
+	}
+}
+
+// What git answered is kept in small files, one for each repository; a file nobody asked for in a week goes when the next one is
+// written, so the folder does not grow with every repository this machine has seen.
+func TestOldKeptPlacesAreRemovedWhenANewOneIsKept(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := gitRepo(t)
+	dir := filepath.Dir(mustPlaceFile(t, repo))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old, recent := filepath.Join(dir, "0000000000000000.json"), filepath.Join(dir, "1111111111111111.json")
+	for _, f := range []string{old, recent} {
+		if err := os.WriteFile(f, []byte(`{"top":"/nowhere","at":1}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chtimes(old, time.Now().Add(-8*24*time.Hour), time.Now().Add(-8*24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	event(func() { gitPlaceAt(context.Background(), repo) })
+	if _, err := os.Stat(old); err == nil {
+		t.Error("a kept answer a week old was left")
+	}
+	if _, err := os.Stat(recent); err != nil {
+		t.Errorf("a recent kept answer was removed: %v", err)
+	}
+	if _, err := os.Stat(mustPlaceFile(t, repo)); err != nil {
+		t.Errorf("the new answer was not kept: %v", err)
+	}
+}
+
+func mustPlaceFile(t *testing.T, repo string) string {
+	t.Helper()
+	at, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, ok := placeEntryFile(at)
+	if !ok {
+		t.Fatal("no place for the kept answers")
+	}
+	return file
+}
+
+// realHead is what git says HEAD is ("" before the first commit).
+func realHead(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.Command("git", "rev-parse", "--verify", "-q", "HEAD")
+	cmd.Dir = dir
+	out, _ := cmd.Output()
+	return strings.TrimSpace(string(out))
+}
+
+// In a repository with a `.git` folder of its own, HEAD is read from the files git keeps (HEAD, the ref it names, packed-refs) instead
+// of a process of its own. The answers are compared with git's own in every state the files can be in; where the files are not
+// the whole story (a linked worktree, a reftable) git is asked.
+func TestHeadIsReadFromTheFilesOfARepositoryWithAGitFolder(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := gitRepo(t)
+	sub := filepath.Join(repo, "pkg", "inner")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) {
+		t.Helper()
+		if out, err := exec.Command("git", append([]string{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com"}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	commit := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		git("add", "-A")
+		git("commit", "-q", "-m", name)
+	}
+	event(func() { gitPlaceAt(context.Background(), repo) }) // git answers once and the answer is kept
+	calls := gitCallLog(t)
+	for _, c := range []struct {
+		name  string
+		state func()
+		from  string
+	}{
+		{"before the first commit", func() {}, repo},
+		{"a commit (a loose ref)", func() { commit("a") }, repo},
+		{"from a subfolder", func() {}, sub},
+		{"refs packed into one file", func() { git("pack-refs", "--all", "--prune") }, repo},
+		{"a commit on top of a packed ref", func() { commit("b") }, repo},
+		{"a branch with a slash in its name", func() { git("checkout", "-q", "-b", "feature/x"); commit("c") }, repo},
+		{"a detached HEAD", func() { git("checkout", "-q", "--detach") }, repo},
+		{"back on a branch, packed", func() { git("checkout", "-q", "feature/x"); git("pack-refs", "--all", "--prune") }, repo},
+	} {
+		c.state()
+		want := realHead(t, repo)
+		calls() // what the test itself ran is not counted
+		var got string
+		event(func() { got = gitHead(c.from) })
+		if got != want {
+			t.Errorf("%s: HEAD is %q, git says %q", c.name, got, want)
+		}
+		if got := calls(); len(got) != 0 {
+			t.Errorf("%s: %d git calls for HEAD, want none:\n%s", c.name, len(got), strings.Join(got, "\n"))
+		}
+	}
+	// the files are not the whole story: git says. A branch that is a symbolic ref names another branch in its file.
+	git("symbolic-ref", "refs/heads/alias", "refs/heads/feature/x")
+	git("symbolic-ref", "HEAD", "refs/heads/alias")
+	var viaAlias string
+	event(func() { viaAlias = gitHead(repo) })
+	if want := realHead(t, repo); viaAlias != want || want == "" {
+		t.Errorf("HEAD through a symbolic ref is %q, git says %q", viaAlias, want)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, ".git", "reftable"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := realHead(t, repo)
+	calls()
+	var got string
+	event(func() { got = gitHead(repo) })
+	if n := len(calls()); got != want || n == 0 {
+		t.Errorf("with a reftable folder git is asked: HEAD %q (git says %q), %d calls", got, want, n)
 	}
 }

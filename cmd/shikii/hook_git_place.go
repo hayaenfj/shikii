@@ -23,7 +23,8 @@ import (
 // headKnown).
 type gitPlace struct {
 	top, objects, exclude, head string
-	headKnown                   bool // head is what git said just now (a place kept from an earlier event has none: every commit changes it)
+	headKnown                   bool   // head is what git said just now (a place kept from an earlier event has none: every commit changes it)
+	gitDir                      string // the repository's own `.git` folder when it is a plain one (headFromFiles can read HEAD there); "" otherwise
 }
 
 // placeAnswer is one answer of git, also a "no" (outside git): ok says which.
@@ -45,8 +46,8 @@ type placeMemo struct {
 // placeCacheTTL is how long a hook event may rely on the place a hook before it got from git (kept between events).
 var placeCacheTTL = 30 * time.Minute
 
-// eventPlaces is the memo of the hook event in progress (nil outside one: the CLI, the MCP server and the page ask git every time,
-// as a long-running process must not keep an answer between requests).
+// eventPlaces is the memo of the hook event in progress (nil outside one: the CLI, the MCP server and the page keep no answer in memory,
+// as a long-running process must not; they use the kept answer of keptPlace, which is checked against the folders at every use).
 var eventPlaces *placeMemo
 
 // beginEventGit starts the memo for one hook event and returns the function that ends it.
@@ -58,8 +59,9 @@ func beginEventGit() func() {
 
 // gitPlaceAt gives the place of the repository that dir is in. ok is false outside a working tree, as for
 // `git rev-parse --show-toplevel` alone. The folders above dir say a good deal without a process (walkUpForGit): that none of them is
-// or can be a repository (then git would say no), or that the nearest `.git` is the one git answered about a moment ago (in a hook
-// event, keptPlace). Otherwise git is asked, once.
+// or can be a repository (then git would say no), or that the nearest `.git` is the one git answered about a moment ago (keptPlace,
+// checked against the folders at every use, so also a CLI, an MCP server or a page that lives long can use it). Otherwise git is asked,
+// once.
 func gitPlaceAt(ctx context.Context, dir string) (gitPlace, bool) {
 	memo := eventPlaces
 	if memo != nil {
@@ -75,7 +77,7 @@ func gitPlaceAt(ctx context.Context, dir string) (gitPlace, bool) {
 		memo.keep(dir, gitPlace{}, false)
 		return gitPlace{}, false
 	}
-	if memo != nil && walked {
+	if walked {
 		if place, ok := keptPlace(walk); ok {
 			memo.keep(dir, place, true)
 			return place, true
@@ -100,12 +102,15 @@ func gitPlaceAt(ctx context.Context, dir string) (gitPlace, bool) {
 		if len(lines) == 4 {
 			place.head = strings.TrimSpace(lines[3])
 		}
+		if walked && walk.plain && sameFolder(walk.at, place.top) {
+			place.gitDir = filepath.Join(walk.at, ".git")
+		}
 	}
 	if memo != nil && (found || ran && exit.ExitCode() != 1) {
 		memo.keep(dir, place, found)
-		if found && walked {
-			keepPlace(walk, place)
-		}
+	}
+	if found && walked {
+		keepPlace(walk, place)
 	}
 	return place, found
 }
@@ -141,7 +146,7 @@ type gitWalk struct {
 // the top, a filesystem boundary or a ceiling. ok is false where git has to say: the environment tells git where the repository is, a
 // folder cannot be read, or a boundary is crossed.
 func walkUpForGit(dir string) (gitWalk, bool) {
-	for _, name := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_DISCOVERY_ACROSS_FILESYSTEM"} {
+	for _, name := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_NAMESPACE"} {
 		if os.Getenv(name) != "" {
 			return gitWalk{}, false
 		}
@@ -252,7 +257,7 @@ func keptPlace(w gitWalk) (gitPlace, bool) {
 	if info, err := os.Lstat(objects); err != nil || !info.IsDir() {
 		return gitPlace{}, false
 	}
-	return gitPlace{top: e.Top, objects: objects, exclude: filepath.Join(w.at, ".git", "info", "exclude")}, true
+	return gitPlace{top: e.Top, objects: objects, exclude: filepath.Join(w.at, ".git", "info", "exclude"), gitDir: filepath.Join(w.at, ".git")}, true
 }
 
 // keepPlace keeps what git answered for the next events (best effort: a failure only means git is asked again). Only for a repository
@@ -273,6 +278,24 @@ func keepPlace(w gitWalk, place gitPlace) {
 	_, werr := tmp.Write(raw)
 	if cerr := tmp.Close(); werr != nil || cerr != nil || os.Rename(tmp.Name(), file) != nil {
 		os.Remove(tmp.Name())
+		return
+	}
+	forgetOldPlaces(filepath.Dir(file))
+}
+
+// placeKeptFor is how long a file of kept answers stays when nothing writes it again: a repository nobody works in any more.
+const placeKeptFor = 7 * 24 * time.Hour
+
+// forgetOldPlaces removes the files of kept answers that were last written more than placeKeptFor ago (best effort).
+func forgetOldPlaces(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if info, err := e.Info(); err == nil && info.Mode().IsRegular() && time.Since(info.ModTime()) > placeKeptFor {
+			os.Remove(filepath.Join(dir, e.Name()))
+		}
 	}
 }
 
@@ -280,4 +303,61 @@ func keepPlace(w gitWalk, place gitPlace) {
 func outsideGit(dir string) bool {
 	w, ok := walkUpForGit(dir)
 	return ok && w.at == ""
+}
+
+// headFromFiles reads HEAD from the files of a plain `.git` folder, as git does for the files backend: HEAD names a ref (or is a commit,
+// detached); the ref is a file of its own or a line of packed-refs; a ref that is neither is a branch before its first commit. known
+// is false where the files are not the whole story (a reftable, a symbolic ref, a name outside refs/): git says.
+func headFromFiles(gitDir string) (head string, known bool) {
+	if _, err := os.Lstat(filepath.Join(gitDir, "reftable")); !errors.Is(err, fs.ErrNotExist) {
+		return "", false
+	}
+	raw, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
+	if err != nil {
+		return "", false
+	}
+	content := strings.TrimSpace(string(raw))
+	if isObjectID(content) {
+		return content, true // detached
+	}
+	name, ok := strings.CutPrefix(content, "ref: ")
+	if !ok || !strings.HasPrefix(name, "refs/") || strings.Contains(name, "..") {
+		return "", false
+	}
+	loose, err := os.ReadFile(filepath.Join(gitDir, filepath.FromSlash(name)))
+	switch {
+	case err == nil:
+		if v := strings.TrimSpace(string(loose)); isObjectID(v) {
+			return v, true
+		}
+		return "", false
+	case !errors.Is(err, fs.ErrNotExist):
+		return "", false
+	}
+	packed, err := os.ReadFile(filepath.Join(gitDir, "packed-refs"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", true // a branch before its first commit
+	}
+	if err != nil {
+		return "", false
+	}
+	for _, line := range strings.Split(string(packed), "\n") {
+		if id, ref, ok := strings.Cut(strings.TrimSpace(line), " "); ok && ref == name && isObjectID(id) {
+			return id, true
+		}
+	}
+	return "", true
+}
+
+// isObjectID reports whether s is the hex name of an object (40 digits, or 64 in a repository that hashes with sha256).
+func isObjectID(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
 }

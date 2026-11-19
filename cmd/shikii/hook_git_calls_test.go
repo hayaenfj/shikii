@@ -53,15 +53,16 @@ func TestAHookEventAsksGitWhereTheRepositoryIsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(repo)
+	forgetKeptPlaces(t) // nothing is known about the repository yet: the first event has to ask
 	calls := gitCallLog(t)
 	for i, cwd := range []string{repo, sub} {
 		session := "calls-" + filepath.Base(cwd)
 		runManualHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": cwd, "prompt": planningTestRequest})
-		// the first event of the repository asks git where it is (HEAD comes in the same answer); a later one uses what git said
-		// (also from a subfolder), and HEAD, which every commit changes, is asked alone after the listing
+		// the first event of the repository asks git where it is (HEAD comes in the same answer); a later one uses what git said (also
+		// from a subfolder) and reads HEAD, which every commit changes, from the files of the repository
 		want := append([]string{place}, snapshot...)
 		if i > 0 {
-			want = append(append([]string{}, snapshot...), "rev-parse HEAD")
+			want = snapshot
 		}
 		if got := calls(); !reflect.DeepEqual(got, want) {
 			t.Errorf("a request from %s made these git calls:\n%s\nwant:\n%s", cwd, strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -158,10 +159,24 @@ func TestTheHeadComesWithTheAnswerAboutTheRepository(t *testing.T) {
 func TestTheSessionStartAsksGitWhereTheRepositoryIsOnce(t *testing.T) {
 	repo, _, _ := planningFixture(t)
 	t.Chdir(repo)
+	forgetKeptPlaces(t)
 	calls := gitCallLog(t)
-	runManualHook(t, "session-start", map[string]any{"session_id": "start-once", "cwd": repo})
-	want := []string{"rev-parse --show-toplevel --git-path objects --git-path info/exclude --verify -q HEAD"}
-	if got := calls(); !reflect.DeepEqual(got, want) {
-		t.Errorf("a session start made these git calls:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	for i, want := range [][]string{{"rev-parse --show-toplevel --git-path objects --git-path info/exclude --verify -q HEAD"}, nil} {
+		runManualHook(t, "session-start", map[string]any{"session_id": "start-once", "cwd": repo})
+		if got := calls(); !reflect.DeepEqual(got, want) { // the second start finds the answer kept by the first
+			t.Errorf("session start %d made these git calls:\n%s\nwant:\n%s", i+1, strings.Join(got, "\n"), strings.Join(want, "\n"))
+		}
+	}
+}
+
+// forgetKeptPlaces drops what the tests so far kept of git's answers about repositories (the test home's folder of them).
+func forgetKeptPlaces(t *testing.T) {
+	t.Helper()
+	agent, err := agentHome()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(agent, "places")); err != nil {
+		t.Fatal(err)
 	}
 }

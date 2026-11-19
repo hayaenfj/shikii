@@ -207,7 +207,29 @@ func TestMain(m *testing.M) {
 	// takes 0.3 s alone took 1 to 2 s. Tests do not need the data to survive a power cut.
 	store.SyncTemp = func(*os.File) error { return nil }
 	syncPersonFile = func(*os.File) error { return nil }
-	os.Exit(m.Run())
+	// No test writes into this machine's real home (the agents' folder ~/.shikii/agent, the records kept for later events): the tests
+	// that did not set a temporary HOME of their own ran against the real one (the answers kept between hook events, 2026-11-19).
+	// A test that wants a home of its own sets it (t.Setenv or hookEnv).
+	home, err := os.MkdirTemp("", "shikii-test-home-*")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "no temporary home:", err)
+		os.Exit(1)
+	}
+	os.Setenv("HOME", home)
+	code := m.Run()
+	os.RemoveAll(home)
+	os.Exit(code)
+}
+
+// The tests run in a temporary home, not this machine's real one (TestMain).
+func TestTestsRunInATemporaryHome(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel, err := filepath.Rel(os.TempDir(), home); err != nil || strings.HasPrefix(rel, "..") {
+		t.Errorf("HOME is %s, outside the temporary folder %s: a test that does not set its own home writes into the real one", home, os.TempDir())
+	}
 }
 
 // A temporary folder is never found to be inside a repository above it: git is told not to search at or above the temporary folder.
