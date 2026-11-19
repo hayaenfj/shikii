@@ -2,6 +2,17 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.37.4 — The hooks start git less often in a worktree or a submodule too
+
+### Changes
+
+- In a git worktree, a submodule, or a repository whose git folder was placed elsewhere with `--separate-git-dir`, the hooks now remember git's answers and reuse them, as they already did in an ordinary repository. In 0.37.3 they still asked git every time there.
+- In these places, a request now runs git 3 times instead of 4, each tool call 0 times instead of once, and finishing a reply 3 times instead of 4. These are the same numbers as in an ordinary repository.
+
+### Fixes
+
+- Fixed a case where the hooks kept using an old folder as the repository's location after a link was pointed somewhere else. It happened when the repository's settings reach the working tree through a link. The hooks now ask git again.
+
 ## 0.37.3 — The hooks start git much less often
 
 ### Changes
