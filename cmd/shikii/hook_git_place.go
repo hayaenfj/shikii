@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -83,6 +84,8 @@ func gitPlaceAt(ctx context.Context, dir string) (gitPlace, bool) {
 			return place, true
 		}
 	}
+	// git answers a relative path from the folder it runs in, which is the real folder whichever path reached it (a link to a subfolder)
+	base := physicalFolder(dir)
 	// --verify -q HEAD goes last: with a commit the answer is a fourth line and git exits 0; before the first commit git prints the
 	// three lines before it, says nothing and exits 1; outside a working tree it prints nothing and exits 128.
 	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel", "--git-path", "objects", "--git-path", "info/exclude", "--verify", "-q", "HEAD")
@@ -94,17 +97,19 @@ func gitPlaceAt(ctx context.Context, dir string) (gitPlace, bool) {
 	var exit *exec.ExitError
 	ran := errors.As(err, &exit) && ctx.Err() == nil // git ran and exited with a code; not a timeout or a git that did not start
 	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
-	found := err == nil && len(lines) == 4 || ran && exit.ExitCode() == 1 && len(lines) == 3 // a commit; or none yet
 	var place gitPlace
-	if found {
-		// git answers a relative path from the folder it was started in, which is dir here
-		place = gitPlace{top: strings.TrimSpace(lines[0]), objects: atFolder(dir, strings.TrimSpace(lines[1])), exclude: atFolder(dir, strings.TrimSpace(lines[2])), headKnown: true}
-		if len(lines) == 4 {
-			place.head = strings.TrimSpace(lines[3])
-		}
-		if walked && walk.plain && sameFolder(walk.at, place.top) {
-			place.gitDir = filepath.Join(walk.at, ".git")
-		}
+	found := false
+	switch {
+	case err == nil && len(lines) == 4: // a commit
+		place, found = gitPlace{top: strings.TrimSpace(lines[0]), objects: atFolder(base, strings.TrimSpace(lines[1])), exclude: atFolder(base, strings.TrimSpace(lines[2])), head: strings.TrimSpace(lines[3]), headKnown: true}, true
+	case ran && exit.ExitCode() == 1 && len(lines) == 3: // none yet
+		place, found = gitPlace{top: strings.TrimSpace(lines[0]), objects: atFolder(base, strings.TrimSpace(lines[1])), exclude: atFolder(base, strings.TrimSpace(lines[2])), headKnown: true}, true
+	case err == nil || ran && exit.ExitCode() == 1:
+		// git answered, but not in the lines expected: a folder name with a line end in it. Asked one by one, as before they were put together.
+		place, found = placeApart(ctx, dir, base)
+	}
+	if found && walked && walk.plain && sameFolder(walk.at, place.top) {
+		place.gitDir = filepath.Join(walk.at, ".git")
 	}
 	if memo != nil && (found || ran && exit.ExitCode() != 1) {
 		memo.keep(dir, place, found)
@@ -136,6 +141,36 @@ func atFolder(dir, path string) string {
 	return filepath.Join(dir, path)
 }
 
+// physicalFolder is dir as an absolute path with its links resolved: the folder git itself works in.
+func physicalFolder(dir string) string {
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = real
+	}
+	return dir
+}
+
+// placeApart asks git the three questions one by one (the top folder, the object folder, the exclude file), for a folder whose name has a
+// line end in it: the lines of the answer put together cannot be told apart then. HEAD is left unknown.
+func placeApart(ctx context.Context, dir, base string) (gitPlace, bool) {
+	ask := func(args ...string) (string, bool) {
+		cmd := exec.CommandContext(ctx, "git", append([]string{"rev-parse"}, args...)...)
+		cmd.Dir = dir
+		cmd.Stderr = io.Discard
+		out, err := cmd.Output()
+		return strings.TrimSuffix(string(out), "\n"), err == nil
+	}
+	top, ok1 := ask("--show-toplevel")
+	objects, ok2 := ask("--git-path", "objects")
+	exclude, ok3 := ask("--git-path", "info/exclude")
+	if !ok1 || !ok2 || !ok3 || top == "" {
+		return gitPlace{}, false
+	}
+	return gitPlace{top: top, objects: atFolder(base, objects), exclude: atFolder(base, exclude)}, true
+}
+
 // gitWalk is what the folders from a folder upward say without a process.
 type gitWalk struct {
 	at    string // the nearest folder that holds a `.git` (or the files of a bare repository); "" when none does, up to the top
@@ -147,7 +182,7 @@ type gitWalk struct {
 // folder cannot be read, or a boundary is crossed.
 func walkUpForGit(dir string) (gitWalk, bool) {
 	for _, name := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_NAMESPACE"} {
-		if os.Getenv(name) != "" {
+		if _, set := os.LookupEnv(name); set { // also set to nothing: git reads an empty GIT_DIR as an error
 			return gitWalk{}, false
 		}
 	}
@@ -155,7 +190,11 @@ func walkUpForGit(dir string) (gitWalk, bool) {
 	if !ok {
 		return gitWalk{}, false
 	}
-	start, err := filepath.EvalSymlinks(dir)
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return gitWalk{}, false
+	}
+	start, err := filepath.EvalSymlinks(abs)
 	if err != nil {
 		return gitWalk{}, false
 	}
@@ -186,8 +225,9 @@ func walkUpForGit(dir string) (gitWalk, bool) {
 		case !errors.Is(err, fs.ErrNotExist):
 			return gitWalk{}, false
 		}
-		if head, err := os.Lstat(filepath.Join(d, "HEAD")); err == nil && head.Mode().IsRegular() {
-			if objects, err := os.Lstat(filepath.Join(d, "objects")); err == nil && objects.IsDir() {
+		// HEAD may be a link (an old way of writing it, to a branch that has no commit yet), and objects may be one: git follows them
+		if head, err := os.Lstat(filepath.Join(d, "HEAD")); err == nil && (head.Mode().IsRegular() || head.Mode()&os.ModeSymlink != 0) {
+			if objects, err := os.Stat(filepath.Join(d, "objects")); err == nil && objects.IsDir() {
 				return gitWalk{at: d}, true // the files of a bare repository: git says what that is
 			}
 		}
@@ -257,6 +297,12 @@ func keptPlace(w gitWalk) (gitPlace, bool) {
 	if info, err := os.Lstat(objects); err != nil || !info.IsDir() {
 		return gitPlace{}, false
 	}
+	if info, err := os.Lstat(filepath.Join(w.at, ".git", "HEAD")); err != nil || !info.Mode().IsRegular() {
+		return gitPlace{}, false // not the repository git answered about
+	}
+	if info, err := os.Lstat(filepath.Join(w.at, ".git", "config")); err != nil || info.ModTime().Unix() > e.At {
+		return gitPlace{}, false // written since git answered: core.bare, core.worktree and the like may have changed what it would say
+	}
 	return gitPlace{top: e.Top, objects: objects, exclude: filepath.Join(w.at, ".git", "info", "exclude"), gitDir: filepath.Join(w.at, ".git")}, true
 }
 
@@ -321,8 +367,8 @@ func headFromFiles(gitDir string) (head string, known bool) {
 		return content, true // detached
 	}
 	name, ok := strings.CutPrefix(content, "ref: ")
-	if !ok || !strings.HasPrefix(name, "refs/") || strings.Contains(name, "..") {
-		return "", false
+	if !ok || !strings.HasPrefix(name, "refs/") || strings.Contains(name, "..") || path.Clean(name) != name {
+		return "", false // a name git does not write (a doubled or trailing slash, a dot step): git says
 	}
 	loose, err := os.ReadFile(filepath.Join(gitDir, filepath.FromSlash(name)))
 	switch {
@@ -341,9 +387,12 @@ func headFromFiles(gitDir string) (head string, known bool) {
 	if err != nil {
 		return "", false
 	}
+	if bytes.Contains(packed, []byte("\r")) {
+		return "", false // not written by git here: git may read it another way
+	}
 	for _, line := range strings.Split(string(packed), "\n") {
-		if id, ref, ok := strings.Cut(strings.TrimSpace(line), " "); ok && ref == name && isObjectID(id) {
-			return id, true
+		if id, ref, ok := strings.Cut(line, " "); ok && ref == name {
+			return id, isObjectID(id) // an id git writes (lower case); any other is left to git
 		}
 	}
 	return "", true

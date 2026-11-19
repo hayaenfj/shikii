@@ -180,3 +180,68 @@ func forgetKeptPlaces(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Codex's memory folder (~/.codex/memories) makes a request read the files there that name the project, and a project is named also
+// by the repository name of its git origin. That question to git was asked at every request whenever the folder existed: also outside
+// git, where the folders already say there is nothing to ask. It is now asked only when a file that is not moved to the wiki yet has to
+// be compared with the names, and never outside git.
+func TestACodexMemoryFolderDoesNotMakeEveryRequestAskGit(t *testing.T) {
+	memory := func(t *testing.T, files map[string]string) {
+		t.Helper()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := filepath.Join(home, ".codex", "memories")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for name, body := range files {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	unmoved := map[string]string{"other.md": "---\nname: other\n---\nA note about another project.\n"}
+	moved := map[string]string{"done.md": "---\nname: done\n---\ncanonical: .shikii/wiki 0123456789abcdef\n"}
+	asked := func(calls []string) []string {
+		var out []string
+		for _, c := range calls {
+			if strings.HasPrefix(c, "remote ") {
+				out = append(out, c)
+			}
+		}
+		return out
+	}
+
+	t.Run("outside git, a file not moved yet", func(t *testing.T) {
+		folder := t.TempDir()
+		hookEnv(t, nil, folder)
+		memory(t, unmoved)
+		calls := gitCallLog(t)
+		runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "codex-memory-outside", "cwd": folder, "prompt": planningTestRequest})
+		if got := calls(); len(got) != 0 {
+			t.Errorf("a request outside git made these git calls:\n%s", strings.Join(got, "\n"))
+		}
+	})
+	t.Run("in git, every file already moved", func(t *testing.T) {
+		repo, _, _ := planningFixture(t)
+		t.Chdir(repo)
+		memory(t, moved)
+		calls := gitCallLog(t)
+		runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "codex-memory-moved", "cwd": repo, "prompt": planningTestRequest})
+		if got := asked(calls()); len(got) != 0 {
+			t.Errorf("nothing in Codex's memory had to be compared with the names, yet git was asked: %v", got)
+		}
+	})
+	t.Run("in git, a file not moved yet is compared with the names", func(t *testing.T) {
+		repo, _, _ := planningFixture(t)
+		t.Chdir(repo)
+		memory(t, unmoved)
+		calls := gitCallLog(t)
+		runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "codex-memory-unmoved", "cwd": repo, "prompt": planningTestRequest})
+		if got := asked(calls()); len(got) != 1 {
+			t.Errorf("a file that may name the project needs the origin once: asked %v", got)
+		}
+	})
+}

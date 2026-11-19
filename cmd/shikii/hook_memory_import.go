@@ -104,6 +104,9 @@ func projectNames(scope string) []string {
 	if len(base) >= 4 {
 		names = append(names, base)
 	}
+	if outsideGit(scope) {
+		return names // nothing above is, or can be, a repository: no origin to ask for and no process to start
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if remote, ok := gitRun(ctx, scope, "remote", "get-url", "origin"); ok {
@@ -149,13 +152,20 @@ func namesProject(text string, names []string) bool {
 	return false
 }
 
-// unimportedCodexMemoryFiles is the files in Codex's shared memory that name this project and are not yet moved to the wiki.
-func unimportedCodexMemoryFiles(dir string, names []string) []string {
-	if dir == "" || len(names) == 0 {
+// unimportedCodexMemoryFiles is the files in Codex's shared memory that name this project and are not yet moved to the wiki. The names
+// are asked for only when a file that is not moved yet has to be compared with them: naming the project can mean a question to git
+// (the repository name of its origin), which is not worth a process at every request when there is nothing to compare.
+func unimportedCodexMemoryFiles(dir string, names func() []string) []string {
+	if dir == "" {
 		return nil
 	}
+	var known []string
+	asked := false
 	return unimportedMemoryFilesMatching(dir, func(head string) bool {
-		return namesProject(head, names)
+		if !asked {
+			known, asked = names(), true
+		}
+		return namesProject(head, known)
 	})
 }
 
@@ -178,7 +188,7 @@ func memoryImportNotice(scope string) string {
 		}
 	}
 	if dir := codexMemoryDir(); dir != "" {
-		if files := unimportedCodexMemoryFiles(dir, projectNames(scope)); len(files) > 0 {
+		if files := unimportedCodexMemoryFiles(dir, func() []string { return projectNames(scope) }); len(files) > 0 {
 			parts = append(parts, fmt.Sprintf("%d in Codex's %s that name this project (%s)", len(files), homeTilde(dir), listFiles(files)))
 		}
 	}
