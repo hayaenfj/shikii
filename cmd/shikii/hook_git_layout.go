@@ -226,12 +226,15 @@ var (
 const configFileMax = 1 << 20
 
 // coreWorktreeOf reads the value of core.worktree as written in the text of a git configuration. present is false where there is none.
-// ok is false where the text is in a form that is not read here with certainty (an include, a quote, a comment after the value, a
-// line that goes on, a carriage return, a second value): the folder it names is then not known, and git is asked.
+// ok is false where the text is in a form that is not read here with certainty (a quote, a comment after the value, a line that goes
+// on, a carriage return, a second value): the folder it names is then not known, and git is asked. An include is not followed: git
+// does not read core.worktree in an included file when it looks for the working tree (it reads the file itself, not what it includes),
+// so the section is an ordinary one here. As git does, the value is trimmed of spaces and tabs and of nothing else (another character
+// Unicode calls a space is part of the folder name).
 func coreWorktreeOf(text string) (value string, present, ok bool) {
 	lower := strings.ToLower(text)
-	if !strings.Contains(lower, "worktree") && !strings.Contains(lower, "[include") {
-		return "", false, true // no key of that name, and nothing that could include one
+	if !strings.Contains(lower, "worktree") {
+		return "", false, true // no key of that name
 	}
 	if strings.ContainsAny(text, "\r\x00") {
 		return "", false, false
@@ -246,19 +249,19 @@ func coreWorktreeOf(text string) (value string, present, ok bool) {
 		case line == "" || line[0] == '#' || line[0] == ';':
 		case line[0] == '[':
 			m := configSection.FindStringSubmatch(strings.TrimRight(line, " \t"))
-			if m == nil || strings.EqualFold(m[1], "include") || strings.EqualFold(m[1], "includeIf") {
+			if m == nil {
 				return "", false, false
 			}
 			inCore = strings.EqualFold(m[1], "core") && m[2] == ""
 		default:
 			key, val, hasValue := strings.Cut(line, "=")
-			if key = strings.TrimSpace(key); !configKey.MatchString(key) {
+			if key = strings.Trim(key, " \t"); !configKey.MatchString(key) {
 				return "", false, false
 			}
 			if !inCore || !strings.EqualFold(key, "worktree") {
 				continue
 			}
-			if val = strings.TrimSpace(val); !hasValue || val == "" || strings.ContainsAny(val, "\"\\#;") || present {
+			if val = strings.Trim(val, " \t"); !hasValue || val == "" || strings.ContainsAny(val, "\"\\#;") || present {
 				return "", false, false
 			}
 			value, present = val, true

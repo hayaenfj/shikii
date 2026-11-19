@@ -1033,6 +1033,10 @@ func TestAPlainRepositoryInAFormGitAcceptsIsStillKept(t *testing.T) {
 			branch := gitAt(t, repo, "symbolic-ref", "HEAD")
 			writeFile(t, filepath.Join(repo, ".git", "HEAD"), "ref:"+branch+"\n")
 		}},
+		{"HEAD has a tab after the colon", func(t *testing.T, repo string) {
+			branch := gitAt(t, repo, "symbolic-ref", "HEAD")
+			writeFile(t, filepath.Join(repo, ".git", "HEAD"), "ref:\t"+branch+"\n")
+		}},
 		{"HEAD has two spaces after the colon", func(t *testing.T, repo string) {
 			branch := gitAt(t, repo, "symbolic-ref", "HEAD")
 			writeFile(t, filepath.Join(repo, ".git", "HEAD"), "ref:  "+branch+"\n")
@@ -1136,9 +1140,9 @@ func TestTheWorkTreeTheConfigurationNamesIsReadOnlyInTheFormsGitWritesIt(t *test
 		{"a comment after the value", "[core]\n\tworktree = ../x # here\n", "", false, false},
 		{"a backslash in the value", "[core]\n\tworktree = ..\\x\n", "", false, false},
 		{"a line that goes on", "[core]\n\tbare = fal\\\nse\n\tworktree = ../x\n", "", false, false},
-		{"an include", "[include]\n\tpath = other\n[core]\n\tworktree = ../x\n", "", false, false},
-		{"a conditional include", "[includeIf \"gitdir:/a/\"]\n\tpath = other\n", "", false, false},
-		{"an include with capital letters", "[INCLUDE]\n\tpath = other\n", "", false, false},
+		{"an include and the key", "[include]\n\tpath = other\n[core]\n\tworktree = ../x\n", "../x", true, true},
+		{"a conditional include (the key of its section is not core's)", "[includeIf \"gitdir:/a/\"]\n\tworktree = y\n", "", false, true},
+		{"an include with capital letters and no key", "[INCLUDE]\n\tpath = other\n", "", false, true},
 		{"a carriage return", "[core]\r\n\tworktree = ../x\r\n", "", false, false},
 		{"a carriage return at the end of the value only", "[core]\n\tworktree = ../x\r\n", "", false, false},
 		{"two values", "[core]\n\tworktree = ../x\n[core]\n\tworktree = ../y\n", "", false, false},
@@ -1146,6 +1150,7 @@ func TestTheWorkTreeTheConfigurationNamesIsReadOnlyInTheFormsGitWritesIt(t *test
 		{"a section written the old way", "[core.x]\n\tworktree = ../x\n", "", false, false},
 		{"the key with no value", "[core]\n\tworktree\n", "", false, false},
 		{"an empty value", "[core]\n\tworktree =\n", "", false, false},
+		{"a no-break space before the key (git cannot read the file)", "[core]\n\t\u00a0worktree = ../x\n", "", false, false},
 		{"a key git does not write", "[core]\n\t1x = y\n\tworktree = ../x\n", "", false, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -1157,9 +1162,10 @@ func TestTheWorkTreeTheConfigurationNamesIsReadOnlyInTheFormsGitWritesIt(t *test
 	}
 }
 
-// A repository whose configuration includes another file is not kept (the included file may name the working tree), and one whose
-// configuration names the folder it is in (core.worktree = .., as `git init` does for some set-ups) is.
-func TestAnIncludedConfigurationIsNotKeptButTheWorkTreeNamedHereIs(t *testing.T) {
+// A repository whose configuration includes another file is kept like any other: git does not read core.worktree in an included file
+// when it looks for the working tree (checked here against the git that runs), and one whose configuration names the folder it is in
+// (core.worktree = .., as `git init` does for some set-ups) is kept too; one that names another folder is not.
+func TestTheWorkTreeTheConfigurationNamesDecidesWhetherTheAnswerIsKept(t *testing.T) {
 	asked := func(t *testing.T, setup func(t *testing.T, repo string)) int {
 		t.Helper()
 		t.Setenv("HOME", t.TempDir())
@@ -1172,9 +1178,22 @@ func TestAnIncludedConfigurationIsNotKeptButTheWorkTreeNamedHereIs(t *testing.T)
 		event(func() { gitPlaceAt(context.Background(), repo) })
 		return len(calls())
 	}
-	t.Run("an include", func(t *testing.T) {
-		if n := asked(t, func(t *testing.T, repo string) { gitAt(t, repo, "config", "include.path", "elsewhere") }); n == 0 {
-			t.Error("the answer was kept for a repository whose configuration includes another file")
+	t.Run("an include that names another folder", func(t *testing.T) {
+		var repo string
+		n := asked(t, func(t *testing.T, r string) {
+			repo = r
+			other := filepath.Join(filepath.Dir(r), "other")
+			if err := os.MkdirAll(other, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(filepath.Dir(r), "shared.gitconfig"), "[core]\n\tworktree = "+other+"\n")
+			gitAt(t, r, "config", "include.path", filepath.Join(filepath.Dir(r), "shared.gitconfig"))
+		})
+		if got := gitTopOf(t, repo); !sameFolder(got, repo) {
+			t.Skipf("this git reads core.worktree in an included file (top %q): the include is left to it", got)
+		}
+		if n != 0 {
+			t.Errorf("the second event asked git %d times: git does not read the included file for the working tree", n)
 		}
 	})
 	t.Run("the working tree is named, and it is here", func(t *testing.T) {
@@ -1213,4 +1232,155 @@ func TestAConfigurationTooLargeToReadIsNotKept(t *testing.T) {
 	if len(calls()) == 0 {
 		t.Error("the answer was kept for a configuration that was not read")
 	}
+}
+
+// git trims a value of the spaces and tabs around it and nothing else: another character that Unicode calls a space belongs to the
+// folder name (a link of that name may be pointed elsewhere). The value read here is the one git reads, for each of them.
+func TestTheValueOfCoreWorktreeIsTrimmedOfSpacesAndTabsOnly(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	for _, c := range []struct{ name, around string }{
+		{"a space", " "}, {"a tab", "\t"}, {"a no-break space", "\u00a0"}, {"a vertical tab", "\v"}, {"a form feed", "\f"},
+		{"a next-line character", "\u0085"}, {"a line separator", "\u2028"}, {"an ideographic space", "\u3000"},
+	} {
+		for _, side := range []string{"before", "after"} {
+			t.Run(c.name+" "+side, func(t *testing.T) {
+				value := "/a/b"
+				text := "[core]\n\tworktree = " + c.around + value + "\n"
+				if side == "after" {
+					text = "[core]\n\tworktree = " + value + c.around + "\n"
+				}
+				file := filepath.Join(dir, "config")
+				writeFile(t, file, text)
+				out, err := exec.Command("git", "config", "--file", file, "--get-all", "core.worktree").Output()
+				if err != nil {
+					t.Skipf("git does not read this form: %v", err)
+				}
+				want := strings.TrimSuffix(string(out), "\n")
+				got, present, ok := coreWorktreeOf(text)
+				if !ok || !present || got != want {
+					t.Errorf("read (%q, present %v, ok %v), git reads %q", got, present, ok, want)
+				}
+			})
+		}
+	}
+}
+
+// The same, end to end: a value that ends in such a character names a folder (here a link) of that name; once the link is pointed
+// elsewhere, the kept answer is not used.
+func TestAValueEndingInASpaceLikeCharacterNamesThatFolder(t *testing.T) {
+	for _, around := range []string{"\u00a0", "\v", "\u0085"} {
+		t.Run(fmt.Sprintf("%U", []rune(around)[0]), func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			base, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			top, other := filepath.Join(base, "w"), filepath.Join(base, "other")
+			newRepoAt(t, top)
+			if err := os.MkdirAll(other, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			link := top + around
+			if err := os.Symlink(top, link); err != nil {
+				t.Skipf("no such name here: %v", err)
+			}
+			config := filepath.Join(top, ".git", "config")
+			raw, err := os.ReadFile(config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, config, string(raw)+"[core]\n\tworktree = "+link+"\n")
+			if got := gitTopOf(t, top); !sameFolder(got, top) {
+				t.Skipf("premise: git says the top folder is %q", got)
+			}
+			got, ok, asked := keptThenChanged(t, top, func() {
+				if err := os.Remove(link); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(other, link); err != nil {
+					t.Fatal(err)
+				}
+			})
+			if want := gitTopOf(t, top); asked == 0 && (!ok || !sameFolder(got.top, want)) {
+				t.Errorf("the kept top folder %q (%v) was used with no git call, git says %q", got.top, ok, want)
+			}
+		})
+	}
+}
+
+// The configuration of one worktree (config.worktree, read by git where extensions.worktreeConfig is on) can name the working tree
+// too, and its relative value is read from the git folder of that worktree.
+func TestTheConfigurationOfOneWorktreeIsReadForTheFolderItNames(t *testing.T) {
+	setup := func(t *testing.T, linked bool) (top, link, a, b, gitDir string) {
+		t.Helper()
+		t.Setenv("HOME", t.TempDir())
+		base, err := filepath.EvalSymlinks(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, b, link = filepath.Join(base, "a"), filepath.Join(base, "b"), filepath.Join(base, "link")
+		top = filepath.Join(a, "w")
+		if linked {
+			main := filepath.Join(base, "main")
+			newRepoAt(t, main)
+			commitIn(t, main, "m")
+			if err := os.MkdirAll(a, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			gitAt(t, main, "worktree", "add", "-q", top, "-b", "lw")
+			gitAt(t, main, "config", "extensions.worktreeConfig", "true")
+		} else {
+			newRepoAt(t, top)
+			commitIn(t, top, "p")
+			gitAt(t, top, "config", "extensions.worktreeConfig", "true")
+		}
+		if err := os.MkdirAll(filepath.Join(b, "w"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(a, link); err != nil {
+			t.Fatal(err)
+		}
+		gitDir, _ = gitDirsOf(t, top)
+		return top, link, a, b, gitDir
+	}
+	for _, linked := range []bool{false, true} {
+		name := map[bool]string{false: "a plain repository", true: "a linked worktree"}[linked]
+		t.Run(name+" naming itself through a link", func(t *testing.T) {
+			top, link, _, b, _ := setup(t, linked)
+			gitAt(t, top, "config", "--worktree", "core.worktree", filepath.Join(link, "w"))
+			if got := gitTopOf(t, top); !sameFolder(got, top) {
+				t.Fatalf("premise: git says the top folder is %q", got)
+			}
+			got, ok, asked := keptThenChanged(t, top, func() {
+				if err := os.Remove(link); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(b, link); err != nil {
+					t.Fatal(err)
+				}
+			})
+			if want := gitTopOf(t, top); asked == 0 && (!ok || !sameFolder(got.top, want)) {
+				t.Errorf("the kept top folder %q (%v) was used with no git call, git says %q", got.top, ok, want)
+			}
+		})
+	}
+	t.Run("a linked worktree naming itself with a path from its git folder", func(t *testing.T) {
+		top, _, _, _, gitDir := setup(t, true)
+		rel, err := filepath.Rel(gitDir, top)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gitAt(t, top, "config", "--worktree", "core.worktree", rel)
+		if got := gitTopOf(t, top); !sameFolder(got, top) {
+			t.Fatalf("premise: git says the top folder is %q", got)
+		}
+		calls := gitCallLog(t)
+		event(func() { gitPlaceAt(context.Background(), top) })
+		calls()
+		event(func() { gitPlaceAt(context.Background(), top) })
+		if n := len(calls()); n != 0 {
+			t.Errorf("the second event asked git %d times for a value that names the worktree from its git folder", n)
+		}
+	})
 }
