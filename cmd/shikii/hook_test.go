@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -149,6 +150,25 @@ func runUnreviewedHook(t *testing.T, event string, in map[string]any) string {
 // fakeAgentModel is a fake that answers the hook's 4 specs: choice (prompt-kind) is edit 0.9, noul is decided by the function p(state) of the state text.
 func fakeAgentModel(t *testing.T, p func(state string) float64) *httptest.Server {
 	return fakeAgentModelEdit(t, p, func(string) float64 { return 0.9 })
+}
+
+// heldDecisionModel is a model that holds its answer to the needs-plan decision until release is called, and answers every other question
+// at once. entered is closed when the decision itself has reached it. The first question a request raises is not the decision: the
+// hook asks whether the lesson it is about to deliver applies, and a model that took that call for the decision held it (until the hook gave up after
+// hookDecideTimeout), closed entered, and let the real decision through unheld: the edit a test makes "during the decision" then raced with
+// the submit, and under load ended after it ("detects a change ..." with no error).
+func heldDecisionModel(t *testing.T) (model *httptest.Server, entered <-chan struct{}, release func()) {
+	t.Helper()
+	in, out := make(chan struct{}), make(chan struct{})
+	var enter, leave sync.Once
+	model = fakeAgentModel(t, func(state string) float64 {
+		if strings.HasPrefix(state, "Current request:") {
+			enter.Do(func() { close(in) })
+			<-out
+		}
+		return .9
+	})
+	return model, in, func() { leave.Do(func() { close(out) }) }
 }
 
 // fakeAgentModelEdit is fakeAgentModel whose choice answer gives edit the probability edit(state) (the rest share what is left).

@@ -67,8 +67,7 @@ func TestPlanningReadsFullArticleAndPinsEvidenceVersion(t *testing.T) {
 }
 
 func TestPlanningRejectsArticleChangesDuringDecision(t *testing.T) {
-	entered, release := make(chan struct{}), make(chan struct{})
-	model := fakeAgentModel(t, func(string) float64 { close(entered); <-release; return .9 })
+	model, entered, release := heldDecisionModel(t)
 	repo := gitRepo(t)
 	root := hookEnv(t, model, repo)
 	usePlanningSpec(t, root)
@@ -82,12 +81,12 @@ func TestPlanningRejectsArticleChangesDuringDecision(t *testing.T) {
 	select {
 	case <-entered:
 	case <-time.After(5 * time.Second):
-		close(release)
+		release()
 		t.Fatal("cannot start the decision")
 	}
 	d := notebook.Draft{ID: p.ID, Title: p.Title, Lesson: p.Lesson + " Recheck the delimiter.", Kind: "rule", Scene: "テストの時", AppliesTo: p.AppliesTo, Sources: []string{p.Sources[0].ID}}
 	_, editErr := (notebook.Book{Root: root, Scope: feedbackScope(repo)}).Ingest(d)
-	close(release)
+	release()
 	err := <-done
 	if editErr != nil {
 		t.Fatal(editErr)

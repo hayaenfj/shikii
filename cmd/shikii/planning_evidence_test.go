@@ -9,8 +9,7 @@ import (
 )
 
 func TestPlanningRejectsRelatedSupersessionDuringDecision(t *testing.T) {
-	entered, release := make(chan struct{}), make(chan struct{})
-	model := fakeAgentModel(t, func(string) float64 { close(entered); <-release; return .9 })
+	model, entered, release := heldDecisionModel(t)
 	repo := gitRepo(t)
 	root := hookEnv(t, model, repo)
 	usePlanningSpec(t, root)
@@ -26,11 +25,11 @@ func TestPlanningRejectsRelatedSupersessionDuringDecision(t *testing.T) {
 	select {
 	case <-entered:
 	case <-time.After(5 * time.Second):
-		close(release)
+		release()
 		t.Fatal("decision did not enter")
 	}
 	_, editErr := book.Ingest(notebook.Draft{Title: "Replacement purpose", Lesson: "Use a new workflow condition", Kind: "criteria", Scene: "planning", AppliesTo: "planning", Sources: []string{goal.Sources[0].ID}, Replaces: []string{goal.ID}})
-	close(release)
+	release()
 	submitErr := <-done
 	if editErr != nil {
 		t.Fatal(editErr)

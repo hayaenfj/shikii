@@ -179,8 +179,7 @@ func TestPlanningRecordSurvivesInterruptedReceiptWrite(t *testing.T) {
 }
 
 func TestPlanningDropsResultWhenNextRequestArrives(t *testing.T) {
-	entered, release := make(chan struct{}), make(chan struct{})
-	model := fakeAgentModel(t, func(string) float64 { close(entered); <-release; return .9 })
+	model, entered, release := heldDecisionModel(t)
 	repo := gitRepo(t)
 	root := hookEnv(t, model, repo)
 	usePlanningSpec(t, root)
@@ -194,7 +193,7 @@ func TestPlanningDropsResultWhenNextRequestArrives(t *testing.T) {
 		t.Fatal("model not reached")
 	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "Instead of exporting, inspect the existing parser and report."})
-	close(release)
+	release()
 	if err := <-done; err == nil {
 		t.Fatal("old result returned after request changed")
 	}
