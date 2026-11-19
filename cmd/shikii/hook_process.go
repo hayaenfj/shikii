@@ -82,31 +82,48 @@ func treeStateWithScope(cwd string) (hash, listing string, listed bool, project,
 	if !addTrackedIgnored(ctx, top, env) {
 		return "", "", false, project, scope
 	}
-	// remove internal records only from the temporary index. git add errors on a negated pattern for an ignored path, so they are removed in a separate step.
-	if _, ok := run(env, "rm", "--cached", "-r", "-f", "--ignore-unmatch", "--", ".shikii"); !ok {
-		return "", "", false, project, scope
-	}
-	tree, ok := run(env, "write-tree")
-	if !ok {
-		return "", "", false, project, scope
-	}
-	sum := sha256.Sum256([]byte(tree))
-	hash = hex.EncodeToString(sum[:])[:16]
-	// stop reading the listing at the upper limit (do not read everything into memory in a huge repo and then throw it away)
-	ls := exec.CommandContext(ctx, "git", "ls-files", "--stage", "--full-name")
+	// The listing of the temporary index, without the internal records: `git add` errors on a negated pattern for an ignored path, so
+	// it could not leave them out, but the pathspec of `ls-files` only filters what the index holds. The hash is that of the whole
+	// listing, which says the mode, the blob and the path of every file just as the tree id did (so the two change together, and no
+	// `rm --cached` of the records and no `write-tree` is needed). It is read to the end, also past the part kept (a huge repo is
+	// not read into memory and then thrown away: only the first listingMax bytes are kept).
+	ls := exec.CommandContext(ctx, "git", "ls-files", "--stage", "--full-name", "--", ".", ":(exclude).shikii")
 	ls.Dir = dir
 	ls.Env = append(os.Environ(), env...)
 	ls.Stderr = io.Discard
 	pipe, err := ls.StdoutPipe()
 	if err != nil || ls.Start() != nil {
+		return "", "", false, project, scope
+	}
+	sum := sha256.New()
+	kept := &headWriter{max: listingMax + 1}
+	_, rerr := io.Copy(io.MultiWriter(sum, kept), pipe)
+	if werr := ls.Wait(); rerr != nil || werr != nil {
+		return "", "", false, project, scope // a listing cut short is another tree's hash: unknown, as for every other failed step
+	}
+	hash = treeHashPrefix + hex.EncodeToString(sum.Sum(nil))[:16]
+	if len(kept.b) > listingMax {
 		return hash, "", false, project, scope
 	}
-	lb, rerr := io.ReadAll(io.LimitReader(pipe, int64(listingMax)+1))
-	_ = ls.Wait()
-	if rerr != nil || len(lb) > listingMax {
-		return hash, "", false, project, scope
+	return hash, strings.TrimRight(string(kept.b), "\n"), true, project, scope // only the line ends: a name may end with a space
+}
+
+// treeHashPrefix starts the hash of the working tree. Before it, the hash was that of the tree id `git write-tree` gave: 16 hex digits
+// and no prefix. A hash kept by a request of that time still sits in a session that outlives an update, so the two kinds must not be
+// told apart as "changed" (settlePending).
+const treeHashPrefix = "l:"
+
+// headWriter keeps the first max bytes written to it and drops the rest; the caller sees that more came by len(b) reaching max.
+type headWriter struct {
+	b   []byte
+	max int
+}
+
+func (w *headWriter) Write(p []byte) (int, error) {
+	if room := w.max - len(w.b); room > 0 {
+		w.b = append(w.b, p[:min(room, len(p))]...)
 	}
-	return hash, strings.TrimRight(string(lb), "\n"), true, project, scope // only the line ends: a name may end with a space
+	return len(p), nil
 }
 
 // addTrackedIgnored adds to the temporary index (env) the files the repo's index tracks although an ignore rule names them.

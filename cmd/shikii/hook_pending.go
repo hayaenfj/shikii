@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/hayaenfj/shikii/internal/decide"
 	"github.com/hayaenfj/shikii/internal/store"
 )
@@ -28,6 +30,9 @@ func settlePending(agent string, sess *hookSession, now string, only []pendingIt
 		}
 		if now == "" {
 			continue // nothing to compare: drop without a label
+		}
+		if strings.HasPrefix(p.Tree, treeHashPrefix) != strings.HasPrefix(now, treeHashPrefix) {
+			continue // the hash was kept by a version that made it another way (before an update): nothing to compare, drop without a label
 		}
 		if p.Tree != now {
 			if err := labelTrace(st, "prompt-kind", p.Trace, "edit", 1, "outcome"); err != nil && firstErr == nil {

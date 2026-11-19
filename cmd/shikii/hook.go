@@ -248,8 +248,8 @@ type askedItem struct {
 
 // ---------------------------------------------------------------- per event
 
-// treeStateWithScope is the working tree state: the first 16 digits (hash) of the tree id from `git add -A` (respects .gitignore, includes untracked) into a temporary index and `git write-tree`,
-// the `git ls-files --stage` listing of that index (listing. At Stop it is compared with the one at request time to get the "changed files". Empty in an empty repo. listed says whether it was obtained),
+// treeStateWithScope is the working tree state: the `git ls-files --stage` listing of a temporary index that `git add -A` (respects .gitignore, includes untracked) filled, without the internal records (listing. At Stop it is compared with the one at request time to get the "changed files". Empty in an empty repo. listed says whether it was obtained),
+// and its hash (the prefix treeHashPrefix and the first 16 digits of the sha256 of the whole listing, also when it is too long to be kept: the same files and contents give the same hash, as the tree id did),
 // plus the real-path scope and project (the work marker put on records: the folder name of the repo's root; outside git, the cwd's folder name).
 // HEAD and index state are not included, so commit / stash / checkout alone do not change it; it changes only when file contents change.
 // The one exception is a tracked file that .gitignore names: `git add -A` skips it, so it is taken from the repo's own index (a file is

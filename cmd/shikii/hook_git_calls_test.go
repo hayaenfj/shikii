@@ -43,7 +43,9 @@ func gitCallLog(t *testing.T) func() []string {
 // hook's path shows up here and has to be argued for.
 func TestAHookEventAsksGitWhereTheRepositoryIsOnce(t *testing.T) {
 	const place = "rev-parse --show-toplevel --git-path objects --git-path info/exclude --verify -q HEAD" // HEAD is in the same answer
-	snapshot := []string{"add -A -- .", "ls-files -z --cached --ignored --exclude-standard", "rm --cached -r -f --ignore-unmatch -- .shikii", "write-tree", "ls-files --stage --full-name"}
+	// the listing of the temporary index leaves the internal records out itself (an exclude pathspec), and its hash is the marker of
+	// the tree: no `rm --cached` of the records and no `write-tree` for an id the listing already says
+	snapshot := []string{"add -A -- .", "ls-files -z --cached --ignored --exclude-standard", "ls-files --stage --full-name -- . :(exclude).shikii"}
 	repo, _, _ := planningFixture(t)
 	sub := filepath.Join(repo, "pkg", "inner")
 	if err := os.MkdirAll(sub, 0o755); err != nil {
