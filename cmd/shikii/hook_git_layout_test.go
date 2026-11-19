@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -566,7 +567,6 @@ func TestAGitFolderThatIsNotOneIsLeftToGit(t *testing.T) {
 		{"no object folder", func(t *testing.T) { move(t, filepath.Join(commonDir, "objects")) }},
 		{"the object folder is a link", func(t *testing.T) { linkInstead(t, filepath.Join(commonDir, "objects")) }},
 		{"no refs folder", func(t *testing.T) { move(t, filepath.Join(commonDir, "refs")) }},
-		{"the refs folder is a link", func(t *testing.T) { linkInstead(t, filepath.Join(commonDir, "refs")) }},
 		{"no commondir file", func(t *testing.T) { move(t, filepath.Join(gitDir, "commondir")) }},
 		{"the commondir file is a link", func(t *testing.T) { linkInstead(t, filepath.Join(gitDir, "commondir")) }},
 		{"the commondir file has a carriage return", func(t *testing.T) {
@@ -894,5 +894,323 @@ func TestTheChangeTimeMovesWhenTheModificationTimeIsSetBack(t *testing.T) {
 	}
 	if gone, ok := statID(file + ".none"); !ok || gone.Exists {
 		t.Errorf("a file that is not there is a zero id: %+v (%v)", gone, ok)
+	}
+}
+
+// keptThenChanged keeps the place of the working tree at top (one event asks git, the next uses the answer), makes `change`, and asks
+// again: what the last event answered and how many git calls it made.
+func keptThenChanged(t *testing.T, top string, change func()) (gitPlace, bool, int) {
+	t.Helper()
+	calls := gitCallLog(t)
+	event(func() {
+		if _, ok := gitPlaceAt(context.Background(), top); !ok {
+			t.Fatal("premise: git answers about the working tree")
+		}
+	})
+	calls()
+	event(func() { gitPlaceAt(context.Background(), top) })
+	if n := len(calls()); n != 0 {
+		t.Fatalf("premise: the answer is kept (the second event asked git %d times)", n)
+	}
+	change()
+	calls() // what the change itself ran is not counted
+	var got gitPlace
+	var ok bool
+	event(func() { got, ok = gitPlaceAt(context.Background(), top) })
+	return got, ok, len(calls())
+}
+
+func gitTopOf(t *testing.T, dir string) string {
+	t.Helper()
+	return gitAt(t, dir, "rev-parse", "--show-toplevel")
+}
+
+// The top folder of a working tree can be named by the configuration (core.worktree), through a link; when the link is pointed
+// elsewhere, git's answer is another folder while the `.git` file, the git folder and the configuration are all as they were. The kept
+// answer is not used then.
+func TestAKeptTopFollowsALinkThatTheConfigurationNamesItThrough(t *testing.T) {
+	for _, kind := range []string{"a working tree whose git folder is kept elsewhere", "a plain repository", "a submodule"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			base, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			a, b, link := filepath.Join(base, "a"), filepath.Join(base, "b"), filepath.Join(base, "link")
+			top := filepath.Join(a, "w")
+			switch kind {
+			case "a working tree whose git folder is kept elsewhere":
+				newRepoAt(t, top, "--separate-git-dir="+filepath.Join(base, "sep.git"))
+			case "a plain repository":
+				newRepoAt(t, top)
+			case "a submodule":
+				src := filepath.Join(base, "subsrc")
+				newRepoAt(t, src)
+				commitIn(t, src, "s")
+				newRepoAt(t, a)
+				gitAt(t, a, "submodule", "add", "-q", "../subsrc", "w")
+			}
+			if err := os.MkdirAll(filepath.Join(b, "w"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(a, link); err != nil {
+				t.Fatal(err)
+			}
+			gitAt(t, top, "config", "core.worktree", filepath.Join(link, "w"))
+			if got := gitTopOf(t, top); got != top {
+				t.Fatalf("premise: git says the top folder is %q", got)
+			}
+			got, ok, asked := keptThenChanged(t, top, func() {
+				if err := os.Remove(link); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(b, link); err != nil {
+					t.Fatal(err)
+				}
+			})
+			if want := gitTopOf(t, top); asked == 0 && (!ok || got.top != want) {
+				t.Errorf("the kept top folder %q (%v) was used with no git call, git says %q", got.top, ok, want)
+			}
+		})
+	}
+	t.Run("a submodule whose own folder is a link", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		base, err := filepath.EvalSymlinks(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		src := filepath.Join(base, "subsrc")
+		newRepoAt(t, src)
+		commitIn(t, src, "s")
+		super := filepath.Join(base, "super")
+		newRepoAt(t, super)
+		gitAt(t, super, "submodule", "add", "-q", "../subsrc", "w")
+		x, y := filepath.Join(base, "X"), filepath.Join(base, "Y")
+		if err := os.Rename(filepath.Join(super, "w"), x); err != nil { // the checkout moves out, a link stays in its place
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(x, ".git"), "gitdir: "+filepath.Join(super, ".git", "modules", "w")+"\n")
+		if err := os.Symlink(x, filepath.Join(super, "w")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(y, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if got := gitTopOf(t, x); got != x {
+			t.Fatalf("premise: git says the top folder is %q, want %q", got, x)
+		}
+		got, ok, asked := keptThenChanged(t, x, func() {
+			if err := os.Remove(filepath.Join(super, "w")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(y, filepath.Join(super, "w")); err != nil {
+				t.Fatal(err)
+			}
+		})
+		if want := gitTopOf(t, x); asked == 0 && (!ok || got.top != want) {
+			t.Errorf("the kept top folder %q (%v) was used with no git call, git says %q", got.top, ok, want)
+		}
+	})
+}
+
+// A repository git reads in a form it accepts is kept as before: a refs folder that is a link (git follows it), and a HEAD written
+// `ref:refs/...` (no space; git skips the spaces after the colon).
+func TestAPlainRepositoryInAFormGitAcceptsIsStillKept(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		do   func(t *testing.T, repo string)
+	}{
+		{"the refs folder is a link", func(t *testing.T, repo string) {
+			refs := filepath.Join(repo, ".git", "refs")
+			if err := os.Rename(refs, refs+"-real"); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(refs+"-real", refs); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"HEAD has no space after the colon", func(t *testing.T, repo string) {
+			branch := gitAt(t, repo, "symbolic-ref", "HEAD")
+			writeFile(t, filepath.Join(repo, ".git", "HEAD"), "ref:"+branch+"\n")
+		}},
+		{"HEAD has two spaces after the colon", func(t *testing.T, repo string) {
+			branch := gitAt(t, repo, "symbolic-ref", "HEAD")
+			writeFile(t, filepath.Join(repo, ".git", "HEAD"), "ref:  "+branch+"\n")
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			repo := gitRepo(t)
+			commitIn(t, repo, "a")
+			c.do(t, repo)
+			want := realHead(t, repo)
+			calls := gitCallLog(t)
+			event(func() { gitPlaceAt(context.Background(), repo) })
+			calls()
+			event(func() { gitPlaceAt(context.Background(), repo) })
+			if n := len(calls()); n != 0 {
+				t.Errorf("the second event asked git %d times for a repository git reads without trouble", n)
+			}
+			var got string
+			event(func() { got = gitHead(repo) })
+			if got != want || want == "" {
+				t.Errorf("HEAD is %q, git says %q", got, want)
+			}
+		})
+	}
+}
+
+// An answer dated in the future is not used (a clock that was set back, or a file put in place from elsewhere), and a `.git` that is a
+// link to a folder is left to git (it is not the file or the folder the layouts are derived from).
+func TestAKeptAnswerFromTheFutureAndADotGitLinkAreLeftToGit(t *testing.T) {
+	t.Run("an answer dated ten minutes ahead", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		repo := gitRepo(t)
+		commitIn(t, repo, "a")
+		event(func() { gitPlaceAt(context.Background(), repo) })
+		file := mustPlaceFile(t, repo)
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var entry placeEntry // (not a map: the times of the files are larger than a float holds, and the answer would differ for that)
+		if err := json.Unmarshal(raw, &entry); err != nil {
+			t.Fatal(err)
+		}
+		entry.At = time.Now().Add(10 * time.Minute).Unix()
+		raw, _ = json.Marshal(entry)
+		writeFile(t, file, string(raw))
+		calls := gitCallLog(t)
+		event(func() { gitPlaceAt(context.Background(), repo) })
+		if len(calls()) == 0 {
+			t.Error("an answer dated in the future was used")
+		}
+		// control: the same entry dated now is used, so the answer above was left for its date alone
+		entry.At = time.Now().Unix()
+		raw, _ = json.Marshal(entry)
+		writeFile(t, file, string(raw))
+		event(func() { gitPlaceAt(context.Background(), repo) })
+		if n := len(calls()); n != 0 {
+			t.Errorf("control: the entry dated now was not used (%d git calls)", n)
+		}
+	})
+	t.Run(".git is a link to a folder", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		repo := gitRepo(t)
+		commitIn(t, repo, "a")
+		real := filepath.Join(repo, ".git")
+		moved := filepath.Join(filepath.Dir(repo), "moved.git")
+		if err := os.Rename(real, moved); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(moved, real); err != nil {
+			t.Fatal(err)
+		}
+		if l, ok := layoutAt(repo); ok {
+			t.Errorf("derived %+v from a .git that is a link to a folder", l)
+		}
+	})
+}
+
+// core.worktree is read from the configuration only in the forms git writes it; any other form is not read here, and the answer is not
+// kept (git is asked).
+func TestTheWorkTreeTheConfigurationNamesIsReadOnlyInTheFormsGitWritesIt(t *testing.T) {
+	submodule := "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n\tlogallrefupdates = true\n\tworktree = ../../../w\n\tignorecase = true\n" +
+		"[remote \"origin\"]\n\turl = ../subsrc\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n[submodule \"w\"]\n\tactive = true\n\turl = ../a#b;c\n"
+	for _, c := range []struct {
+		name, text string
+		value      string
+		present    bool
+		ok         bool
+	}{
+		{"the configuration of a submodule", submodule, "../../../w", true, true},
+		{"no such key and no include", "[core]\n\tbare = false\n", "", false, true},
+		{"a key that only holds the word", "[core]\n\tbare = false\n[extensions]\n\tworktreeConfig = true\n", "", false, true},
+		{"capital letters", "[Core]\n\tWorkTree = ../x\n", "../x", true, true},
+		{"no line end at the end", "[core]\n\tworktree = ../x", "../x", true, true},
+		{"spaces around the value", "[core]\n  worktree   =   ../x  \n", "../x", true, true},
+		{"the key of a section with a name", "[core \"x\"]\n\tworktree = y\n", "", false, true},
+		{"the key of another section", "[other]\n\tworktree = y\n", "", false, true},
+		{"a comment line", "# worktree = y\n[core]\n; worktree = z\n\tworktree = ../x\n", "../x", true, true},
+		{"a quoted value", "[core]\n\tworktree = \"../x\"\n", "", false, false},
+		{"a comment after the value", "[core]\n\tworktree = ../x # here\n", "", false, false},
+		{"a backslash in the value", "[core]\n\tworktree = ..\\x\n", "", false, false},
+		{"a line that goes on", "[core]\n\tbare = fal\\\nse\n\tworktree = ../x\n", "", false, false},
+		{"an include", "[include]\n\tpath = other\n[core]\n\tworktree = ../x\n", "", false, false},
+		{"a conditional include", "[includeIf \"gitdir:/a/\"]\n\tpath = other\n", "", false, false},
+		{"an include with capital letters", "[INCLUDE]\n\tpath = other\n", "", false, false},
+		{"a carriage return", "[core]\r\n\tworktree = ../x\r\n", "", false, false},
+		{"a carriage return at the end of the value only", "[core]\n\tworktree = ../x\r\n", "", false, false},
+		{"two values", "[core]\n\tworktree = ../x\n[core]\n\tworktree = ../y\n", "", false, false},
+		{"a key on the line of the section", "[core] worktree = ../x\n", "", false, false},
+		{"a section written the old way", "[core.x]\n\tworktree = ../x\n", "", false, false},
+		{"the key with no value", "[core]\n\tworktree\n", "", false, false},
+		{"an empty value", "[core]\n\tworktree =\n", "", false, false},
+		{"a key git does not write", "[core]\n\t1x = y\n\tworktree = ../x\n", "", false, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			value, present, ok := coreWorktreeOf(c.text)
+			if value != c.value || present != c.present || ok != c.ok {
+				t.Errorf("read (%q, present %v, ok %v), want (%q, %v, %v)", value, present, ok, c.value, c.present, c.ok)
+			}
+		})
+	}
+}
+
+// A repository whose configuration includes another file is not kept (the included file may name the working tree), and one whose
+// configuration names the folder it is in (core.worktree = .., as `git init` does for some set-ups) is.
+func TestAnIncludedConfigurationIsNotKeptButTheWorkTreeNamedHereIs(t *testing.T) {
+	asked := func(t *testing.T, setup func(t *testing.T, repo string)) int {
+		t.Helper()
+		t.Setenv("HOME", t.TempDir())
+		repo := gitRepo(t)
+		commitIn(t, repo, "a")
+		setup(t, repo)
+		calls := gitCallLog(t)
+		event(func() { gitPlaceAt(context.Background(), repo) })
+		calls()
+		event(func() { gitPlaceAt(context.Background(), repo) })
+		return len(calls())
+	}
+	t.Run("an include", func(t *testing.T) {
+		if n := asked(t, func(t *testing.T, repo string) { gitAt(t, repo, "config", "include.path", "elsewhere") }); n == 0 {
+			t.Error("the answer was kept for a repository whose configuration includes another file")
+		}
+	})
+	t.Run("the working tree is named, and it is here", func(t *testing.T) {
+		if n := asked(t, func(t *testing.T, repo string) { gitAt(t, repo, "config", "core.worktree", "..") }); n != 0 {
+			t.Errorf("the second event asked git %d times for a configuration that names the folder the repository is in", n)
+		}
+	})
+	t.Run("the working tree is named, and it is elsewhere", func(t *testing.T) {
+		if n := asked(t, func(t *testing.T, repo string) {
+			other := filepath.Join(filepath.Dir(repo), "other")
+			if err := os.MkdirAll(other, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			gitAt(t, repo, "config", "core.worktree", other)
+		}); n == 0 {
+			t.Error("the answer was kept for a repository whose configuration names another folder as the working tree")
+		}
+	})
+}
+
+// A configuration larger than any a repository has is not read for the folder it names: git is asked.
+func TestAConfigurationTooLargeToReadIsNotKept(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := gitRepo(t)
+	commitIn(t, repo, "a")
+	config := filepath.Join(repo, ".git", "config")
+	raw, err := os.ReadFile(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, config, string(raw)+strings.Repeat("# a comment line that only makes the file large\n", 30000))
+	calls := gitCallLog(t)
+	event(func() { gitPlaceAt(context.Background(), repo) })
+	calls()
+	event(func() { gitPlaceAt(context.Background(), repo) })
+	if len(calls()) == 0 {
+		t.Error("the answer was kept for a configuration that was not read")
 	}
 }

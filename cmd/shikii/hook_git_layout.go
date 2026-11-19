@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -80,16 +81,30 @@ func layoutAt(top string) (gitLayout, bool) {
 	if info, err := os.Lstat(filepath.Join(l.gitDir, "HEAD")); err != nil || !info.Mode().IsRegular() {
 		return gitLayout{}, false
 	}
-	if line, ok := oneLineOf(filepath.Join(l.gitDir, "HEAD")); !ok || !isObjectID(line) && !(strings.HasPrefix(line, "ref: refs/") && len(line) > len("ref: refs/")) {
+	if line, ok := oneLineOf(filepath.Join(l.gitDir, "HEAD")); !ok || !isObjectID(line) && !namesARef(line) {
+		return gitLayout{}, false
+	}
+	// git follows a link to the refs folder; the object folder is read as a folder of its own, as before
+	if info, err := os.Lstat(filepath.Join(l.commonDir, "objects")); err != nil || !info.IsDir() {
+		return gitLayout{}, false
+	}
+	if info, err := os.Stat(filepath.Join(l.commonDir, "refs")); err != nil || !info.IsDir() {
 		return gitLayout{}, false
 	}
 	for _, name := range []string{"objects", "refs"} {
-		folder := filepath.Join(l.commonDir, name)
-		if info, err := os.Lstat(folder); err != nil || !info.IsDir() || syscall.Access(folder, 1) != nil { // 1: may be entered
+		if syscall.Access(filepath.Join(l.commonDir, name), 1) != nil { // 1: may be entered
 			return gitLayout{}, false
 		}
 	}
 	return l, true
+}
+
+// namesARef reports whether the content of a HEAD file is `ref:` and a name under refs/, the spaces after the colon being as many as
+// git accepts.
+func namesARef(line string) bool {
+	rest, ok := strings.CutPrefix(line, "ref:")
+	rest = strings.TrimLeft(rest, " \t")
+	return ok && strings.HasPrefix(rest, "refs/") && len(rest) > len("refs/")
 }
 
 // oneLineOf is the content of a small file that holds one line, without its line end. ok is false for a file that is not a plain one,
@@ -196,10 +211,98 @@ func snapshotAt(top string) (placeSnapshot, bool) {
 	}
 	config, ok1 := statID(filepath.Join(l.commonDir, "config"))
 	wtConfig, ok2 := statID(filepath.Join(l.gitDir, "config.worktree"))
-	if !ok1 || !ok2 || !config.Exists {
+	if !ok1 || !ok2 || !config.Exists || !workTreeIsHere(l, top) {
 		return placeSnapshot{}, false
 	}
 	return placeSnapshot{layout: l, config: config, wtConfig: wtConfig}, true
+}
+
+var (
+	configSection = regexp.MustCompile(`^\[([A-Za-z0-9-]+)( "(?:[^"\\]|\\.)*")?\]$`)
+	configKey     = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
+)
+
+// configFileMax is the most of a configuration read for the folder it names as the working tree.
+const configFileMax = 1 << 20
+
+// coreWorktreeOf reads the value of core.worktree as written in the text of a git configuration. present is false where there is none.
+// ok is false where the text is in a form that is not read here with certainty (an include, a quote, a comment after the value, a
+// line that goes on, a carriage return, a second value): the folder it names is then not known, and git is asked.
+func coreWorktreeOf(text string) (value string, present, ok bool) {
+	lower := strings.ToLower(text)
+	if !strings.Contains(lower, "worktree") && !strings.Contains(lower, "[include") {
+		return "", false, true // no key of that name, and nothing that could include one
+	}
+	if strings.ContainsAny(text, "\r\x00") {
+		return "", false, false
+	}
+	inCore := false
+	for _, raw := range strings.Split(text, "\n") {
+		if strings.HasSuffix(raw, "\\") {
+			return "", false, false // a line that goes on
+		}
+		line := strings.TrimLeft(raw, " \t")
+		switch {
+		case line == "" || line[0] == '#' || line[0] == ';':
+		case line[0] == '[':
+			m := configSection.FindStringSubmatch(strings.TrimRight(line, " \t"))
+			if m == nil || strings.EqualFold(m[1], "include") || strings.EqualFold(m[1], "includeIf") {
+				return "", false, false
+			}
+			inCore = strings.EqualFold(m[1], "core") && m[2] == ""
+		default:
+			key, val, hasValue := strings.Cut(line, "=")
+			if key = strings.TrimSpace(key); !configKey.MatchString(key) {
+				return "", false, false
+			}
+			if !inCore || !strings.EqualFold(key, "worktree") {
+				continue
+			}
+			if val = strings.TrimSpace(val); !hasValue || val == "" || strings.ContainsAny(val, "\"\\#;") || present {
+				return "", false, false
+			}
+			value, present = val, true
+		}
+	}
+	return value, present, true
+}
+
+// workTreeIsHere reports whether the configuration of the repository puts the working tree where the `.git` was found, if it names one
+// at all (core.worktree, which a submodule always has, is read from the git folder through the links as git reads it). The folder it
+// names is read each time, so a link on the way pointed elsewhere changes the answer; where it cannot be read with certainty, it is no.
+func workTreeIsHere(l gitLayout, top string) bool {
+	for _, file := range []string{filepath.Join(l.commonDir, "config"), filepath.Join(l.gitDir, "config.worktree")} {
+		raw, err := readSmallFile(file, configFileMax)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return false
+		}
+		value, present, ok := coreWorktreeOf(string(raw))
+		if !ok {
+			return false
+		}
+		if !present {
+			continue
+		}
+		if folder, ok := resolvedFrom(l.gitDir, value); !ok || !sameFolder(folder, top) {
+			return false
+		}
+	}
+	return true
+}
+
+// readSmallFile reads a file (links followed, as git does for a configuration) of at most max bytes.
+func readSmallFile(file string, max int64) ([]byte, error) {
+	info, err := os.Stat(file)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > max {
+		return nil, errors.New("not a small plain file")
+	}
+	return os.ReadFile(file)
 }
 
 // layoutAgrees reports whether what the files say is what git said about the same working tree: the object folder, the exclude file
