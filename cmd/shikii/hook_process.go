@@ -89,8 +89,9 @@ func treeStateWithScope(cwd string) (hash, listing string, listed bool, project,
 	// not read into memory and then thrown away: only the first listingMax bytes are kept).
 	ls := exec.CommandContext(ctx, "git", "ls-files", "--stage", "--full-name", "--", ".", ":(exclude).shikii")
 	ls.Dir = dir
-	// GIT_LITERAL_PATHSPECS=1 (some tools export it) would read `:(exclude).shikii` as the name of a file and let the records in
-	ls.Env = append(append(os.Environ(), env...), "GIT_LITERAL_PATHSPECS=0")
+	// GIT_LITERAL_PATHSPECS=1 (some tools export it) would read `:(exclude).shikii` as the name of a file and let the records in, and
+	// GIT_ICASE_PATHSPECS=1 would leave out a folder that differs from it only in case
+	ls.Env = append(append(os.Environ(), env...), "GIT_LITERAL_PATHSPECS=0", "GIT_ICASE_PATHSPECS=0")
 	ls.Stderr = io.Discard
 	pipe, err := ls.StdoutPipe()
 	if err != nil || ls.Start() != nil {

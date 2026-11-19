@@ -245,3 +245,93 @@ func TestHeadFilesGitNeverWritesAreLeftToGit(t *testing.T) {
 		})
 	}
 }
+
+// `..` after a link names the folder above what the link points to, not the folder above the link: a path made absolute by folding the
+// `..` away (filepath.Abs) looked in the wrong place and said a real repository was outside git (found by the confirmation audit).
+func TestDotDotAfterALinkNamesTheFolderAboveWhatTheLinkPointsTo(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := gitRepo(t)
+	proj := filepath.Join(repo, "services", "proj")
+	if err := os.MkdirAll(proj, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "proj") // the folder above the link is outside the repository; the one above proj is inside it
+	if err := os.Symlink(proj, link); err != nil {
+		t.Fatal(err)
+	}
+	real, _ := filepath.EvalSymlinks(repo)
+	check := func(label, dir string) {
+		t.Helper()
+		var got gitPlace
+		var ok bool
+		event(func() { got, ok = gitPlaceAt(context.Background(), dir) })
+		if !ok || got.top != real || outsideGit(dir) {
+			t.Errorf("%s: top %q (ok %v), outsideGit %v, want %s", label, got.top, ok, outsideGit(dir), real)
+		}
+	}
+	check("an absolute path ending in the link and ..", link+string(filepath.Separator)+"..")
+	t.Chdir(link)
+	check("a relative ..", "..")
+}
+
+// An empty GIT_NAMESPACE or GIT_DISCOVERY_ACROSS_FILESYSTEM is no setting to git (an empty GIT_DIR is an error: the test above), and some
+// tools export them empty: the kept answer stays in use then.
+func TestAnEmptyNamespaceOrDiscoveryVariableDoesNotTurnTheKeptPlaceOff(t *testing.T) {
+	for _, name := range []string{"GIT_NAMESPACE", "GIT_DISCOVERY_ACROSS_FILESYSTEM"} {
+		t.Run(name, func(t *testing.T) {
+			if n := keepAndChange(t, func(string) { t.Setenv(name, "") }); n != 0 {
+				t.Errorf("%s set to nothing: git was asked %d times", name, n)
+			}
+		})
+	}
+}
+
+// A `.git/config` that is a link: it is the file it points to that is written (git writes through it), so its time is what counts.
+func TestAKeptPlaceIsLeftWhenTheFileAConfigLinkPointsToIsWritten(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := gitRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAll(t, repo, "one")
+	config := filepath.Join(repo, ".git", "config")
+	moved := filepath.Join(t.TempDir(), "config")
+	if err := os.Rename(config, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(moved, config); err != nil {
+		t.Fatal(err)
+	}
+	event(func() { gitPlaceAt(context.Background(), repo) })
+	calls := gitCallLog(t)
+	later := time.Now().Add(10 * time.Second)
+	if err := os.Chtimes(moved, later, later); err != nil {
+		t.Fatal(err)
+	}
+	event(func() { gitPlaceAt(context.Background(), repo) })
+	if n := len(calls()); n == 0 {
+		t.Error("the file the configuration link points to was written, yet the kept answer was used")
+	}
+}
+
+// With GIT_ICASE_PATHSPECS=1 the exclude pathspec for the records would also leave out a folder that differs only in case. A file
+// system that does not tell the two names apart (the default on macOS) cannot hold both: the test is for the ones that can.
+func TestTheListingKeepsAFolderThatDiffersOnlyInCaseWhenGitMatchesPathspecsWithoutCase(t *testing.T) {
+	t.Setenv("GIT_ICASE_PATHSPECS", "1")
+	repo := gitRepo(t)
+	if err := os.MkdirAll(filepath.Join(repo, ".shikii"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(repo, ".SHIKII"), 0o755); err != nil {
+		t.Skip("this file system does not tell .shikii and .SHIKII apart")
+	}
+	for _, p := range []string{".shikii/record.md", ".SHIKII/notes.md"} {
+		if err := os.WriteFile(filepath.Join(repo, p), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, listing, listed, _, _ := treeStateWithScope(repo)
+	if !listed || strings.Contains(listing, ".shikii/record.md") || !strings.Contains(listing, ".SHIKII/notes.md") {
+		t.Errorf("listed %v: %q", listed, listing)
+	}
+}

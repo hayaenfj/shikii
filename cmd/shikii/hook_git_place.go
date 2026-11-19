@@ -141,9 +141,22 @@ func atFolder(dir, path string) string {
 	return filepath.Join(dir, path)
 }
 
+// absFolder is dir as an absolute path, not cleaned: `..` after a link names the folder above what the link points to, which is not the
+// folder above the link (filepath.Abs would fold the two away). EvalSymlinks then walks the path the way the system does.
+func absFolder(dir string) (string, error) {
+	if filepath.IsAbs(dir) {
+		return dir, nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	return cwd + string(filepath.Separator) + dir, nil
+}
+
 // physicalFolder is dir as an absolute path with its links resolved: the folder git itself works in.
 func physicalFolder(dir string) string {
-	if abs, err := filepath.Abs(dir); err == nil {
+	if abs, err := absFolder(dir); err == nil {
 		dir = abs
 	}
 	if real, err := filepath.EvalSymlinks(dir); err == nil {
@@ -181,8 +194,13 @@ type gitWalk struct {
 // the top, a filesystem boundary or a ceiling. ok is false where git has to say: the environment tells git where the repository is, a
 // folder cannot be read, or a boundary is crossed.
 func walkUpForGit(dir string) (gitWalk, bool) {
-	for _, name := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_NAMESPACE"} {
-		if _, set := os.LookupEnv(name); set { // also set to nothing: git reads an empty GIT_DIR as an error
+	for _, name := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY"} {
+		if _, set := os.LookupEnv(name); set { // also set to nothing: git reads an empty one of these as an error
+			return gitWalk{}, false
+		}
+	}
+	for _, name := range []string{"GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_NAMESPACE"} {
+		if os.Getenv(name) != "" { // set to nothing, these are no setting to git (some tools export them so)
 			return gitWalk{}, false
 		}
 	}
@@ -190,7 +208,7 @@ func walkUpForGit(dir string) (gitWalk, bool) {
 	if !ok {
 		return gitWalk{}, false
 	}
-	abs, err := filepath.Abs(dir)
+	abs, err := absFolder(dir)
 	if err != nil {
 		return gitWalk{}, false
 	}
@@ -300,7 +318,7 @@ func keptPlace(w gitWalk) (gitPlace, bool) {
 	if info, err := os.Lstat(filepath.Join(w.at, ".git", "HEAD")); err != nil || !info.Mode().IsRegular() {
 		return gitPlace{}, false // not the repository git answered about
 	}
-	if info, err := os.Lstat(filepath.Join(w.at, ".git", "config")); err != nil || info.ModTime().Unix() > e.At {
+	if info, err := os.Stat(filepath.Join(w.at, ".git", "config")); err != nil || info.ModTime().Unix() > e.At { // Stat: git writes through a link
 		return gitPlace{}, false // written since git answered: core.bare, core.worktree and the like may have changed what it would say
 	}
 	return gitPlace{top: e.Top, objects: objects, exclude: filepath.Join(w.at, ".git", "info", "exclude"), gitDir: filepath.Join(w.at, ".git")}, true
