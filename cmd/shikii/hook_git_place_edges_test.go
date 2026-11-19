@@ -335,3 +335,15 @@ func TestTheListingKeepsAFolderThatDiffersOnlyInCaseWhenGitMatchesPathspecsWitho
 		t.Errorf("listed %v: %q", listed, listing)
 	}
 }
+
+// An empty GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR or GIT_OBJECT_DIRECTORY is a setting to git (it reads the empty path and fails), unlike
+// the two variables of the test before: the kept answer is left to git for each of them.
+func TestAnEmptyVariableThatNamesAPlaceIsStillASetting(t *testing.T) {
+	for _, name := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY"} {
+		t.Run(name, func(t *testing.T) {
+			if n := keepAndChange(t, func(string) { t.Setenv(name, "") }); n == 0 {
+				t.Errorf("%s set to nothing: the kept answer was used, git was not asked", name)
+			}
+		})
+	}
+}
