@@ -33,6 +33,7 @@ func runSessionStart() error {
 	if err != nil {
 		return err
 	}
+	defer beginEventGit()() // the project and its exclude file ask git where the repository is once (hook_git_place.go)
 	root, scope, err := prepareHookProject(in.CWD)
 	if errors.Is(err, errProjectInactive) {
 		return nil

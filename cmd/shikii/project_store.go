@@ -101,6 +101,9 @@ func excludeProjectStore(scope string) error {
 	if place, ok := gitPlaceAt(ctx, scope); ok {
 		path = place.exclude
 	} else {
+		if outsideGit(scope) {
+			return nil // nothing above is, or can be, a repository: no file to write and no process to start
+		}
 		// no working tree here, but a bare repository or the inside of .git still has the file: ask for it alone
 		cmd := exec.CommandContext(ctx, "git", "rev-parse", "--git-path", "info/exclude")
 		cmd.Dir = scope

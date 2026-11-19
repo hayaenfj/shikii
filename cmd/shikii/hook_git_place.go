@@ -3,17 +3,28 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 )
 
 // gitPlace is what git says about the repository a folder is in: the top folder of its working tree, where its object folder and
-// its info/exclude file are (absolute, whichever folder git was asked from), and the commit HEAD names ("" before the first commit).
-type gitPlace struct{ top, objects, exclude, head string }
+// its info/exclude file are (absolute, whichever folder git was asked from), and the commit HEAD names ("" before the first commit, when
+// headKnown).
+type gitPlace struct {
+	top, objects, exclude, head string
+	headKnown                   bool // head is what git said just now (a place kept from an earlier event has none: every commit changes it)
+}
 
 // placeAnswer is one answer of git, also a "no" (outside git): ok says which.
 type placeAnswer struct {
@@ -31,6 +42,9 @@ type placeMemo struct {
 	at map[string]placeAnswer
 }
 
+// placeCacheTTL is how long a hook event may rely on the place a hook before it got from git (kept between events).
+var placeCacheTTL = 30 * time.Minute
+
 // eventPlaces is the memo of the hook event in progress (nil outside one: the CLI, the MCP server and the page ask git every time,
 // as a long-running process must not keep an answer between requests).
 var eventPlaces *placeMemo
@@ -42,8 +56,10 @@ func beginEventGit() func() {
 	return func() { eventPlaces = previous }
 }
 
-// gitPlaceAt asks git (one process) for the place of the repository that dir is in. ok is false outside a working tree, as for
-// `git rev-parse --show-toplevel` alone.
+// gitPlaceAt gives the place of the repository that dir is in. ok is false outside a working tree, as for
+// `git rev-parse --show-toplevel` alone. The folders above dir say a good deal without a process (walkUpForGit): that none of them is
+// or can be a repository (then git would say no), or that the nearest `.git` is the one git answered about a moment ago (in a hook
+// event, keptPlace). Otherwise git is asked, once.
 func gitPlaceAt(ctx context.Context, dir string) (gitPlace, bool) {
 	memo := eventPlaces
 	if memo != nil {
@@ -52,6 +68,17 @@ func gitPlaceAt(ctx context.Context, dir string) (gitPlace, bool) {
 		memo.mu.Unlock()
 		if known {
 			return a.place, a.ok
+		}
+	}
+	walk, walked := walkUpForGit(dir)
+	if walked && walk.at == "" {
+		memo.keep(dir, gitPlace{}, false)
+		return gitPlace{}, false
+	}
+	if memo != nil && walked {
+		if place, ok := keptPlace(walk); ok {
+			memo.keep(dir, place, true)
+			return place, true
 		}
 	}
 	// --verify -q HEAD goes last: with a commit the answer is a fourth line and git exits 0; before the first commit git prints the
@@ -69,20 +96,32 @@ func gitPlaceAt(ctx context.Context, dir string) (gitPlace, bool) {
 	var place gitPlace
 	if found {
 		// git answers a relative path from the folder it was started in, which is dir here
-		place = gitPlace{top: strings.TrimSpace(lines[0]), objects: atFolder(dir, strings.TrimSpace(lines[1])), exclude: atFolder(dir, strings.TrimSpace(lines[2]))}
+		place = gitPlace{top: strings.TrimSpace(lines[0]), objects: atFolder(dir, strings.TrimSpace(lines[1])), exclude: atFolder(dir, strings.TrimSpace(lines[2])), headKnown: true}
 		if len(lines) == 4 {
 			place.head = strings.TrimSpace(lines[3])
 		}
 	}
 	if memo != nil && (found || ran && exit.ExitCode() != 1) {
-		memo.mu.Lock()
-		memo.at[dir] = placeAnswer{place, found}
-		if found {
-			memo.at[place.top] = placeAnswer{place, true} // the same repository, so the same answer from its top folder
+		memo.keep(dir, place, found)
+		if found && walked {
+			keepPlace(walk, place)
 		}
-		memo.mu.Unlock()
 	}
 	return place, found
+}
+
+// keep remembers an answer for the rest of the event (nil: outside one, nothing is kept), under dir and, as it is the same repository,
+// under the top folder too.
+func (m *placeMemo) keep(dir string, place gitPlace, found bool) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.at[dir] = placeAnswer{place, found}
+	if found {
+		m.at[place.top] = placeAnswer{place, true}
+	}
 }
 
 func atFolder(dir, path string) string {
@@ -90,4 +129,155 @@ func atFolder(dir, path string) string {
 		return path
 	}
 	return filepath.Join(dir, path)
+}
+
+// gitWalk is what the folders from a folder upward say without a process.
+type gitWalk struct {
+	at    string // the nearest folder that holds a `.git` (or the files of a bare repository); "" when none does, up to the top
+	plain bool   // its .git is a folder of its own (not a file or a link: a worktree's or a submodule's is told by git)
+}
+
+// walkUpForGit looks for the repository as git does first: a `.git` in the folder and in each one above it (the physical path), up to
+// the top, a filesystem boundary or a ceiling. ok is false where git has to say: the environment tells git where the repository is, a
+// folder cannot be read, or a boundary is crossed.
+func walkUpForGit(dir string) (gitWalk, bool) {
+	for _, name := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_DISCOVERY_ACROSS_FILESYSTEM"} {
+		if os.Getenv(name) != "" {
+			return gitWalk{}, false
+		}
+	}
+	ceilings, ok := gitCeilings()
+	if !ok {
+		return gitWalk{}, false
+	}
+	start, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return gitWalk{}, false
+	}
+	var device uint64
+	for d := start; ; d = filepath.Dir(d) {
+		if d != start && ceilings[d] {
+			return gitWalk{}, true // git does not search a ceiling folder, nor any above it (the folder asked about is always searched)
+		}
+		info, err := os.Lstat(d)
+		if err != nil {
+			return gitWalk{}, false
+		}
+		if st, ok := info.Sys().(*syscall.Stat_t); ok {
+			if d != start && uint64(st.Dev) != device {
+				return gitWalk{}, false // git stops at a mount point unless told otherwise: left to git
+			}
+			device = uint64(st.Dev)
+		}
+		switch entry, err := os.Lstat(filepath.Join(d, ".git")); {
+		case err == nil:
+			plain := entry.IsDir()
+			if plain {
+				if _, err := os.Lstat(filepath.Join(d, ".git", "commondir")); !errors.Is(err, fs.ErrNotExist) {
+					plain = false
+				}
+			}
+			return gitWalk{at: d, plain: plain}, true
+		case !errors.Is(err, fs.ErrNotExist):
+			return gitWalk{}, false
+		}
+		if head, err := os.Lstat(filepath.Join(d, "HEAD")); err == nil && head.Mode().IsRegular() {
+			if objects, err := os.Lstat(filepath.Join(d, "objects")); err == nil && objects.IsDir() {
+				return gitWalk{at: d}, true // the files of a bare repository: git says what that is
+			}
+		}
+		if parent := filepath.Dir(d); parent == d {
+			return gitWalk{}, true
+		}
+	}
+}
+
+// gitCeilings is GIT_CEILING_DIRECTORIES as git reads it: absolute folders, resolved. ok is false for a list git reads another way (an
+// empty entry says the ones after it are not to be resolved).
+func gitCeilings() (map[string]bool, bool) {
+	list := os.Getenv("GIT_CEILING_DIRECTORIES")
+	out := map[string]bool{}
+	if list == "" {
+		return out, true
+	}
+	for _, c := range strings.Split(list, string(os.PathListSeparator)) {
+		if c == "" {
+			return nil, false
+		}
+		if !filepath.IsAbs(c) {
+			continue
+		}
+		if r, err := filepath.EvalSymlinks(c); err == nil {
+			out[r] = true
+		}
+	}
+	return out, true
+}
+
+// placeEntry is what git answered about a repository, as kept between events: the top folder, and when.
+type placeEntry struct {
+	Top string `json:"top"`
+	At  int64  `json:"at"`
+}
+
+func placeEntryFile(at string) (string, bool) {
+	agent, err := agentHome()
+	if err != nil {
+		return "", false
+	}
+	sum := sha256.Sum256([]byte(at))
+	return filepath.Join(agent, "places", hex.EncodeToString(sum[:])[:16]+".json"), true
+}
+
+// keptPlace is the answer git gave about the repository whose `.git` the walk found, when it can still be trusted: a repository with a
+// `.git` folder of its own (the object folder and the exclude file are then where they always are), git's answer less than
+// placeCacheTTL old, and the folders as they were. What the answer cannot hold, HEAD, is left unknown.
+func keptPlace(w gitWalk) (gitPlace, bool) {
+	file, ok := placeEntryFile(w.at)
+	if !w.plain || !ok {
+		return gitPlace{}, false
+	}
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		return gitPlace{}, false
+	}
+	var e placeEntry
+	if json.Unmarshal(raw, &e) != nil || e.Top == "" {
+		return gitPlace{}, false
+	}
+	if age := time.Since(time.Unix(e.At, 0)); age > placeCacheTTL || age < -time.Minute || !sameFolder(e.Top, w.at) {
+		return gitPlace{}, false
+	}
+	objects := filepath.Join(w.at, ".git", "objects")
+	if info, err := os.Lstat(objects); err != nil || !info.IsDir() {
+		return gitPlace{}, false
+	}
+	return gitPlace{top: e.Top, objects: objects, exclude: filepath.Join(w.at, ".git", "info", "exclude")}, true
+}
+
+// keepPlace keeps what git answered for the next events (best effort: a failure only means git is asked again). Only for a repository
+// whose top folder is the one with the `.git` (a work tree set elsewhere is told by git every time).
+func keepPlace(w gitWalk, place gitPlace) {
+	file, ok := placeEntryFile(w.at)
+	if !w.plain || !ok || !sameFolder(place.top, w.at) {
+		return
+	}
+	raw, err := json.Marshal(placeEntry{Top: place.top, At: time.Now().Unix()})
+	if err != nil || os.MkdirAll(filepath.Dir(file), 0o700) != nil {
+		return
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(file), ".place-*")
+	if err != nil {
+		return
+	}
+	_, werr := tmp.Write(raw)
+	if cerr := tmp.Close(); werr != nil || cerr != nil || os.Rename(tmp.Name(), file) != nil {
+		os.Remove(tmp.Name())
+	}
+}
+
+// outsideGit reports that nothing above dir is, or can be, a repository (git would say so too): no process is needed to hear it.
+func outsideGit(dir string) bool {
+	w, ok := walkUpForGit(dir)
+	return ok && w.at == ""
 }
