@@ -202,6 +202,16 @@ type gitWalk struct {
 	at string // the nearest folder that holds a `.git` (or the files of a bare repository); "" when none does, up to the top
 }
 
+// deviceOfFolder is the device a folder is on; a folder on another device than the one below it is a mount point. It is a variable so a
+// test can put a mount point where a test cannot mount one.
+var deviceOfFolder = func(_ string, info os.FileInfo) (uint64, bool) {
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, false
+	}
+	return uint64(st.Dev), true
+}
+
 // walkUpForGit looks for the repository as git does first: a `.git` in the folder and in each one above it (the physical path), up to
 // the top, a filesystem boundary or a ceiling. ok is false where git has to say: the environment tells git where the repository is, a
 // folder cannot be read, or a boundary is crossed.
@@ -237,11 +247,11 @@ func walkUpForGit(dir string) (gitWalk, bool) {
 		if err != nil {
 			return gitWalk{}, false
 		}
-		if st, ok := info.Sys().(*syscall.Stat_t); ok {
-			if d != start && uint64(st.Dev) != device {
+		if dev, ok := deviceOfFolder(d, info); ok {
+			if d != start && dev != device {
 				return gitWalk{}, false // git stops at a mount point unless told otherwise: left to git
 			}
-			device = uint64(st.Dev)
+			device = dev
 		}
 		switch _, err := os.Lstat(filepath.Join(d, ".git")); {
 		case err == nil:

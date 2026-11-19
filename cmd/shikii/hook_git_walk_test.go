@@ -256,6 +256,49 @@ func TestTheWalkStopsWhereGitDoesNotSearch(t *testing.T) {
 	}
 }
 
+// Git stops at a mount point unless told otherwise: from a folder below one, it does not see the repository above. A kept answer for the
+// repository above must not be used from there, so the walk leaves such a folder to git. A test cannot mount, so the folders from one
+// down are said to be on another device; the control is the same folders without the mount point, where the kept answer is used.
+func TestAKeptPlaceIsNotUsedFromBelowAMountPoint(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := gitRepo(t)
+	mounted := filepath.Join(repo, "mounted")
+	below := filepath.Join(mounted, "below")
+	if err := os.MkdirAll(below, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	calls := gitCallLog(t)
+	event(func() {
+		if _, ok := gitPlaceAt(context.Background(), repo); !ok {
+			t.Fatal("premise: git answers about the repository")
+		}
+	})
+	if got := calls(); len(got) != 1 {
+		t.Fatalf("premise: the first event asks git once: %v", got)
+	}
+	event(func() { gitPlaceAt(context.Background(), below) })
+	if got := calls(); len(got) != 0 {
+		t.Fatalf("control: with no mount point the kept answer is used from below, but git was asked:\n%s", strings.Join(got, "\n"))
+	}
+	resolved, err := filepath.EvalSymlinks(mounted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	real := deviceOfFolder
+	deviceOfFolder = func(path string, info os.FileInfo) (uint64, bool) {
+		dev, ok := real(path, info)
+		if path == resolved || strings.HasPrefix(path, resolved+string(filepath.Separator)) {
+			dev++ // another device than the repository's
+		}
+		return dev, ok
+	}
+	t.Cleanup(func() { deviceOfFolder = real })
+	event(func() { gitPlaceAt(context.Background(), below) })
+	if got := calls(); len(got) != 1 {
+		t.Errorf("from below a mount point git is asked, not the kept answer: %d calls\n%s", len(got), strings.Join(got, "\n"))
+	}
+}
+
 // A kept answer that names another folder than the one whose `.git` the walk found (a file that was copied or changed by hand) is not
 // used: git is asked.
 func TestAKeptPlaceThatNamesAnotherFolderIsNotUsed(t *testing.T) {
