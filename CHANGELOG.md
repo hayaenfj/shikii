@@ -6,9 +6,11 @@
 
 ### Changes
 
-- shikii's hooks now start git far less often. They used to ask git the same questions again at every request, tool call and end of a turn. They now ask where the repository is once, remember the answer, and read the current commit from the repository's files. In a project that uses git, a request starts 3 git processes instead of 11, a tool call 0 instead of 2, and the end of a turn 3 instead of 9 (a little more once every half hour, once after a command that changes the repository's settings such as `git remote add` or `git push -u`, when a guard is enabled, and while a Codex memory file waits to be moved to the wiki). A linked worktree or a submodule has no remembered answer, so each of its hooks still asks git once: a request starts 4, a tool call 1 and the end of a turn 4. The `shikii` commands and MCP tools use the remembered answer too. This makes the hooks faster, most of all on macOS, where each git start is slow.
+- The hooks now start git far fewer times, which makes them faster, most of all on macOS, where starting git is slow. In a project that uses git, a request starts 3 git processes instead of 11, a tool call 0 instead of 2, and finishing a task 3 instead of 9.
 - In a folder that is not in a git repository, the hooks no longer start git at all.
-- The remembered answers are small files in `~/.shikii/agent/places/`. An answer is used for up to 30 minutes, and only while the folders still say the same. Files not written for a week are removed. A request that was open when you update to this version gets no record of whether it changed files.
+- In a linked worktree or a submodule, each hook still asks git once: a request starts 4 git processes, a tool call 1 and finishing a task 4.
+- The numbers are a little higher now and then (for example after a command that changes the repository's settings, such as `git remote add`), while a guard is enabled, and while a Codex memory file waits to be moved to the wiki.
+- A request that is still open when you update to this version gets no record of whether it changed files.
 
 ## 0.37.2 — A subagent gets the rules for every request when it starts
 
