@@ -239,7 +239,7 @@ func TestHeadFilesGitNeverWritesAreLeftToGit(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(gitDir, "packed-refs"), []byte(c.packed), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			if head, known := headFromFiles(gitDir); known {
+			if head, known := headFromFiles(gitDir, gitDir); known {
 				t.Errorf("answered %q from files git may read differently", head)
 			}
 		})

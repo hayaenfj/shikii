@@ -25,7 +25,7 @@ import (
 type gitPlace struct {
 	top, objects, exclude, head string
 	headKnown                   bool   // head is what git said just now (a place kept from an earlier event has none: every commit changes it)
-	gitDir                      string // the repository's own `.git` folder when it is a plain one (headFromFiles can read HEAD there); "" otherwise
+	gitDir, commonDir           string // where this working tree's HEAD is and where the refs it shares are (layoutAt, and the same as git said); "" when the files do not say (headFromFiles can read HEAD where they do)
 }
 
 // placeAnswer is one answer of git, also a "no" (outside git): ok says which.
@@ -84,6 +84,13 @@ func gitPlaceAt(ctx context.Context, dir string) (gitPlace, bool) {
 			return place, true
 		}
 	}
+	// what the files say before git is asked: an answer is kept only where git says the same, and is used only while the files still say
+	// what they did before git was asked
+	var before placeSnapshot
+	seen := false
+	if walked {
+		before, seen = snapshotAt(walk.at)
+	}
 	// git answers a relative path from the folder it runs in, which is the real folder whichever path reached it (a link to a subfolder)
 	base := physicalFolder(dir)
 	// --verify -q HEAD goes last: with a commit the answer is a fourth line and git exits 0; before the first commit git prints the
@@ -108,14 +115,20 @@ func gitPlaceAt(ctx context.Context, dir string) (gitPlace, bool) {
 		// git answered, but not in the lines expected: a folder name with a line end in it. Asked one by one, as before they were put together.
 		place, found = placeApart(ctx, dir, base)
 	}
-	if found && walked && walk.plain && sameFolder(walk.at, place.top) {
-		place.gitDir = filepath.Join(walk.at, ".git")
+	// what the files say is trusted (kept for the next events, and HEAD read from them) only where it is what git said just now
+	trusted := false
+	if found && seen && sameFolder(walk.at, place.top) {
+		// (the snapshot is the one taken before git was asked: a write while git answered makes the next use differ, and git is asked again)
+		if layoutAgrees(before.layout, place) {
+			place.gitDir, place.commonDir = before.layout.gitDir, before.layout.commonDir
+			trusted = true
+		}
 	}
 	if memo != nil && (found || ran && exit.ExitCode() != 1) {
 		memo.keep(dir, place, found)
 	}
-	if found && walked {
-		keepPlace(walk, place)
+	if trusted {
+		keepPlace(walk, place, before)
 	}
 	return place, found
 }
@@ -186,8 +199,7 @@ func placeApart(ctx context.Context, dir, base string) (gitPlace, bool) {
 
 // gitWalk is what the folders from a folder upward say without a process.
 type gitWalk struct {
-	at    string // the nearest folder that holds a `.git` (or the files of a bare repository); "" when none does, up to the top
-	plain bool   // its .git is a folder of its own (not a file or a link: a worktree's or a submodule's is told by git)
+	at string // the nearest folder that holds a `.git` (or the files of a bare repository); "" when none does, up to the top
 }
 
 // walkUpForGit looks for the repository as git does first: a `.git` in the folder and in each one above it (the physical path), up to
@@ -231,15 +243,9 @@ func walkUpForGit(dir string) (gitWalk, bool) {
 			}
 			device = uint64(st.Dev)
 		}
-		switch entry, err := os.Lstat(filepath.Join(d, ".git")); {
+		switch _, err := os.Lstat(filepath.Join(d, ".git")); {
 		case err == nil:
-			plain := entry.IsDir()
-			if plain {
-				if _, err := os.Lstat(filepath.Join(d, ".git", "commondir")); !errors.Is(err, fs.ErrNotExist) {
-					plain = false
-				}
-			}
-			return gitWalk{at: d, plain: plain}, true
+			return gitWalk{at: d}, true
 		case !errors.Is(err, fs.ErrNotExist):
 			return gitWalk{}, false
 		}
@@ -277,10 +283,15 @@ func gitCeilings() (map[string]bool, bool) {
 	return out, true
 }
 
-// placeEntry is what git answered about a repository, as kept between events: the top folder, and when.
+// placeEntry is what git answered about a repository, as kept between events: the top folder, when, and what the files said when git
+// answered: the git folders, and the state of the configurations (placeSnapshot). A kept answer is used only while the files still say so.
 type placeEntry struct {
-	Top string `json:"top"`
-	At  int64  `json:"at"`
+	Top      string `json:"top"`
+	At       int64  `json:"at"`
+	Git      string `json:"git,omitempty"`
+	Common   string `json:"common,omitempty"`
+	Config   fileID `json:"config"`
+	WtConfig fileID `json:"wt_config"`
 }
 
 func placeEntryFile(at string) (string, bool) {
@@ -292,12 +303,13 @@ func placeEntryFile(at string) (string, bool) {
 	return filepath.Join(agent, "places", hex.EncodeToString(sum[:])[:16]+".json"), true
 }
 
-// keptPlace is the answer git gave about the repository whose `.git` the walk found, when it can still be trusted: a repository with a
-// `.git` folder of its own (the object folder and the exclude file are then where they always are), git's answer less than
-// placeCacheTTL old, and the folders as they were. What the answer cannot hold, HEAD, is left unknown.
+// keptPlace is the answer git gave about the repository whose `.git` the walk found, when it can still be trusted: the files say where
+// the object folder and the exclude file are (layoutAt: a `.git` folder, or a `.git` file that names the git folder of a worktree, a
+// submodule or a working tree made with --separate-git-dir), the git folders are the ones the answer was given for, git's answer is
+// less than placeCacheTTL old, and the folders as they were. What the answer cannot hold, HEAD, is left unknown.
 func keptPlace(w gitWalk) (gitPlace, bool) {
 	file, ok := placeEntryFile(w.at)
-	if !w.plain || !ok {
+	if !ok {
 		return gitPlace{}, false
 	}
 	raw, err := os.ReadFile(file)
@@ -308,30 +320,24 @@ func keptPlace(w gitWalk) (gitPlace, bool) {
 	if json.Unmarshal(raw, &e) != nil || e.Top == "" {
 		return gitPlace{}, false
 	}
-	if age := time.Since(time.Unix(e.At, 0)); age > placeCacheTTL || age < -time.Minute || !sameFolder(e.Top, w.at) {
+	now, ok := snapshotAt(w.at)
+	if !ok || !keptEntryAgrees(e, w.at, now) {
+		// not the repository git answered about, an answer too old, or a configuration written since git answered (core.bare,
+		// core.worktree and the like may have changed what it would say)
 		return gitPlace{}, false
 	}
-	objects := filepath.Join(w.at, ".git", "objects")
-	if info, err := os.Lstat(objects); err != nil || !info.IsDir() {
-		return gitPlace{}, false
-	}
-	if info, err := os.Lstat(filepath.Join(w.at, ".git", "HEAD")); err != nil || !info.Mode().IsRegular() {
-		return gitPlace{}, false // not the repository git answered about
-	}
-	if info, err := os.Stat(filepath.Join(w.at, ".git", "config")); err != nil || info.ModTime().Unix() > e.At { // Stat: git writes through a link
-		return gitPlace{}, false // written since git answered: core.bare, core.worktree and the like may have changed what it would say
-	}
-	return gitPlace{top: e.Top, objects: objects, exclude: filepath.Join(w.at, ".git", "info", "exclude"), gitDir: filepath.Join(w.at, ".git")}, true
+	layout := now.layout
+	return gitPlace{top: e.Top, objects: layout.objects(), exclude: layout.exclude(), gitDir: layout.gitDir, commonDir: layout.commonDir}, true
 }
 
 // keepPlace keeps what git answered for the next events (best effort: a failure only means git is asked again). Only for a repository
 // whose top folder is the one with the `.git` (a work tree set elsewhere is told by git every time).
-func keepPlace(w gitWalk, place gitPlace) {
+func keepPlace(w gitWalk, place gitPlace, seen placeSnapshot) {
 	file, ok := placeEntryFile(w.at)
-	if !w.plain || !ok || !sameFolder(place.top, w.at) {
+	if !ok || !sameFolder(place.top, w.at) {
 		return
 	}
-	raw, err := json.Marshal(placeEntry{Top: place.top, At: time.Now().Unix()})
+	raw, err := json.Marshal(placeEntry{Top: place.top, At: time.Now().Unix(), Git: seen.layout.gitDir, Common: seen.layout.commonDir, Config: seen.config, WtConfig: seen.wtConfig})
 	if err != nil || os.MkdirAll(filepath.Dir(file), 0o700) != nil {
 		return
 	}
@@ -369,12 +375,19 @@ func outsideGit(dir string) bool {
 	return ok && w.at == ""
 }
 
-// headFromFiles reads HEAD from the files of a plain `.git` folder, as git does for the files backend: HEAD names a ref (or is a commit,
-// detached); the ref is a file of its own or a line of packed-refs; a ref that is neither is a branch before its first commit. known
-// is false where the files are not the whole story (a reftable, a symbolic ref, a name outside refs/): git says.
-func headFromFiles(gitDir string) (head string, known bool) {
-	if _, err := os.Lstat(filepath.Join(gitDir, "reftable")); !errors.Is(err, fs.ErrNotExist) {
-		return "", false
+// headFromFiles reads HEAD from the files of a repository, as git does for the files backend: HEAD (in gitDir, the folder of this working
+// tree) names a ref (or is a commit, detached); the ref is a file of its own or a line of packed-refs, both in commonDir (where the
+// refs of the repository are: the same folder as gitDir unless this is a linked worktree); a ref that is neither is a branch before its
+// first commit. known is false where the files are not the whole story (a reftable, a symbolic ref, a name outside refs/, a ref that
+// belongs to a worktree alone while the folders differ): git says.
+func headFromFiles(gitDir, commonDir string) (head string, known bool) {
+	for _, dir := range []string{gitDir, commonDir} {
+		if _, err := os.Lstat(filepath.Join(dir, "reftable")); !errors.Is(err, fs.ErrNotExist) {
+			return "", false
+		}
+	}
+	if info, err := os.Lstat(filepath.Join(gitDir, "HEAD")); err != nil || !info.Mode().IsRegular() {
+		return "", false // a link in its place (an old way of writing it) is read by git another way
 	}
 	raw, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
 	if err != nil {
@@ -388,7 +401,14 @@ func headFromFiles(gitDir string) (head string, known bool) {
 	if !ok || !strings.HasPrefix(name, "refs/") || strings.Contains(name, "..") || path.Clean(name) != name {
 		return "", false // a name git does not write (a doubled or trailing slash, a dot step): git says
 	}
-	loose, err := os.ReadFile(filepath.Join(gitDir, filepath.FromSlash(name)))
+	if gitDir != commonDir && isPerWorktreeRef(name) {
+		return "", false // the file is in the folder of the worktree, not the shared one
+	}
+	ref := filepath.Join(commonDir, filepath.FromSlash(name))
+	if info, err := os.Lstat(ref); err == nil && !info.Mode().IsRegular() {
+		return "", false // a link (a symbolic ref written the old way, which git follows from the folder it is in) or a folder: git says
+	}
+	loose, err := os.ReadFile(ref)
 	switch {
 	case err == nil:
 		if v := strings.TrimSpace(string(loose)); isObjectID(v) {
@@ -398,7 +418,7 @@ func headFromFiles(gitDir string) (head string, known bool) {
 	case !errors.Is(err, fs.ErrNotExist):
 		return "", false
 	}
-	packed, err := os.ReadFile(filepath.Join(gitDir, "packed-refs"))
+	packed, err := os.ReadFile(filepath.Join(commonDir, "packed-refs"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", true // a branch before its first commit
 	}

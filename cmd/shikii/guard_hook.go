@@ -43,15 +43,15 @@ func gitHead(cwd string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), hookGitTimeout)
 	defer cancel()
 	// HEAD comes with the answer about the repository when git was asked just now (hook_git_place.go): no process of its own. When the
-	// place was kept from an earlier request, HEAD (which every commit changes) is read from the files of a plain `.git` folder. Where
-	// the files are not the whole story (a worktree, a reftable) or git has no working tree to answer about (a bare repository), git is
+	// place was kept from an earlier request, HEAD (which every commit changes) is read from the files of the repository (its own `.git` folder, or the git folder of a worktree
+	// or a submodule). Where the files are not the whole story (a reftable, a ref of one worktree) or git has no working tree to answer about (a bare repository), git is
 	// asked alone below.
 	if place, ok := gitPlaceAt(ctx, cwd); ok {
 		if place.headKnown {
 			return place.head
 		}
 		if place.gitDir != "" {
-			if head, known := headFromFiles(place.gitDir); known {
+			if head, known := headFromFiles(place.gitDir, place.commonDir); known {
 				return head
 			}
 		}
