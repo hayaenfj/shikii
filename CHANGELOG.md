@@ -11,7 +11,7 @@
 
 ### Fixes
 
-- Fixed a case where the hooks kept using an old folder as the repository's location after a link was pointed somewhere else. It happened when the repository's settings reach the working tree through a link. The hooks now ask git again.
+- Fixed a case where, after the link that a repository's settings use to point to its working folder was pointed at another folder, the hooks kept looking at the old folder for a while. The hooks now ask git again.
 
 ## 0.37.3 — The hooks start git much less often
 
@@ -20,7 +20,7 @@
 - The hooks now run git far less often in the background. They used to ask git the same questions again every time the agent did something; now they remember the answers and reuse them.
 - This saves the most time on macOS, where starting git is slow. In a typical project that uses git, a request now runs git 3 times instead of 11, each tool call 0 times instead of 2, and the agent finishing its reply 3 times instead of 9.
 - In a folder that is not a git repository, the hooks no longer run git at all.
-- Inside a git worktree or a submodule, the remembered answers are not used, so the drop is smaller: a request runs git 4 times, each tool call once, and finishing a reply 4 times.
+- Inside a git worktree, a submodule or a repository whose git folder was placed elsewhere with `--separate-git-dir`, the remembered answers are not used, so the drop is smaller: a request runs git 4 times, each tool call once, and finishing a reply 4 times.
 - A request that is still open when you update to this version gets no record of whether it changed files.
 
 ## 0.37.2 — A subagent gets the rules for every request when it starts
