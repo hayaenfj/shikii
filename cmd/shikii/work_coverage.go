@@ -191,16 +191,18 @@ func workRemainingArea(remaining string) (string, bool) {
 // is not made a row, and the reply's open does not name the area, whatever the ledger held before.
 // The result the receipt holds now also closes the open rows of remaining that it takes over (store.CoverageHandover): the rows of
 // its own session and the rows its preparation listed. Both are done for that result only, and once: a result that was repaired by
-// ref while the receipt holds another one writes its coverage rows and nothing else. The work remembers the results it handled
-// (CoverageHandled, newest first): the coverage rows of a result whose source it remembers are not given to the ledger again when it
-// is sent again, and neither is a handover. The ledger's own check of a record sent again sees only the lines the store reads, the
-// newest 4MB; once the lines of the result are further back than that, only this memory keeps an open row from coming back for an area
-// a later result closed. The row made from the remaining of a result is not covered by it: a result that was repaired by ref while
-// the receipt held another one is remembered although its remaining was not written, and written when it is recorded in full later,
-// so the store's own check is what keeps that row from being written twice (inside its window only). The source is saved with the
-// work state by the next save of the record, or at its end when none follows (unsaved), and is remembered only after the ledger was
-// written without error. A record sent again writes nothing again. A ledger that cannot be written is an error of the record (kind coverage): the same record sent again
-// writes it, and the source is not remembered. A result with nothing to write, whose ledger cannot be read, is not failed for it.
+// ref while the receipt holds another one writes its coverage rows and nothing else. The ledger's own check of a record sent again
+// sees only the lines the store reads, the newest 4MB; once the lines of a result are further back than that, only what the work
+// remembers keeps an open row from coming back for an area a later result closed. The work remembers two things, each as the
+// sources of at most workCoverageHandledMax results, newest first: the results it handled (CoverageHandled), whose coverage rows are
+// not given to the ledger again when the result is sent again, and neither is a handover; and the results whose row of remaining it
+// gave to the ledger (CoverageLeft), whose row is not given again. The second is a list of its own because a result that was
+// repaired by ref while the receipt held another one is handled although its remaining was not written: it is written when the
+// result is recorded in full later, and only then does the source go into CoverageLeft. With both remembered and no handover,
+// the ledger is not asked at all. The sources are saved with the work state by the next save of the record, or at its end when none
+// follows (unsaved), and each is remembered only after the ledger was written without error. A record sent again writes nothing
+// again. A ledger that cannot be written is an error of the record (kind coverage): the same record sent again writes it, and
+// nothing is remembered. A result with nothing to write, whose ledger cannot be read, is not failed for it.
 func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCompletion, session string, result *workResult, add func(workItem), unsaved func()) {
 	if c == nil {
 		return
@@ -222,7 +224,7 @@ func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCo
 	}
 	current := w.Result != nil && w.Result.Source == source
 	rows := saved.Coverage
-	handled := slices.Contains(w.CoverageHandled, source)
+	handled, left := slices.Contains(w.CoverageHandled, source), slices.Contains(w.CoverageLeft, source)
 	var ledger []store.CoverageRow
 	open := []string{}
 	for _, row := range rows {
@@ -239,8 +241,12 @@ func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCo
 	if takesOver {
 		handover = store.CoverageHandover{Session: store.CoverageSession(session), Shown: w.CoverageShown}
 	}
-	if area, left := workRemainingArea(saved.Remaining); current && left && !workCoverageOpen(rows) && !workCoverageNames(rows, area) {
-		ledger = append(ledger, store.CoverageRow{Area: area, Outcome: store.CoverageOpen, Origin: store.CoverageFromRemaining, Session: store.CoverageSession(session)})
+	givesRemaining := false // the ledger is given a row made from remaining by this call
+	if area, anything := workRemainingArea(saved.Remaining); current && anything && !workCoverageOpen(rows) && !workCoverageNames(rows, area) {
+		if !left { // the row of this remaining was given to the ledger then, and is not given again
+			ledger = append(ledger, store.CoverageRow{Area: area, Outcome: store.CoverageOpen, Origin: store.CoverageFromRemaining, Session: store.CoverageSession(session)})
+			givesRemaining = true
+		}
 		open = append(open, area)
 	}
 	st := store.Store{Dir: root}
@@ -256,7 +262,11 @@ func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCo
 	if len(rows) > 0 || len(open) > 0 || len(handed) > 0 {
 		result.Coverage = &workCoverageReply{Rows: len(rows), Open: open, HandedOver: handed}
 	}
-	if w.rememberCoverageHandled(source) {
+	remembered := w.rememberCoverageHandled(source)
+	if givesRemaining && rememberRecent(&w.CoverageLeft, source) {
+		remembered = true
+	}
+	if remembered {
 		unsaved() // saved by the next save of the record, or by its end (workRecordPersistence.flush)
 	}
 }
@@ -264,11 +274,17 @@ func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCo
 // rememberCoverageHandled adds the source of a result whose coverage was handled (newest first, at most workCoverageHandledMax of
 // them). It reports false when the work remembers the source already.
 func (w *workState) rememberCoverageHandled(source string) bool {
-	if slices.Contains(w.CoverageHandled, source) {
+	return rememberRecent(&w.CoverageHandled, source)
+}
+
+// rememberRecent puts a source at the head of a list of sources (newest first, at most workCoverageHandledMax). It reports false when
+// the list holds the source already.
+func rememberRecent(list *[]string, source string) bool {
+	if slices.Contains(*list, source) {
 		return false
 	}
-	w.CoverageHandled = append([]string{source}, w.CoverageHandled...)
-	w.CoverageHandled = w.CoverageHandled[:min(len(w.CoverageHandled), workCoverageHandledMax)]
+	*list = append([]string{source}, *list...)
+	*list = (*list)[:min(len(*list), workCoverageHandledMax)]
 	return true
 }
 

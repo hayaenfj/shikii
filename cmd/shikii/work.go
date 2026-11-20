@@ -202,6 +202,7 @@ type workState struct {
 	Reports         map[string]bool                       `json:"reports,omitempty"`       // sources this work wrote about itself (results, ending reviews): never its evidence, never handed over
 	CoverageShown   []string                              `json:"coverage_shown,omitempty"`
 	CoverageHandled []string                              `json:"coverage_handled,omitempty"` // sources of the results whose coverage was handled: newest first, at most workCoverageHandledMax (work_coverage.go)
+	CoverageLeft    []string                              `json:"coverage_left,omitempty"`    // sources of the results whose row of remaining was given to the ledger: newest first, at most workCoverageHandledMax
 	citingEvidence  bool                                  // a refusal names what evidence can cite, not every source; never saved
 }
 type workToken struct {
