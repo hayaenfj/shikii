@@ -270,24 +270,42 @@ func ledgerHoldsRemaining(st store.Store, scope string) bool {
 	return err == nil && slices.ContainsFunc(held, func(r store.CoverageRow) bool { return r.Origin == store.CoverageFromRemaining })
 }
 
-// preparedCoverage is the open rows of the project's ledger for a preparation, or nil when none is open, and the areas of the rows it
-// names (the work remembers them: it is handed those rows). A row from remaining says so. A ledger that cannot be read says so in
-// place of the rows: a preparation is not refused for it.
-func preparedCoverage(root, scope string) (map[string]any, []string) {
+// preparedCoverage is the open rows of the project's ledger for a preparation, or nil when none is open: the newest workCoverageShown
+// of them are named and the others are counted. A row from remaining says so. A ledger that cannot be read says so in place of the
+// rows: a preparation is not refused for it. The bound of the reply may name fewer rows than this (limitWorkPreparation), which is
+// why the work remembers what the reply names (coverageAreasNamed), not what this lists.
+func preparedCoverage(root, scope string) map[string]any {
 	open, err := (store.Store{Dir: root}).OpenCoverage(scope)
 	if err != nil {
-		return map[string]any{"error": "the coverage ledger could not be read: " + err.Error()}, nil
+		return map[string]any{"error": "the coverage ledger could not be read: " + err.Error()}
 	}
 	if len(open) == 0 {
-		return nil, nil
+		return nil
 	}
-	rows, shown := []any{}, []string{}
+	rows := []any{}
 	for _, row := range open[:min(workCoverageShown, len(open))] {
 		entry := map[string]any{"area": row.Area, "source": row.Source}
 		if row.Origin == store.CoverageFromRemaining {
 			entry["from"] = store.CoverageFromRemaining
 		}
-		rows, shown = append(rows, entry), append(shown, row.Area)
+		rows = append(rows, entry)
 	}
-	return map[string]any{"open": len(open), "rows": rows, "next_action": workCoverageNext}, shown
+	return map[string]any{"open": len(open), "rows": rows, "next_action": workCoverageNext}
+}
+
+// coverageAreasNamed is the areas of the rows a reply's coverage names after the bound has been applied. The work remembers them
+// (workState.CoverageShown): it is handed those rows, and only those, so a row the bound left out stays open for a later
+// preparation. It is nil when the reply has no coverage, or names no row (a ledger that could not be read).
+func coverageAreasNamed(coverage any) []string {
+	named, _ := coverage.(map[string]any)
+	rows, _ := named["rows"].([]any)
+	var areas []string
+	for _, raw := range rows {
+		if row, ok := raw.(map[string]any); ok {
+			if area, ok := row["area"].(string); ok {
+				areas = append(areas, area)
+			}
+		}
+	}
+	return areas
 }

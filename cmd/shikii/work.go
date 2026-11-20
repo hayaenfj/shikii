@@ -666,16 +666,15 @@ func prepareWork(root, scope string, req workRequest) (out any, err error) {
 	} else if w.HookPrepared {
 		reply["how_to_record"] = strings.Replace(compactWorkHowTo, "with this receipt", "with the hook's session_id/turn_id (or this receipt)", 1)
 	}
-	coverage, coverageShown := preparedCoverage(root, scope)
-	if coverage != nil {
+	if coverage := preparedCoverage(root, scope); coverage != nil {
 		reply["coverage"] = coverage
 	}
 	read, err = limitWorkPreparation(book, w, reply, quoted, req.MaxBytes, req.responseSize)
 	if err != nil {
 		return nil, err
 	}
-	if reply["coverage"] != nil { // the areas this reply lists: the result this work records takes over those made from remaining. A bound that left coverage out handed it none
-		w.CoverageShown = coverageShown
+	if reply["coverage"] != nil { // the areas this reply names, after the bound: the result this work records takes over those made from remaining. A bound that left coverage out handed it none, and a row it did not name stays open
+		w.CoverageShown = coverageAreasNamed(reply["coverage"])
 	}
 	initialWorkReading(s, w, knowledge, quoted)
 	rememberWorkMetadata(w, reply)

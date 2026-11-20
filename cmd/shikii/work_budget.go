@@ -94,6 +94,9 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 	if size(reply) <= budget {
 		return suppliedPreparationReads(reply), nil
 	}
+	if nameFewerCoverageRows(reply, budget, size) {
+		return suppliedPreparationReads(reply), nil
+	}
 	limited = true
 	omitted := []string{}
 	if reply["how_to_record"] != continuedWorkHowTo {
@@ -240,6 +243,26 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		}
 	}
 	return suppliedPreparationReads(reply), nil
+}
+
+// nameFewerCoverageRows makes a reply fit by naming fewer open coverage rows, the oldest first: it keeps the newest rows that still
+// fit, one row at the least, and reports whether the reply fits then. The rows that are not named stay open in the ledger (open
+// still counts them, as when more than workCoverageShown areas are open), and reach a later preparation; the text of an article is
+// what the agent needs now, and before this a few rows of open areas cost every article its text. When even one row does not fit,
+// all the rows are back as they were and limitWorkPreparation goes on with its own order (coverage goes after attention).
+func nameFewerCoverageRows(reply map[string]any, budget int, size func(any) int) bool {
+	coverage, _ := reply["coverage"].(map[string]any)
+	rows, _ := coverage["rows"].([]any)
+	for keep := len(rows) - 1; keep >= 1; keep-- {
+		coverage["rows"] = rows[:keep]
+		if size(reply) <= budget {
+			return true
+		}
+	}
+	if len(rows) > 1 {
+		coverage["rows"] = rows
+	}
+	return false
 }
 
 // trimKnowledgeCandidates makes the search candidates of a reply fit, the least useful part first: the heads of other pending
