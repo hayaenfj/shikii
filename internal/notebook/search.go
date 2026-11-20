@@ -6,6 +6,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // Match explains retrieval, not confidence in the lesson's meaning.
@@ -33,6 +35,16 @@ func searchTerms(text string) map[string]bool {
 	return searchTermsFor(text, nil)
 }
 
+// searchText is the form in which the search compares text: composed (NFC), then lower case. Text in decomposed form (a letter and a
+// combining mark, as macOS file names give kana with a voiced mark) would otherwise break differently from the composed form: the mark
+// is neither a letter nor Han, Hiragana or Katakana, so it ends the word or the kana pair, and the same words in the other form find
+// nothing. Terms and the positions measured in the request text (termClusters) both start from this one string, for the request and for
+// the pages, so they always agree. norm.NFC.String returns its argument when it is composed already, so ASCII and ordinary Japanese
+// text pay only the check. What a missed search keeps (missKey) and how an article is saved do not use it.
+func searchText(text string) string {
+	return strings.ToLower(norm.NFC.String(text))
+}
+
 // Ordinary ranking only consumes request terms. Keep token boundaries and
 // normalization identical while avoiding maps of unrelated document vocabulary.
 // Recall still needs the complete vocabulary for its page-side denominator.
@@ -43,7 +55,7 @@ func searchTermsFor(text string, wanted map[string]bool) map[string]bool {
 			out[term] = true
 		}
 	}
-	text = strings.ToLower(text)
+	text = searchText(text)
 	wordStart, wordRunes, previousJA := 0, 0, -1
 	flushWord := func(end int) {
 		if wordRunes >= 2 {
@@ -101,7 +113,7 @@ type cluster struct {
 	kana       bool
 }
 
-// termClusters returns the runs that terms (2-character pairs) cover in runes (the lowercased request text). Identifiers are excluded. Compares without building strings (audit R4: performance).
+// termClusters returns the runs that terms (2-character pairs) cover in runes (the request text as searchText gives it). Identifiers are excluded. Compares without building strings (audit R4: performance).
 func termClusters(runes []rune, terms map[string]bool) []cluster {
 	covered := make([]bool, len(runes))
 	for term := range terms {
@@ -243,7 +255,7 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 	}
 	results := []ranked{}
 	// The request-side count for the automatic-delivery gate (runs of content words) does not depend on the page, so count it once before the loop (audit R4: performance)
-	queryRunes := []rune(strings.ToLower(query))
+	queryRunes := []rune(searchText(query))
 	rare := func(term string) bool { return len(docs) == 1 || frequency[term]*2 <= len(docs) }
 	requestContent, rareRequest := map[string]bool{}, map[string]bool{}
 	for term := range terms {

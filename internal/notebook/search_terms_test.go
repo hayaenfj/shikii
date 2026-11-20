@@ -5,10 +5,14 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // The previous rune-buffer implementation is an independent compatibility
-// oracle for the byte-offset tokenizer.
+// oracle for the byte-offset tokenizer. It composes the text first, as the
+// search does (searchText): a combining mark after a letter used to end the
+// word, and that is the one meaning of the tokenizer that was changed on purpose.
 func originalSearchTerms(text string) map[string]bool {
 	out := map[string]bool{}
 	var word, ja []rune
@@ -21,7 +25,7 @@ func originalSearchTerms(text string) map[string]bool {
 		}
 		word, ja = nil, nil
 	}
-	for _, r := range strings.ToLower(text) {
+	for _, r := range strings.ToLower(norm.NFC.String(text)) {
 		switch {
 		case unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana) || r == '\u30fc':
 			if len(word) > 0 {
