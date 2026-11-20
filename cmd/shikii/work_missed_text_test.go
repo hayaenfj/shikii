@@ -168,8 +168,8 @@ func TestRecordTiesEveryOpenMissItsResultSpeaksOfAndNamesThreeOfThem(t *testing.
 	}
 }
 
-// A record asks the journal of open misses once, however many misses it names and ties: each call searches the wiki for every miss it
-// examines, so the count of parses of the one article is the measure (it does not depend on how fast a machine is).
+// A record asks the journal of open misses once, however many misses it names and ties: each call reads the wiki and splits its articles once for the
+// misses it examines, so the count of parses of the one article is the measure (it does not depend on how fast a machine is).
 func TestRecordAsksTheJournalOfOpenMissesOnce(t *testing.T) {
 	f := newMissedFlow(t)
 	for _, query := range []string{"quokka wombat", "numbat bilby", "kestrel harbor", "juniper meadow", "walnut grove"} {

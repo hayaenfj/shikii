@@ -250,6 +250,7 @@ func TestOpenMissesAreNewestFirstSinceTheTimeAndLimited(t *testing.T) {
 		{"limit keeps the newest", time.Time{}, 2, []string{"topic 4", "topic 3"}},
 		{"limit and since", base.Add(3 * time.Hour), 1, []string{"topic 4"}},
 		{"no limit", time.Time{}, 0, []string{}},
+		{"a limit below none", time.Time{}, -1, []string{}},
 	} {
 		open, err := b.OpenMisses(c.since, c.limit, "")
 		if err != nil || !slices.Equal(openQueries(open), c.want) {

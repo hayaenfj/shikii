@@ -3,7 +3,7 @@ package notebook
 import "strings"
 
 const (
-	// foundAloneExamineMax is how many distinct words of a query WordsFoundAlone searches. Each runs a whole search of the wiki, so
+	// foundAloneExamineMax is how many distinct words of a query WordsFoundAlone searches. Each is ranked against every article of the wiki (read once for the call), so
 	// the cost of a call is bounded by it, not by how long the query is.
 	foundAloneExamineMax = 8
 	// foundAloneMax is how many words WordsFoundAlone returns.

@@ -22,7 +22,7 @@ const (
 	missedSearchMax = 64
 	// missQueryMax is the longest query (in bytes) a miss is kept for.
 	missQueryMax = 200
-	// openMissExamineMax is how many misses one OpenMisses call examines. Each examined miss runs a whole search of the wiki, so the
+	// openMissExamineMax is how many misses one OpenMisses call examines. Each examined miss is ranked against every article of the wiki (read once for the call), so the
 	// cost of a call is bounded by it, not by how many misses the journal keeps.
 	openMissExamineMax = 16
 	// OpenMissesMax is the most misses one OpenMisses call lists, whatever its limit: a caller that wants all of the open misses asks
