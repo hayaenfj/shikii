@@ -850,32 +850,48 @@ func TestWorkCoverageWorksWithAnAssignment(t *testing.T) {
 	}
 }
 
-// A preparation whose bound is tight drops coverage after reasoning, reading and attention and before pending and observations,
-// and names it in output.omitted. Each of the six is large enough that the order, not the size, decides what goes first.
-func TestLimitWorkPreparationDropsCoverageInItsPlace(t *testing.T) {
+// A preparation whose bound is tight drops coverage after reasoning, reading and attention, then earlier_search, and before pending
+// and observations, and names each in output.omitted. Each of the seven is large enough that the order, not the size, decides what
+// goes first, and it goes only as far as the bound needs: a small earlier_search stays when dropping coverage was enough.
+func TestLimitWorkPreparationDropsCoverageAndEarlierSearchInTheirPlace(t *testing.T) {
 	pad := func(n int) string { return strings.Repeat("x", n) }
-	reply := map[string]any{
-		"receipt": "r", "how_to_record": pad(2000),
-		"reasoning": map[string]any{"p": pad(30)}, "reading": map[string]any{"p": pad(30)}, "attention": map[string]any{"p": pad(30)},
-		"coverage": map[string]any{"open": 3, "rows": []any{map[string]any{"area": pad(1500), "source": "s"}}},
-		"pending":  []any{map[string]any{"p": pad(2500)}}, "observations": []any{map[string]any{"p": pad(2500)}},
-	}
-	if _, err := limitWorkPreparation(notebook.Book{}, &workState{}, reply, map[string]string{}, 8192); err != nil {
-		t.Fatal(err)
-	}
-	output, _ := reply["output"].(map[string]any)
-	omitted, _ := output["omitted"].([]string)
-	if !slices.Equal(omitted, []string{"reasoning", "reading", "attention", "coverage"}) {
-		t.Fatalf("omitted is %v: coverage goes after attention and before pending and observations, and only as far as the bound needs", omitted)
-	}
-	if reply["pending"] == nil || reply["observations"] == nil || reply["coverage"] != nil {
-		t.Fatalf("pending and observations stay and coverage goes: %v", slices.Sorted(func(yield func(string) bool) {
-			for k := range reply {
-				if !yield(k) {
-					return
-				}
+	for _, c := range []struct {
+		name    string
+		earlier int // the size of the note in earlier_search; 0 has no earlier_search at all
+		omitted []string
+	}{
+		{"coverage alone", 0, []string{"reasoning", "reading", "attention", "coverage"}},
+		{"a small earlier_search stays when coverage was enough", 200, []string{"reasoning", "reading", "attention", "coverage"}},
+		{"a large earlier_search goes right after coverage", 1400, []string{"reasoning", "reading", "attention", "coverage", "earlier_search"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			reply := map[string]any{
+				"receipt": "r", "how_to_record": pad(2000),
+				"reasoning": map[string]any{"p": pad(30)}, "reading": map[string]any{"p": pad(30)}, "attention": map[string]any{"p": pad(30)},
+				"coverage": map[string]any{"open": 3, "rows": []any{map[string]any{"area": pad(1500), "source": "s"}}},
+				"pending":  []any{map[string]any{"p": pad(2500)}}, "observations": []any{map[string]any{"p": pad(2500)}},
 			}
-		}))
+			if c.earlier > 0 {
+				reply["earlier_search"] = map[string]any{"query": "q", "result": "0123456789abcdef", "next_action": pad(c.earlier)}
+			}
+			if _, err := limitWorkPreparation(notebook.Book{}, &workState{}, reply, map[string]string{}, 8192); err != nil {
+				t.Fatal(err)
+			}
+			output, _ := reply["output"].(map[string]any)
+			omitted, _ := output["omitted"].([]string)
+			if !slices.Equal(omitted, c.omitted) {
+				t.Fatalf("omitted is %v, want %v: coverage goes after attention, then earlier_search, before pending and observations, and only as far as the bound needs", omitted, c.omitted)
+			}
+			if reply["pending"] == nil || reply["observations"] == nil || reply["coverage"] != nil || (reply["earlier_search"] != nil) != (c.earlier > 0 && !slices.Contains(omitted, "earlier_search")) {
+				t.Fatalf("pending and observations stay, coverage goes, earlier_search goes only when named: %v", slices.Sorted(func(yield func(string) bool) {
+					for k := range reply {
+						if !yield(k) {
+							return
+						}
+					}
+				}))
+			}
+		})
 	}
 }
 

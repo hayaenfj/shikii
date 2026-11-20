@@ -40,6 +40,26 @@ type notebookRequest struct {
 	Content      string                      `json:"content,omitempty"` // body to write to a work record (handoff_write / handoff_append)
 }
 
+// sourceIDQuery is the one rule by which a query reads saved sources instead of searching words: its text is one or more
+// whitespace-separated source ids (16 hexadecimal digits each), so `wiki query <id>` on the command line and a query that holds the
+// id in an MCP or HTTP call read the same sources. It returns the ids, or nil when any word is not an id or the text is empty.
+func sourceIDQuery(query string) []string {
+	ids := strings.Fields(query)
+	for _, id := range ids {
+		if _, err := hex.DecodeString(id); len(id) != 16 || err != nil {
+			return nil
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids
+}
+
+// sourceIDQueryHint follows the refusal of a query read as source ids. An article id is 16 hexadecimal digits too, and an agent that
+// sends one bare is refused with a text that says only that the id is no saved source: this says how to send the id instead.
+const sourceIDQueryHint = `a query made only of 16-digit ids reads saved sources: for an article send lesson:<id>, and to search for the id as a word add another word`
+
 // workFieldsInside follows the refusals of prepare and record that a field left out of work causes. An MCP client can drop the
 // arguments its tool schema does not name: OpenCode 2.3.0 dropped receipt and result sent beside work (2026-11-15), and the agent
 // was refused four times, with a different cause each time, before it put them inside. operation and project stay beside work:
@@ -74,8 +94,18 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 		if len(req.Query) > requestMax {
 			return nil, errors.New("wiki query exceeds the text limit")
 		}
+		idsFromQuery := false
+		if len(req.Sources) == 0 {
+			if ids := sourceIDQuery(req.Query); ids != nil {
+				req.Sources, req.Query, idsFromQuery = ids, "", true
+			}
+		}
 		if len(req.Sources) > 0 {
-			return b.ReadSourcesPage(req.Sources, req.Cursor)
+			page, err := b.ReadSourcesPage(req.Sources, req.Cursor)
+			if err != nil && idsFromQuery {
+				err = fmt.Errorf("%w; %s", err, sourceIDQueryHint) // the refusal first, then how to send what was meant
+			}
+			return page, err
 		}
 		view, err := b.QueryPage(req.Query, req.Cursor)
 		if err != nil {
@@ -85,7 +115,7 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 		if err != nil {
 			return view, err
 		}
-		noteMissedSearch(b, req.Query, req.Cursor, view)
+		view.EarlierSearch = noteMissedSearch(b, req.Query, req.Cursor, view)
 		if req.Query == "" && req.Cursor == "" { // the maintenance listing carries the searches that still find nothing
 			view.MissedSearches = listedMissedSearches(b)
 		}
@@ -220,19 +250,7 @@ func cmdNotebook(args []string) error {
 			}
 			args = args[:len(args)-1]
 		}
-		req.Query = strings.Join(args[1:], " ")
-		if len(args) > 1 {
-			allIDs := true
-			for _, id := range args[1:] {
-				if _, err := hex.DecodeString(id); len(id) != 16 || err != nil {
-					allIDs = false
-					break
-				}
-			}
-			if allIDs {
-				req.Sources, req.Query = args[1:], ""
-			}
-		}
+		req.Query = strings.Join(args[1:], " ") // runNotebook reads it as sources when every word is a source id
 	} else if len(args) != 1 {
 		return errors.New("wiki lint takes no arguments")
 	}

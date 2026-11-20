@@ -2,7 +2,9 @@ package notebook
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -23,14 +25,26 @@ const (
 )
 
 // Miss is one word search that found no candidate. Query is stored with white space trimmed and each run of it collapsed to one
-// space; At is when the search last found nothing.
+// space; At is when the search last found nothing. Result is the id of the saved result of the work that had the miss open when it
+// recorded its result (NoteMissResult), or empty: the report of that work, never an answer the wiki holds.
 type Miss struct {
-	Query string    `json:"query"`
-	At    time.Time `json:"at"`
+	Query  string    `json:"query"`
+	At     time.Time `json:"at"`
+	Result string    `json:"result,omitempty"`
+}
+
+// EarlierSearch is the reply field that points a search that found nothing at the result of an earlier work that searched the same
+// words and found nothing too. Result is the id of that result (a source, read by a query of the id); it is that work's own report.
+type EarlierSearch struct {
+	Query      string    `json:"query"`
+	At         time.Time `json:"at"`
+	Result     string    `json:"result"`
+	NextAction string    `json:"next_action"`
 }
 
 // missedList is the misses of the search journal, read as an allow-list: a miss that is not in the form the journal writes (not a
-// JSON object of the right fields, an empty query, a query over missQueryMax bytes, text that is not UTF-8, no time) is dropped, and
+// JSON object of the right fields, an empty query, a query over missQueryMax bytes, text that is not UTF-8, no time, a result that
+// is not the 16-digit id of a source) is dropped, and
 // more than missedSearchMax of them are cut to the newest. The misses never make the journal unreadable: they are a note on gaps,
 // and an older or newer version of the program may have written another form or another bound (the other collections of the
 // journal are still refused when they are invalid).
@@ -45,7 +59,7 @@ func (l *missedList) UnmarshalJSON(data []byte) error {
 	kept := missedList{}
 	for _, r := range raw {
 		var m Miss
-		if utf8.Valid(r) && json.Unmarshal(r, &m) == nil && m.Query != "" && len(m.Query) <= missQueryMax && !m.At.IsZero() {
+		if utf8.Valid(r) && json.Unmarshal(r, &m) == nil && m.Query != "" && len(m.Query) <= missQueryMax && !m.At.IsZero() && (m.Result == "" || idPattern.MatchString(m.Result)) {
 			kept = append(kept, m)
 		}
 	}
@@ -85,6 +99,17 @@ func (v View) searchFoundNothing() bool {
 	return v.Search != nil && v.Search.Total == 0 && len(v.Lessons) == 0
 }
 
+// lastMiss is a copy of the newest miss of the normalized words, or nil.
+func lastMiss(misses []Miss, query string) *Miss {
+	for i := len(misses) - 1; i >= 0; i-- {
+		if normalizeMissQuery(misses[i].Query) == query {
+			m := misses[i]
+			return &m
+		}
+	}
+	return nil
+}
+
 func withoutMiss(misses []Miss, query string) []Miss {
 	kept := make([]Miss, 0, len(misses))
 	for _, m := range misses {
@@ -97,19 +122,46 @@ func withoutMiss(misses []Miss, query string) []Miss {
 
 // RecordMiss is called where the agent asks the wiki a question in words: an explicit wiki query, and the search of a prepare that
 // carries a receipt. The query of a standalone preparation is the topic of a task, not a question, and does not call it. It keeps
-// the words of a search that found no candidate (a repeated search keeps one entry with a newer time). It records nothing for any
-// other query or page, and the internal searches of the wiki (delivery, placement, consultation) never call it. A search that
-// found a candidate is not recorded here; its lookup closes the miss.
-func (b Book) RecordMiss(query, cursor string, view View) error {
+// the words of a search that found no candidate (a repeated search keeps one entry with a newer time, and keeps the result the
+// earlier one was tied to). It records nothing for any other query or page, and the internal searches of the wiki (delivery,
+// placement, consultation) never call it. A search that found a candidate is not recorded here; its lookup closes the miss.
+//
+// It returns the earlier miss of the same words (as it was before this search) when that one was tied to a result, so the caller can
+// say where that result is; otherwise it returns nil.
+func (b Book) RecordMiss(query, cursor string, view View) (*Miss, error) {
 	return b.recordMissAt(query, cursor, view, time.Now().UTC())
 }
 
-func (b Book) recordMissAt(query, cursor string, view View, at time.Time) error {
+func (b Book) recordMissAt(query, cursor string, view View, at time.Time) (*Miss, error) {
 	q, ok := missQuery(query, cursor)
 	if !ok || !view.searchFoundNothing() {
+		return nil, nil
+	}
+	var earlier *Miss
+	err := b.updateJournal(true, func(j *searchJournal) bool {
+		miss := Miss{Query: q, At: at}
+		if before := lastMiss(j.Misses, q); before != nil && before.Result != "" {
+			miss.Result, earlier = before.Result, before
+		}
+		j.Misses = append(withoutMiss(j.Misses, q), miss)
+		if len(j.Misses) > missedSearchMax {
+			j.Misses = j.Misses[len(j.Misses)-missedSearchMax:]
+		}
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	return earlier, nil
+}
+
+// updateJournal locks the search journal of the book, reads it, lets update change it and writes it when update says it did. A book
+// with no folder for the journal has nothing to update, and none is made unless create is set.
+func (b Book) updateJournal(create bool, update func(*searchJournal) bool) error {
+	dir, err := b.directory(create, "searches")
+	if os.IsNotExist(err) && !create {
 		return nil
 	}
-	dir, err := b.directory(true, "searches")
 	if err != nil {
 		return err
 	}
@@ -122,11 +174,33 @@ func (b Book) recordMissAt(query, cursor string, view View, at time.Time) error 
 	if err != nil {
 		return err
 	}
-	j.Misses = append(withoutMiss(j.Misses, q), Miss{Query: q, At: at})
-	if len(j.Misses) > missedSearchMax {
-		j.Misses = j.Misses[len(j.Misses)-missedSearchMax:]
+	if !update(&j) {
+		return nil
 	}
 	return saveSearchJournal(dir, j)
+}
+
+// NoteMissResult ties the misses of the given words to a saved result: the id of the result of the work that had them open. A
+// result tied before is replaced (the last work that searched those words and found nothing is the one reported). It writes nothing
+// when the journal does not exist or holds none of the words, and it refuses a result that is not a 16-digit id, which the reader
+// would drop.
+func (b Book) NoteMissResult(queries []string, result string) error {
+	if !idPattern.MatchString(result) {
+		return errors.New("a missed search is tied to the 16-digit id of a saved result")
+	}
+	words := make([]string, len(queries))
+	for i, q := range queries {
+		words[i] = normalizeMissQuery(q)
+	}
+	return b.updateJournal(false, func(j *searchJournal) bool {
+		changed := false
+		for i := range j.Misses {
+			if m := &j.Misses[i]; m.Result != result && slices.Contains(words, normalizeMissQuery(m.Query)) {
+				m.Result, changed = result, true
+			}
+		}
+		return changed
+	})
 }
 
 // readJournalIfAny reads the search journal of the book; a book that has none has an empty one.

@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -398,6 +400,188 @@ func TestNotebookCLIReadsSourcesTogether(t *testing.T) {
 	}
 	if err := cmdWiki([]string{"query", ids[0], ids[1]}); err == nil {
 		t.Fatal("reading several at once does not skip the hash check of the cited source")
+	}
+}
+
+// savedObservations captures one source per text in a project of its own and returns the book and the ids, in the order given.
+func savedObservations(t *testing.T, texts ...string) (notebook.Book, []string) {
+	t.Helper()
+	b, _ := loopBook(t)
+	ids := []string{}
+	for i, text := range texts {
+		o, err := b.CaptureObserved(notebook.Observation{Kind: "test", Title: "Saved text " + string(rune('A'+i)), Content: text, Reference: "fixture", Version: "v1", ObservedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, o.ID)
+	}
+	return b, ids
+}
+
+// contentsOf is the text of every observation a source read returned, in the order returned.
+func contentsOf(t *testing.T, reply any) []string {
+	t.Helper()
+	var got struct {
+		Observations []notebook.Observation `json:"observations"`
+	}
+	if err := json.Unmarshal([]byte(jsonText(reply)), &got); err != nil {
+		t.Fatal(err)
+	}
+	texts := []string{}
+	for _, o := range got.Observations {
+		texts = append(texts, o.Content)
+	}
+	return texts
+}
+
+// A query whose text is the id of a saved source reads that source, as an MCP or HTTP call sends it ({"operation":"query",
+// "query":"<id>"}), not only as the command line turns its arguments. Three agents read an earlier result this way and took the
+// empty word search they got for an empty result.
+func TestQueryThatIsASourceIDReadsTheSource(t *testing.T) {
+	b, ids := savedObservations(t, "Saffron lanterns burn for six hours.", "Juniper meadows flood in spring.")
+	reply, err := runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Query: ids[1]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := contentsOf(t, reply); len(got) != 1 || got[0] != "Juniper meadows flood in spring." {
+		t.Fatalf("a query of the id returns the saved text of that source and no other: %q", got)
+	}
+	if object := loopObject(t, reply); object["search"] != nil || object["lessons"] != nil {
+		t.Fatalf("the reply is a source page, not the result of a word search: %v", object)
+	}
+	// an id that names no saved source is refused as the command line refuses it, not answered with an empty word search
+	if reply, err := runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Query: "0123456789abcdef"}); err == nil {
+		t.Fatalf("an unknown source id is refused, not searched as a word: %v", reply)
+	}
+}
+
+// Ids separated by white space are read together, the same as the arguments of the command line, a repeated id once (the order of
+// the observations in the reply is the reply's own, so the texts are compared as a set). Sources named
+// explicitly win over the text of the query.
+func TestQueryOfSeveralSourceIDsReadsThemTogether(t *testing.T) {
+	b, ids := savedObservations(t, "Saffron lanterns burn for six hours.", "Juniper meadows flood in spring.", "Quince orchards bloom late.")
+	want := []string{"Saffron lanterns burn for six hours.", "Juniper meadows flood in spring."}
+	for _, query := range []string{ids[0] + " " + ids[1], "  " + ids[0] + " \t " + ids[1] + "\n", ids[0] + " " + ids[1] + " " + ids[0]} {
+		reply, err := runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Query: query})
+		if err != nil {
+			t.Fatalf("%q: %v", query, err)
+		}
+		if got := contentsOf(t, reply); !slices.Equal(slices.Sorted(slices.Values(got)), slices.Sorted(slices.Values(want))) {
+			t.Fatalf("%q reads both sources, each once: %q", query, got)
+		}
+	}
+	reply, err := runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Sources: []string{ids[2]}, Query: ids[0] + " " + ids[1]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := contentsOf(t, reply); !slices.Equal(got, []string{"Quince orchards bloom late."}) {
+		t.Fatalf("sources named explicitly are read, not the ids in the query text: %q", got)
+	}
+}
+
+// What is not only source ids stays a word search: a word of 16 characters that is not hexadecimal, an id next to a word, and
+// ids of another length. None of them reads a source, although the id in them is a saved one.
+func TestQueryThatIsNotOnlySourceIDsStaysAWordSearch(t *testing.T) {
+	b, ids := savedObservations(t, "Saffron lanterns burn for six hours.")
+	id := ids[0]
+	for _, query := range []string{"saffronlanterns1", "zzzzzzzzzzzzzzzz", id + " lanterns", "lanterns " + id, id[:15], id + "0"} {
+		reply, err := runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Query: query})
+		if err != nil {
+			t.Fatalf("%q: %v", query, err)
+		}
+		if object := loopObject(t, reply); object["search"] == nil || object["observations"] != nil {
+			t.Fatalf("%q is a word search: it carries a search result and reads no source: %v", query, object)
+		}
+	}
+}
+
+// An article id is 16 hexadecimal digits too, so an agent that sends it bare as the query reads saved sources and is refused: the
+// refusal keeps its own text at the front and then says how to read an article and how to search for the id as a word. Both ways
+// the refusal names are tried here, so the correction is one that works.
+func TestQueryOfAnArticleIDSaysHowToReadTheArticle(t *testing.T) {
+	b, ids := savedObservations(t, "Saffron lanterns burn for six hours.")
+	article := loopPage(t, b, ids[0], nil)
+	const correction = "a query made only of 16-digit ids reads saved sources: for an article send lesson:<id>, and to search for the id as a word add another word"
+	_, explicit := runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Sources: []string{article.ID}})
+	if explicit == nil || !strings.Contains(explicit.Error(), "does not belong to this project") {
+		t.Fatalf("an article id is not a saved source: %v", explicit)
+	}
+	_, err := runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Query: article.ID})
+	if err == nil || !strings.HasPrefix(err.Error(), explicit.Error()+"; ") || !strings.HasSuffix(err.Error(), "; "+correction) {
+		t.Fatalf("the refusal keeps its own text at the front and ends with the correction: %v", err)
+	}
+	reply, err := runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Query: "lesson:" + article.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lessons, _ := loopObject(t, reply)["lessons"].([]any)
+	if len(lessons) != 1 || lessons[0].(map[string]any)["id"] != article.ID {
+		t.Fatalf("lesson:<id>, the form the correction names, returns the article: %v", lessons)
+	}
+	reply, err = runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Query: article.ID + " lanterns"})
+	if err != nil || loopObject(t, reply)["search"] == nil {
+		t.Fatalf("the id with another word, the other form the correction names, is a word search: %v", err)
+	}
+}
+
+// The correction belongs to a query of ids only: the same id named in sources gets the refusal as it was, and the refusal of a query
+// of ids is still the kind of error it was (a cursor that no longer fits answers 409 on the HTTP entrance).
+func TestSourcesNamedExplicitlyGetNoCorrectionAndTheErrorKindStays(t *testing.T) {
+	b, ids := savedObservations(t, "Saffron lanterns burn for six hours.")
+	article := loopPage(t, b, ids[0], nil)
+	_, err := runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Sources: []string{article.ID}})
+	if err == nil || strings.Contains(err.Error(), "lesson:") || strings.Contains(err.Error(), "16-digit") || strings.Contains(err.Error(), "; ") {
+		t.Fatalf("an explicit sources list is refused without the correction: %v", err)
+	}
+	_, err = runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Query: ids[0], Cursor: "not-a-cursor"})
+	if !errors.Is(err, notebook.ErrStaleCursor) {
+		t.Fatalf("a cursor that does not fit is still a stale cursor when the ids come from the query text: %v", err)
+	}
+}
+
+// A source read by the text of the query keeps its continuation: the cursor of the first page, sent with the same ids as the query
+// text, returns the page that the same ids named as sources return.
+func TestQueryOfSourceIDsContinuesWithItsCursor(t *testing.T) {
+	texts := []string{}
+	for i := range 12 {
+		texts = append(texts, strings.Repeat(string(rune('a'+i)), 9000))
+	}
+	b, ids := savedObservations(t, texts...)
+	text := strings.Join(ids, " ")
+	first, err := runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Query: text})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cursor, _ := loopObject(t, first)["next_cursor"].(string)
+	if cursor == "" || len(contentsOf(t, first)) >= len(ids) {
+		t.Fatalf("the first page is part of the sources and names a cursor: %d %q", len(contentsOf(t, first)), cursor)
+	}
+	next, err := runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Query: text, Cursor: cursor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	named, err := runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Sources: ids, Cursor: cursor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if jsonText(next) != jsonText(named) {
+		t.Fatalf("the page after the cursor equals the page the same ids named as sources give: %.120s | %.120s", jsonText(next), jsonText(named))
+	}
+	// following the cursors of the query text reads every text once
+	seen := contentsOf(t, first)
+	for page := next; ; {
+		seen = append(seen, contentsOf(t, page)...)
+		cursor, _ = loopObject(t, page)["next_cursor"].(string)
+		if cursor == "" {
+			break
+		}
+		var err error
+		if page, err = runNotebook(b.Root, b.Scope, notebookRequest{Operation: "query", Query: text, Cursor: cursor}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !slices.Equal(slices.Sorted(slices.Values(seen)), slices.Sorted(slices.Values(texts))) {
+		t.Fatalf("the pages together hold each of the %d texts once: %d", len(texts), len(seen))
 	}
 }
 

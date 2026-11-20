@@ -3,6 +3,7 @@ package notebook
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,8 +13,9 @@ import (
 )
 
 type diskMiss struct {
-	Query string    `json:"query"`
-	At    time.Time `json:"at"`
+	Query  string    `json:"query"`
+	At     time.Time `json:"at"`
+	Result string    `json:"result"`
 }
 
 // journalPath is where the search journal of the book is; the directory may not exist yet.
@@ -97,7 +99,7 @@ func TestRecordMissKeepsASearchThatFoundNothing(t *testing.T) {
 		if (c.name == "found") != (view.Search.Total > 0) {
 			t.Fatalf("the fixture changed: %s search has %d candidates", c.name, view.Search.Total)
 		}
-		if err := b.RecordMiss(c.query, "", view); err != nil {
+		if _, err := b.RecordMiss(c.query, "", view); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -136,7 +138,7 @@ func TestRecordMissAllowsOnlyWordSearchesOfTheListedForm(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
-			if err := b.RecordMiss(c.query, c.cursor, c.view); err != nil {
+			if _, err := b.RecordMiss(c.query, c.cursor, c.view); err != nil {
 				t.Fatal(err)
 			}
 			if got := diskQueries(missesOnDisk(t, b)); !slices.Equal(got, append([]string{}, c.want...)) {
@@ -152,7 +154,7 @@ func TestRecordMissMergesTheSameWordsAndKeepsSixtyFour(t *testing.T) {
 	base := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 	record := func(query string, minutes int) {
 		t.Helper()
-		if err := b.recordMissAt(query, "", emptyView(), base.Add(time.Duration(minutes)*time.Minute)); err != nil {
+		if _, err := b.recordMissAt(query, "", emptyView(), base.Add(time.Duration(minutes)*time.Minute)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -186,7 +188,7 @@ func TestMissClosesOnceAnArticleAnswersTheSameWords(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := b.RecordMiss(query, "", view); err != nil {
+		if _, err := b.RecordMiss(query, "", view); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -223,7 +225,7 @@ func TestOpenMissesAreNewestFirstSinceTheTimeAndLimited(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
 	base := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 	for i := 0; i < 5; i++ {
-		if err := b.recordMissAt(fmt.Sprintf("topic %d", i), "", emptyView(), base.Add(time.Duration(i)*time.Hour)); err != nil {
+		if _, err := b.recordMissAt(fmt.Sprintf("topic %d", i), "", emptyView(), base.Add(time.Duration(i)*time.Hour)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -269,7 +271,7 @@ func TestOpenMissesExamineAtMostTheSixteenNewest(t *testing.T) {
 			record := func(query string) {
 				t.Helper()
 				minute++
-				if err := b.recordMissAt(query, "", emptyView(), base.Add(time.Duration(minute)*time.Minute)); err != nil {
+				if _, err := b.recordMissAt(query, "", emptyView(), base.Add(time.Duration(minute)*time.Minute)); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -314,7 +316,7 @@ func TestOpenMissesShareTheReadingOfTheArticles(t *testing.T) {
 	b := missFixture(t)
 	base := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 	for i := 0; i < 8; i++ {
-		if err := b.recordMissAt(fmt.Sprintf("quartz exports %02d", i), "", emptyView(), base.Add(time.Duration(i)*time.Minute)); err != nil {
+		if _, err := b.recordMissAt(fmt.Sprintf("quartz exports %02d", i), "", emptyView(), base.Add(time.Duration(i)*time.Minute)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -446,7 +448,7 @@ func TestDamagedMissedSearchesDoNotStopTheWiki(t *testing.T) {
 		t.Fatalf("what the write keeps of the misses is the valid ones: %q", got)
 	}
 	empty := emptyView()
-	if err := b.RecordMiss("saffron lanterns", "", empty); err != nil {
+	if _, err := b.RecordMiss("saffron lanterns", "", empty); err != nil {
 		t.Fatalf("the record of a miss succeeds: %v", err)
 	}
 	if got := diskQueries(missesOnDisk(t, b)); !slices.Equal(got, []string{"older words", "newer words", "saffron lanterns"}) {
@@ -497,5 +499,202 @@ func TestInternalSearchesLeaveNoMiss(t *testing.T) {
 	}
 	if got := missesOnDisk(t, b); len(got) != 0 {
 		t.Fatalf("an internal search left a miss: %+v", got)
+	}
+}
+
+const (
+	resultA = "0123456789abcdef"
+	resultB = "fedcba9876543210"
+)
+
+// The result of a work is tied to the misses of the words it names, whatever the spacing, and to no other; a result tied before is
+// replaced by the later one. Nothing but an id of 16 lower case hexadecimal digits is tied.
+func TestNoteMissResultTiesTheMissesOfTheNamedWordsOnly(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
+	base := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	for i, query := range []string{"saffron lanterns", "kestrel harbor", "juniper meadow"} {
+		if _, err := b.recordMissAt(query, "", emptyView(), base.Add(time.Duration(i)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := b.NoteMissResult([]string{"  saffron \t lanterns ", "juniper meadow", "words that were never missed"}, resultA); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, m := range missesOnDisk(t, b) {
+		got[m.Query] = m.Result
+	}
+	if want := (map[string]string{"saffron lanterns": resultA, "kestrel harbor": "", "juniper meadow": resultA}); !maps.Equal(got, want) {
+		t.Fatalf("the named words are tied, whatever their spacing, and the others are not: %v, want %v", got, want)
+	}
+	if err := b.NoteMissResult([]string{"juniper meadow", "kestrel harbor"}, resultB); err != nil {
+		t.Fatal(err)
+	}
+	got = map[string]string{}
+	times := map[string]time.Time{}
+	for _, m := range missesOnDisk(t, b) {
+		got[m.Query], times[m.Query] = m.Result, m.At
+	}
+	if want := (map[string]string{"saffron lanterns": resultA, "kestrel harbor": resultB, "juniper meadow": resultB}); !maps.Equal(got, want) {
+		t.Fatalf("a later result replaces the one tied before: %v, want %v", got, want)
+	}
+	if !times["juniper meadow"].Equal(base.Add(2 * time.Minute)) {
+		t.Fatalf("tying a result does not touch the time of the miss: %v", times["juniper meadow"])
+	}
+	for _, bad := range []string{"", "not-an-id", "0123456789ABCDEF", "0123456789abcde", "0123456789abcdef0"} {
+		if err := b.NoteMissResult([]string{"saffron lanterns"}, bad); err == nil {
+			t.Fatalf("%q is not the 16-digit id of a source and is refused", bad)
+		}
+	}
+	if got := missesOnDisk(t, b); got[0].Result != resultA {
+		t.Fatalf("a refused id changes nothing: %+v", got)
+	}
+}
+
+// Tying writes only when a miss changes: with no journal it creates nothing, and a journal that holds none of the words, or holds
+// them already tied to the same result, keeps its bytes (the file is written with spaces by hand, so a rewrite would show).
+func TestNoteMissResultWritesNothingWhenNothingChanges(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
+	if err := b.NoteMissResult([]string{"saffron lanterns"}, resultA); err != nil {
+		t.Fatalf("a project with no journal: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(b.Root, "records", "wiki-searches")); !os.IsNotExist(err) {
+		t.Fatalf("tying created the folder of the search journal: %v", err)
+	}
+	path := journalPath(t, b)
+	for name, file := range map[string]string{
+		"other words": `{ "lookups": [], "misses": [ {"query":"other words","at":"2026-11-01T09:00:00Z"} ] }`,
+		"same result": `{ "lookups": [], "misses": [ {"query":"saffron lanterns","at":"2026-11-01T09:00:00Z","result":"` + resultA + `"} ] }`,
+	} {
+		if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := b.NoteMissResult([]string{"saffron lanterns"}, resultA); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if after, err := os.ReadFile(path); err != nil || string(after) != file {
+			t.Fatalf("%s: the file was rewritten: %s (%v)", name, after, err)
+		}
+	}
+}
+
+// A result is read only in the form of an id: any other value drops the miss, as every other damaged field does, and never makes
+// the journal unreadable.
+func TestSearchJournalReadsAResultOnlyInTheFormOfAnID(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
+	path := journalPath(t, b)
+	const at = `"at":"2026-11-01T09:00:00Z"`
+	miss := func(query, result string) string {
+		return `{"query":"` + query + `",` + at + `,"result":` + result + `}`
+	}
+	file := `{"misses":[` + strings.Join([]string{
+		miss("tied", `"`+resultA+`"`),
+		miss("no id", `"not-an-id"`),
+		miss("upper case", `"0123456789ABCDEF"`),
+		miss("short", `"0123456789abcde"`),
+		miss("long", `"0123456789abcdef0"`),
+		miss("number", `5`),
+		miss("empty", `""`),
+		`{"query":"none",` + at + `}`,
+	}, ",") + `]}`
+	if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	j, err := readSearchJournal(filepath.Dir(path))
+	if err != nil {
+		t.Fatalf("the journal is read: %v", err)
+	}
+	got := map[string]string{}
+	for _, m := range j.Misses {
+		got[m.Query] = m.Result
+	}
+	if want := (map[string]string{"tied": resultA, "empty": "", "none": ""}); !maps.Equal(got, want) {
+		t.Fatalf("only a result in the form of an id is read: %v, want %v", got, want)
+	}
+}
+
+// A search that finds nothing again keeps the result the earlier one was tied to, and returns that earlier miss (its time and its
+// result) so the caller can say where the result is; an earlier miss with no result, and every search that is not recorded, return
+// nothing. A later work replaces the result.
+func TestRecordMissKeepsTheResultAndReturnsTheEarlierMiss(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
+	base := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	record := func(query string, minutes int) *Miss {
+		t.Helper()
+		earlier, err := b.recordMissAt(query, "", emptyView(), base.Add(time.Duration(minutes)*time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return earlier
+	}
+	if earlier := record("saffron lanterns", 0); earlier != nil {
+		t.Fatalf("a first miss has no earlier one: %+v", earlier)
+	}
+	if earlier := record("  saffron  lanterns", 1); earlier != nil {
+		t.Fatalf("an earlier miss with no result is not returned: %+v", earlier)
+	}
+	if err := b.NoteMissResult([]string{"saffron lanterns"}, resultA); err != nil {
+		t.Fatal(err)
+	}
+	// the same words again, in another spacing: the earlier miss comes back as it was, and the one kept has the new time and the result
+	earlier := record("saffron\tlanterns ", 2)
+	if earlier == nil || earlier.Query != "saffron lanterns" || !earlier.At.Equal(base.Add(time.Minute)) || earlier.Result != resultA {
+		t.Fatalf("the earlier miss, with its time and its result: %+v", earlier)
+	}
+	if got := missesOnDisk(t, b); len(got) != 1 || got[0].Result != resultA || !got[0].At.Equal(base.Add(2*time.Minute)) {
+		t.Fatalf("one miss with the new time, still tied to the result: %+v", got)
+	}
+	// a third miss of the same words still has it
+	if earlier := record("saffron lanterns", 3); earlier == nil || earlier.Result != resultA || !earlier.At.Equal(base.Add(2*time.Minute)) {
+		t.Fatalf("the result is kept through the second miss of the words: %+v", earlier)
+	}
+	// words that were not tied have nothing to return
+	if earlier := record("kestrel harbor", 4); earlier != nil {
+		t.Fatalf("other words have no result: %+v", earlier)
+	}
+	// a later work replaces the result
+	if err := b.NoteMissResult([]string{"saffron lanterns"}, resultB); err != nil {
+		t.Fatal(err)
+	}
+	if earlier := record("saffron lanterns", 5); earlier == nil || earlier.Result != resultB {
+		t.Fatalf("the result of the later work is the one returned: %+v", earlier)
+	}
+	// a search that is not recorded returns nothing, whatever the words were tied to: a continuation, and a search that found one
+	found := View{Lessons: []Page{}, Search: &SearchResult{Total: 1, Candidates: []SearchCandidate{{}}}}
+	before, _ := os.ReadFile(journalPath(t, b))
+	if earlier, err := b.RecordMiss("saffron lanterns", "bmV4dA", emptyView()); earlier != nil || err != nil {
+		t.Fatalf("a continuation of a search is not a miss: %+v %v", earlier, err)
+	}
+	if earlier, err := b.RecordMiss("saffron lanterns", "", found); earlier != nil || err != nil {
+		t.Fatalf("a search that found a candidate is not a miss: %+v %v", earlier, err)
+	}
+	if after, _ := os.ReadFile(journalPath(t, b)); string(after) != string(before) {
+		t.Fatal("a search that is not recorded wrote the journal")
+	}
+}
+
+// A miss that has a result closes like any other once an article answers the same words: the lookup that returns the article
+// removes it with its result, and the search that finds a candidate returns no earlier miss.
+func TestMissWithAResultClosesWhenAnArticleAnswersTheWords(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
+	if _, err := b.recordMissAt("quartz exports", "", emptyView(), time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.NoteMissResult([]string{"quartz exports"}, resultA); err != nil {
+		t.Fatal(err)
+	}
+	addQuartzArticle(t, b)
+	view, err := b.QueryPage("quartz exports", "")
+	if err != nil || len(view.Lessons) == 0 {
+		t.Fatalf("the article is found: %v", err)
+	}
+	if earlier, err := b.RecordMiss("quartz exports", "", view); earlier != nil || err != nil {
+		t.Fatalf("a search that found the article returns no earlier miss: %+v %v", earlier, err)
+	}
+	if _, err := b.RecordLookup("quartz exports", view.Lessons); err != nil {
+		t.Fatal(err)
+	}
+	if got := missesOnDisk(t, b); len(got) != 0 {
+		t.Fatalf("the miss and its result are gone once an article answers the words: %+v", got)
 	}
 }

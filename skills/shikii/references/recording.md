@@ -44,6 +44,12 @@ words misses again: add a short note (the answer, or where it is written) in a
 work record with the same receipt. Otherwise leave it as it is. It is not an
 instruction to search again.
 
+When the same words miss again, the reply of the query or of a prepare with a
+receipt can carry `earlier_search`: an earlier work searched them, found no
+article, and recorded a result whose id is `result`. A query of that id reads it
+(`wiki query <id>`). It is that work's own report, not an article: confirm it
+before relying on it.
+
 Hook IDs can record only the hook's initial preparation in that project and turn.
 An explicit replacement prepare can reassign local references, so it requires its
 new receipt. A receipt remains supported in all paths, including hosts without

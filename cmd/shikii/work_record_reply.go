@@ -46,6 +46,7 @@ func finishWorkRecordReply(book notebook.Book, w *workState, req workRequest, re
 	}
 	if req.Result != nil && result.Complete {
 		result.MissedSearches = recordedMissedSearches(book, w.At)
+		tieMissedSearches(book, result.MissedSearches, w.Result)
 	}
 	limitSavedReviewArticles(req, result)
 }

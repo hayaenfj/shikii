@@ -100,8 +100,68 @@ func (f missedFlow) journalMisses() []string {
 	return words
 }
 
-// addMissAt puts a miss with a time of the test's choosing into the existing journal file, as the oldest.
-func (f missedFlow) addMissAt(query, at string) {
+// journalMiss is the time and the result tied to the miss of the words, as the journal file holds them (plain JSON); found is false
+// when the journal has no miss of those words.
+func (f missedFlow) journalMiss(query string) (at, result string, found bool) {
+	f.t.Helper()
+	data, err := os.ReadFile(f.journalPath())
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	var file struct {
+		Misses []struct{ Query, At, Result string } `json:"misses"`
+	}
+	if err := json.Unmarshal(data, &file); err != nil {
+		f.t.Fatal(err)
+	}
+	for _, m := range file.Misses {
+		if m.Query == query {
+			return m.At, m.Result, true
+		}
+	}
+	return "", "", false
+}
+
+// resultID is the id of the saved result a record's reply names, where both places that name it agree.
+func resultID(t *testing.T, saved map[string]any) string {
+	t.Helper()
+	storage, _ := saved["storage"].(map[string]any)
+	id, _ := storage["result_source"].(string)
+	for _, raw := range saved["saved"].([]any) {
+		if item := raw.(map[string]any); item["kind"] == "result" && item["id"] != id {
+			t.Fatalf("the record names two results: %v and %v", item["id"], id)
+		}
+	}
+	if id == "" {
+		t.Fatalf("the record saved no result: %v", saved)
+	}
+	return id
+}
+
+// earlierSearchOf is the earlier_search of a reply; a reply without it fails the test where it is read.
+func earlierSearchOf(t *testing.T, reply map[string]any) map[string]any {
+	t.Helper()
+	earlier, ok := reply["earlier_search"].(map[string]any)
+	if !ok {
+		t.Fatalf("the reply has no earlier_search: %v", reply)
+	}
+	return earlier
+}
+
+// savedResultText reads the saved result by its id as an agent does over MCP: a query whose text is the id, and returns the reply as
+// text.
+func (f missedFlow) savedResultText(id string) string {
+	f.t.Helper()
+	value, err := runNotebook(f.b.Root, f.b.Scope, notebookRequest{Operation: "query", Query: id})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return jsonText(value)
+}
+
+// addMissAt puts a miss with a time of the test's choosing into the existing journal file, as the oldest; the result is the id it is
+// tied to, when one is given.
+func (f missedFlow) addMissAt(query, at string, result ...string) {
 	f.t.Helper()
 	path := f.journalPath()
 	data, err := os.ReadFile(path)
@@ -113,7 +173,11 @@ func (f missedFlow) addMissAt(query, at string) {
 		f.t.Fatal(err)
 	}
 	old, _ := file["misses"].([]any)
-	file["misses"] = append([]any{map[string]any{"query": query, "at": at}}, old...)
+	miss := map[string]any{"query": query, "at": at}
+	if len(result) > 0 {
+		miss["result"] = result[0]
+	}
+	file["misses"] = append([]any{miss}, old...)
 	data, _ = json.Marshal(file)
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		f.t.Fatal(err)
@@ -153,7 +217,7 @@ func TestMissedSearchesAreKeptWhereTheAgentAsksTheWikiInWords(t *testing.T) {
 		f.wiki(query)
 		f.prepare(query, receipt)
 	}
-	f.wiki("0123456789abcdef")
+	f.wiki(f.source) // a saved source id is read, not searched: an id that names no source is refused (TestQueryThatIsASourceIDReadsTheSource)
 	// the memory-upgrade queries are the work's own commands: `wiki query` is the one entrance that would record them
 	f.wiki("memory-upgrade")
 	f.wiki("memory-optimize")
@@ -323,5 +387,261 @@ func TestWordlessQueryListsAtMostEightOpenMisses(t *testing.T) {
 	}
 	if searched := f.wiki("alpha lanterns"); searched["missed_searches"] != nil {
 		t.Fatalf("a query with words does not list the misses: %v", searched["missed_searches"])
+	}
+}
+
+// A record that names open misses ties exactly those to the saved result of its work: not a miss from before its preparation, and not
+// one the reply left out for the limit of three. The id it ties is the result's own, and a query of it returns the saved result.
+func TestRecordTiesTheMissesItNamesToTheSavedResultOfItsWork(t *testing.T) {
+	f := newMissedFlow(t)
+	prepared := f.prepare("export audit", "")
+	f.addMissAt("topic before the work", "2020-01-01T00:00:00Z")
+	for _, query := range []string{"alpha bravo", "charlie delta", "echo foxtrot", "golf hotel"} {
+		f.wiki(query)
+	}
+	saved := f.record(prepared, goodResult())
+	if got := missedQueriesOf(t, saved); !slices.Equal(got, []string{"golf hotel", "echo foxtrot", "charlie delta"}) {
+		t.Fatalf("the record names the three newest misses: %q", got)
+	}
+	id := resultID(t, saved)
+	for _, query := range []string{"golf hotel", "echo foxtrot", "charlie delta"} {
+		if _, result, found := f.journalMiss(query); !found || result != id {
+			t.Fatalf("%q is named and is tied to the saved result %s: %q %v", query, id, result, found)
+		}
+	}
+	for _, query := range []string{"alpha bravo", "topic before the work"} {
+		if _, result, found := f.journalMiss(query); !found || result != "" {
+			t.Fatalf("%q is not named, so it is tied to nothing: %q %v", query, result, found)
+		}
+	}
+	if text := f.savedResultText(id); !strings.Contains(text, "Audited the export.") {
+		t.Fatalf("a query of the id returns the saved result: %s", text)
+	}
+}
+
+// Another session that searches the same words (the spacing does not matter) and finds nothing is told where the result of the
+// earlier work is, by wiki query and by a prepare that carries a receipt; the note names a result a query of its id reads.
+func TestTheSameWordsMissingAgainAreToldWhereTheEarlierResultIs(t *testing.T) {
+	f := newMissedFlow(t)
+	id := resultID(t, f.recordAMissedSearch("saffron lanterns", goodResult()))
+	receipt := f.prepare("export audit", "")["receipt"].(string) // another session
+	at, _, _ := f.journalMiss("saffron lanterns")
+	earlier := earlierSearchOf(t, f.wiki("  saffron   lanterns "))
+	if len(earlier) != 4 || earlier["query"] != "saffron lanterns" || earlier["at"] != at || earlier["result"] != id {
+		t.Fatalf("earlier_search names the words, the time of the earlier miss and its result: %v (time %s, result %s)", earlier, at, id)
+	}
+	next, _ := earlier["next_action"].(string)
+	if len(next) > 350 {
+		t.Fatalf("the note is about 350 bytes at most: %d", len(next))
+	}
+	for _, part := range []string{
+		"An earlier work searched these same words, found no article, and recorded a result",
+		"Read that result with a query of its id",
+		"what was found or where the answer is written",
+		"that work's own report, not an article and not verified",
+		"confirm it before relying on it",
+	} {
+		if !strings.Contains(next, part) {
+			t.Fatalf("the note says %q: %q", part, next)
+		}
+	}
+	// the same search of a prepare that carries a receipt, asked after the miss above was kept again with a newer time
+	at, _, _ = f.journalMiss("saffron lanterns")
+	prepared := f.prepare("saffron lanterns", receipt)
+	if got := earlierSearchOf(t, prepared); len(got) != 4 || got["query"] != "saffron lanterns" || got["at"] != at || got["result"] != id || got["next_action"] != next {
+		t.Fatalf("the search of a prepare is told the same: %v", got)
+	}
+	// the id the two replies name is read by a query of it, in a prepare that carries a receipt as well
+	if source, _ := f.prepare(id, receipt)["source"].(map[string]any); source == nil || !strings.Contains(jsonText(source), "Audited the export.") {
+		t.Fatalf("a prepare that queries the id returns the saved result: %v", source)
+	}
+	// the maintenance listing names the result of a miss that has one
+	listing, _ := f.wiki("")["missed_searches"].([]any)
+	if len(listing) != 1 || listing[0].(map[string]any)["result"] != id {
+		t.Fatalf("the listing of open misses carries the result: %v", listing)
+	}
+}
+
+// The whole path of the feature as an agent meets it over MCP: a work searched words, found nothing and recorded a result; the same
+// words miss again and earlier_search names the result's id; a query whose text is exactly that id, sent as the MCP call sends it,
+// returns what that work recorded (the words of its own result, not a word search that finds nothing).
+func TestEarlierSearchIDIsReadByAQueryOfItsText(t *testing.T) {
+	f := newMissedFlow(t)
+	f.recordAMissedSearch("saffron lanterns", goodResult())
+	id, _ := earlierSearchOf(t, f.wiki("saffron lanterns"))["result"].(string)
+	if id == "" {
+		t.Fatal("the same words missing again name the id of the earlier result")
+	}
+	var req notebookRequest
+	if err := json.Unmarshal([]byte(`{"operation":"query","query":"`+id+`"}`), &req); err != nil {
+		t.Fatal(err)
+	}
+	value, err := runNotebook(f.b.Root, f.b.Scope, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := jsonText(value)
+	for _, saved := range []string{"Audited the export.", "Read the export code."} { // the changed and checked parts of goodResult
+		if !strings.Contains(text, saved) {
+			t.Fatalf("the query of the id returns the saved result, which holds %q: %.300s", saved, text)
+		}
+	}
+	if object := loopObject(t, value); object["search"] != nil || object["lessons"] != nil {
+		t.Fatalf("the reply is the saved result, not a word search of the id: %.300s", text)
+	}
+}
+
+// recordAMissedSearch is a work that searched the words in the wiki, found nothing, and recorded the result; it returns its reply.
+func (f missedFlow) recordAMissedSearch(query string, result *workCompletion) map[string]any {
+	f.t.Helper()
+	prepared := f.prepare("export audit", "")
+	f.wiki(query)
+	saved := f.record(prepared, result)
+	if saved["complete"] != true || !slices.Equal(missedQueriesOf(f.t, saved), []string{query}) {
+		f.t.Fatalf("the work names the miss in its complete record: %v", saved)
+	}
+	return saved
+}
+
+// No earlier_search when the earlier miss has no result: a work that recorded none, words searched before without any work, and
+// words never missed. A prepare that carries a receipt is told no differently.
+func TestNoEarlierSearchWhenTheEarlierMissHasNoResult(t *testing.T) {
+	f := newMissedFlow(t)
+	f.wiki("saffron lanterns")
+	if reply := f.wiki("saffron lanterns"); reply["earlier_search"] != nil {
+		t.Fatalf("words missed twice and tied to no work: %v", reply["earlier_search"])
+	}
+	// a work that recorded no result does not tie its miss
+	prepared := f.prepare("export audit", "")
+	f.wiki("alpha bravo")
+	if saved := f.record(prepared, nil); saved["complete"] != true || saved["missed_searches"] != nil {
+		t.Fatalf("a record without a result names no miss: %v", saved)
+	}
+	if _, result, found := f.journalMiss("alpha bravo"); !found || result != "" {
+		t.Fatalf("its miss is tied to nothing: %q %v", result, found)
+	}
+	receipt := f.prepare("export audit", "")["receipt"].(string)
+	for name, reply := range map[string]map[string]any{
+		"wiki query":              f.wiki("alpha bravo"),
+		"prepare with a receipt":  f.prepare("alpha bravo", receipt),
+		"words never missed":      f.wiki("quince orchard"),
+		"a prepare, never missed": f.prepare("walnut grove", receipt),
+	} {
+		if reply["earlier_search"] != nil {
+			t.Fatalf("%s: %v", name, reply["earlier_search"])
+		}
+	}
+}
+
+// What is not a search of words is never pointed at a result, even where a journal written by hand holds a tied miss of it: a
+// lesson id, a source id, and the memory-upgrade queries are the agent's reads and the work's own commands.
+func TestNoEarlierSearchForAQueryThatIsNotAWordSearch(t *testing.T) {
+	f := newMissedFlow(t)
+	f.wiki("saffron lanterns") // creates the journal
+	forms := []string{"lesson:0123456789abcdef", f.source, "memory-upgrade", "memory-optimize"}
+	for _, query := range forms {
+		f.addMissAt(query, "2026-11-01T09:00:00Z", "fedcba9876543210")
+	}
+	for _, query := range forms {
+		if reply := f.wiki(query); reply["earlier_search"] != nil {
+			t.Fatalf("%q is no search of words: %v", query, reply["earlier_search"])
+		}
+	}
+	f.addMissAt("kestrel harbor", "2026-11-01T09:00:00Z", "fedcba9876543210") // control: the same journal tells a search of words
+	if reply := f.wiki("kestrel harbor"); reply["earlier_search"] == nil {
+		t.Fatal("control: the tied miss of words is told")
+	}
+}
+
+// The result stays tied through further misses of the words (a third search is told too), and a later work that searched the
+// same words and found nothing replaces it with its own result.
+func TestEarlierSearchSurvivesFurtherMissesAndTheLaterWorkReplacesIt(t *testing.T) {
+	f := newMissedFlow(t)
+	idA := resultID(t, f.recordAMissedSearch("saffron lanterns", goodResult()))
+	for round := 2; round <= 3; round++ {
+		if earlier := earlierSearchOf(t, f.wiki("saffron lanterns")); earlier["result"] != idA {
+			t.Fatalf("miss %d of the words is told the result of the first work: %v", round, earlier)
+		}
+		if _, result, _ := f.journalMiss("saffron lanterns"); result != idA {
+			t.Fatalf("the miss keeps its result after miss %d: %q", round, result)
+		}
+	}
+	later := &workCompletion{Changed: "Audited the export totals.", Checked: "Read the totals code.", Evidence: []string{"new1"}}
+	prepared := f.prepare("export audit", "")
+	if earlier := earlierSearchOf(t, f.wiki("saffron lanterns")); earlier["result"] != idA {
+		t.Fatalf("the later work is told the result of the first: %v", earlier)
+	}
+	idB := resultID(t, f.record(prepared, later))
+	if idB == idA {
+		t.Fatalf("the two works saved two results: %s", idB)
+	}
+	if _, result, _ := f.journalMiss("saffron lanterns"); result != idB {
+		t.Fatalf("the miss is tied to the result of the later work: %q, want %s", result, idB)
+	}
+	if earlier := earlierSearchOf(t, f.wiki("saffron lanterns")); earlier["result"] != idB {
+		t.Fatalf("a later search is told the result of the later work: %v", earlier)
+	}
+}
+
+// An article that answers the words ends the note: both entrances find a candidate, return no earlier_search, and the lookup of the
+// wiki query removes the miss with its result.
+func TestAnArticleThatAnswersTheWordsEndsTheEarlierSearch(t *testing.T) {
+	f := newMissedFlow(t)
+	f.recordAMissedSearch("saffron lanterns", goodResult())
+	receipt := f.prepare("export audit", "")["receipt"].(string)
+	loopPage(t, f.b, f.source, map[string]any{"title": "Saffron lanterns notes", "lesson": "Light saffron lanterns after the audit.", "applies_to": "saffron lanterns"})
+	prepared := f.prepare("saffron lanterns", receipt)
+	if prepared["earlier_search"] != nil || len(prepared["knowledge"].([]any)) == 0 {
+		t.Fatalf("the search of a prepare finds the article and has no earlier_search: %v", prepared["earlier_search"])
+	}
+	reply := f.wiki("saffron lanterns")
+	if reply["earlier_search"] != nil || len(reply["lessons"].([]any)) == 0 {
+		t.Fatalf("the wiki query finds the article and has no earlier_search: %v", reply["earlier_search"])
+	}
+	if _, _, found := f.journalMiss("saffron lanterns"); found {
+		t.Fatal("the miss and its result are gone once the lookup returned the article")
+	}
+}
+
+// Tying is an addition to the record: when the journal cannot be written (its folder is read-only) the record is still complete,
+// still names the miss, and the miss stays tied to nothing.
+func TestRecordStaysCompleteWhenTyingTheMissesFails(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes into a read-only folder")
+	}
+	f := newMissedFlow(t)
+	prepared := f.prepare("export audit", "")
+	f.wiki("saffron lanterns")
+	dir := filepath.Dir(f.journalPath())
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	saved := f.record(prepared, goodResult())
+	if saved["complete"] != true || !slices.Equal(missedQueriesOf(t, saved), []string{"saffron lanterns"}) {
+		t.Fatalf("the record is complete and names the miss although tying it failed: %v", saved)
+	}
+	if _, result, found := f.journalMiss("saffron lanterns"); !found || result != "" {
+		t.Fatalf("the failed write left the miss tied to nothing (the folder was read-only): %q %v", result, found)
+	}
+}
+
+// Only a complete record ties: one that is not complete (its result cites evidence the call does not have) may hold a result that is
+// not saved for good, so the miss stays tied to nothing.
+func TestRecordThatIsNotCompleteTiesNothing(t *testing.T) {
+	f := newMissedFlow(t)
+	prepared := f.prepare("export audit", "")
+	f.wiki("charlie delta")
+	bad := goodResult()
+	bad.Evidence = []string{"new2"}
+	value, err := runWork(f.b.Root, f.b.Scope, "record", workRequest{Receipt: prepared["receipt"].(string), Result: bad})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved := loopObject(t, value); saved["complete"] != false {
+		t.Fatalf("the record is not complete: %v", saved)
+	}
+	if _, result, found := f.journalMiss("charlie delta"); !found || result != "" {
+		t.Fatalf("a record that is not complete ties nothing: %q %v", result, found)
 	}
 }

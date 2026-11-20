@@ -83,6 +83,9 @@ type View struct {
 	Lookup       *Lookup           `json:"lookup,omitempty"`
 	// MissedSearches is filled by the wordless query of the CLI and MCP only: the word searches that still find no candidate (OpenMisses).
 	MissedSearches []Miss `json:"missed_searches,omitempty"`
+	// EarlierSearch is set by a word search that found no candidate, when an earlier work searched the same words, found none and
+	// recorded a result: where that result is. The query of the CLI and MCP only; the caller fills it (RecordMiss returns the earlier miss).
+	EarlierSearch *EarlierSearch `json:"earlier_search,omitempty"`
 }
 
 type Result struct {
