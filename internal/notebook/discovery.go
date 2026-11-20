@@ -52,7 +52,7 @@ type searchJournal struct {
 	Discoveries      []recordedDiscovery `json:"discoveries"`
 	Outcomes         []ProcedureOutcome  `json:"outcomes,omitempty"`
 	Readings         []ReadingSample     `json:"readings,omitempty"`
-	Misses           []Miss              `json:"misses,omitempty"` // word searches that found no candidate, oldest first (missed_searches.go)
+	Misses           missedList          `json:"misses,omitempty"` // word searches that found no candidate, oldest first (missed_searches.go)
 }
 
 func readSearchJournal(dir string) (searchJournal, error) {
@@ -73,7 +73,7 @@ func readSearchJournal(dir string) (searchJournal, error) {
 	if err != nil || len(data) > 1<<20 {
 		return j, errors.New("cannot read the bounded search journal")
 	}
-	if json.Unmarshal(data, &j) != nil || len(j.Lookups) > 64 || len(j.Discoveries) > 128 || len(j.Outcomes) > 128 || len(j.Readings) > 128 || len(j.Misses) > missedSearchMax {
+	if json.Unmarshal(data, &j) != nil || len(j.Lookups) > 64 || len(j.Discoveries) > 128 || len(j.Outcomes) > 128 || len(j.Readings) > 128 {
 		return j, errors.New("cannot read the wiki search records")
 	}
 	for _, l := range j.Lookups {
@@ -110,11 +110,6 @@ func readSearchJournal(dir string) (searchJournal, error) {
 	for _, r := range j.Readings {
 		if err := r.Validate(); err != nil || !idPattern.MatchString(r.Snapshot.ID) || !validOutcomeHash(r.Snapshot.Hash) {
 			return j, errors.New("invalid saved reading execution")
-		}
-	}
-	for _, m := range j.Misses {
-		if m.Query == "" || len(m.Query) > missQueryMax || !utf8.ValidString(m.Query) || m.At.IsZero() {
-			return j, errors.New("invalid saved missed search")
 		}
 	}
 	return j, nil

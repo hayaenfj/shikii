@@ -1,6 +1,7 @@
 package notebook
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"time"
@@ -26,6 +27,36 @@ const (
 type Miss struct {
 	Query string    `json:"query"`
 	At    time.Time `json:"at"`
+}
+
+// missedList is the misses of the search journal, read as an allow-list: a miss that is not in the form the journal writes (not a
+// JSON object of the right fields, an empty query, a query over missQueryMax bytes, text that is not UTF-8, no time) is dropped, and
+// more than missedSearchMax of them are cut to the newest. The misses never make the journal unreadable: they are a note on gaps,
+// and an older or newer version of the program may have written another form or another bound (the other collections of the
+// journal are still refused when they are invalid).
+type missedList []Miss
+
+func (l *missedList) UnmarshalJSON(data []byte) error {
+	var raw []json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		*l = nil
+		return nil
+	}
+	kept := missedList{}
+	for _, r := range raw {
+		var m Miss
+		if utf8.Valid(r) && json.Unmarshal(r, &m) == nil && m.Query != "" && len(m.Query) <= missQueryMax && !m.At.IsZero() {
+			kept = append(kept, m)
+		}
+	}
+	if len(kept) > missedSearchMax {
+		kept = kept[len(kept)-missedSearchMax:]
+	}
+	if len(kept) == 0 {
+		kept = nil
+	}
+	*l = kept
+	return nil
 }
 
 // normalizeMissQuery is the form in which two queries count as the same search.

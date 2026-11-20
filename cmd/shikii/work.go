@@ -200,6 +200,7 @@ type workState struct {
 	Expected        map[string]store.KnowledgeReference   `json:"expected"`
 	ObservedBase    int                                   `json:"observed_base,omitempty"` // observedN taken over from an interrupted request: new ones follow
 	Reports         map[string]bool                       `json:"reports,omitempty"`       // sources this work wrote about itself (results, ending reviews): never its evidence, never handed over
+	CoverageShown   []string                              `json:"coverage_shown,omitempty"`
 	citingEvidence  bool                                  // a refusal names what evidence can cite, not every source; never saved
 }
 type workToken struct {
@@ -664,12 +665,16 @@ func prepareWork(root, scope string, req workRequest) (out any, err error) {
 	} else if w.HookPrepared {
 		reply["how_to_record"] = strings.Replace(compactWorkHowTo, "with this receipt", "with the hook's session_id/turn_id (or this receipt)", 1)
 	}
-	if coverage := preparedCoverage(root, scope); coverage != nil {
+	coverage, coverageShown := preparedCoverage(root, scope)
+	if coverage != nil {
 		reply["coverage"] = coverage
 	}
 	read, err = limitWorkPreparation(book, w, reply, quoted, req.MaxBytes, req.responseSize)
 	if err != nil {
 		return nil, err
+	}
+	if reply["coverage"] != nil { // the areas this reply lists: the result this work records takes over those made from remaining. A bound that left coverage out handed it none
+		w.CoverageShown = coverageShown
 	}
 	initialWorkReading(s, w, knowledge, quoted)
 	rememberWorkMetadata(w, reply)

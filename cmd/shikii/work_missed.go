@@ -26,7 +26,7 @@ type workMissedSearches struct {
 	NextAction string   `json:"next_action"`
 }
 
-const workMissedNext = "These searches of this project's wiki found no article while this work was open. This is a note, not an instruction. If this work found the answer to one of them with evidence, add it as a note in a work record with the same receipt. If it did not, leave it as it is."
+const workMissedNext = "These searches of this project's wiki found no article while this work was open. If this work found the answer to one of them with evidence, the next search of those words will miss again: add a short note (the answer, or where it is written) in a work record with the same receipt. If it did not, leave it as it is. This is not an instruction to search again."
 
 // noteMissedSearch keeps the words of a public word search that found no candidate. It is best effort: a journal that cannot be
 // written must not fail the search that was answered. The memory-upgrade queries are the work's own commands, not words searched.

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
@@ -15,6 +17,10 @@ import (
 // rows whose outcome is open are kept in the project's ledger (internal/store, coverage_ledger.go) and handed over by later preparations
 // until a later result closes the same area. A row is the agent's report of what it looked at: it never says that the area is
 // free of problems, and it is no permission.
+//
+// Agents write what they left in result.remaining and rarely send coverage rows. A result with no coverage row therefore leaves its
+// remaining (unless it says that nothing is left) in the ledger as an open row of origin remaining; a preparation lists it with
+// from:remaining; and the work that was handed it closes it by recording a result, as does the next result of the session that wrote it.
 const workCoverageMax = 16
 
 // How many open rows a preparation names. The others are counted.
@@ -27,19 +33,20 @@ type workCoverageRow struct {
 	Reason   string `json:"reason,omitempty"`
 }
 
-// workCoverageReply is what a record says of the coverage rows of its result. A result that names what it left (remaining) but has no
-// coverage rows gets next_action alone: the project's ledger takes only coverage rows, and remaining is never shown to later work.
+// workCoverageReply is what a record says of the coverage of its result: how many rows the result sent, the areas it opened (a row
+// of its own, or its remaining), and the areas it handed over by closing them.
 type workCoverageReply struct {
 	Rows       int      `json:"rows"`
 	Open       []string `json:"open"`
-	NextAction string   `json:"next_action,omitempty"`
+	HandedOver []string `json:"handed_over,omitempty"`
 }
 
-const workCoverageNext = "These areas were left unexamined by earlier work. This is a note on what is still open, not an instruction. If this work examines one, record the same area in result.coverage as reported, as clear with evidence (one of result.evidence), or as excluded with a reason; that closes it. Leave unrelated rows alone. The saved result named by source holds the reason an area was left open."
+// workCoverageNext begins with the words a measurement script looks for. It says what the open areas are and how each kind closes.
+const workCoverageNext = "These areas were left unexamined by earlier work. This is a note, not an instruction. A row with from:remaining is what that work wrote in result.remaining: it closes when this work records a result, so if it still matters, write it in this result's remaining. Other rows close when a later result records the same area in result.coverage as reported, clear (with evidence) or excluded (with a reason). Details: the result named by source."
 
-// workCoverageRemainingNext is told to a result that wrote what was left in remaining and sent no coverage row. Agents write the
-// left-over there, and no later preparation reads it; this is the moment the way to a row can be taught.
-const workCoverageRemainingNext = "result.remaining is kept with this result but is not shown to later work. If an area was left unexamined or needs follow-up, send this result again with coverage:[{\"area\":\"<short name of what was not examined>\",\"outcome\":\"open\"}] added; later preparations of this project then list the area until a result closes it. Not needed when nothing was left unexamined."
+// workRemainingNothing is the fixed list of words that say nothing was left (not an option): compared in lower case, without the
+// space and the punctuation around them. A phrase that is not in it makes an open row; that costs one handover to the next work.
+var workRemainingNothing = []string{"none", "nothing", "n/a", "na", "no", "\u306a\u3057", "\u7121\u3057", "\u7279\u306b\u306a\u3057", "\u3042\u308a\u307e\u305b\u3093", "\u306a\u3044", "\u7121\u3044"}
 
 // validateWorkCoverage refuses a coverage list the ledger could not keep, before anything of the result is saved. Each refusal says
 // what is wrong and what to send instead.
@@ -117,70 +124,122 @@ func readyCoverageResult(w *workState, c *workCompletion) (source, signature str
 	return "", "", false
 }
 
-// savedCoverage reads the coverage rows from the saved source of a result, which is what the ledger is written from, and checks that
-// the source is the result it was saved as.
-func savedCoverage(book notebook.Book, source, signature string) ([]workCoverageRow, error) {
+// savedCompletion reads the saved source of a result, which is what the ledger is written from, and checks that the source is the
+// result it was saved as.
+func savedCompletion(book notebook.Book, source, signature string) (workCompletion, error) {
+	var saved workCompletion
 	material, err := book.ReadSources([]string{source})
 	if err != nil {
-		return nil, err
+		return saved, err
 	}
 	originals, _ := material["observations"].([]notebook.Observation)
-	var saved workCompletion
 	if len(originals) != 1 || !isWorkSource(originals[0], notebook.WorkResult()) || json.Unmarshal([]byte(originals[0].Content), &saved) != nil || workHash(saved) != signature {
-		return nil, errors.New("the saved result is unavailable or changed")
+		return saved, errors.New("the saved result is unavailable or changed")
 	}
-	return saved.Coverage, nil
+	return saved, nil
 }
 
-// recordWorkCoverage writes the coverage rows of a result that is ready into the project's ledger, and tells the reply what the
-// result holds. It runs for a full record and for the repair of a result by ref, and writes nothing again for a record sent again. A
-// ledger that cannot be written is an error of the record (kind coverage): the same record sent again writes it. A full result that
-// is ready, has a remaining that is not blank and no coverage row writes nothing and gets the reply that says how a row is sent.
-func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCompletion, result *workResult, add func(workItem)) {
-	if c == nil || c.Ref == "" && len(c.Coverage) == 0 && strings.TrimSpace(c.Remaining) == "" {
+// workRemainingArea is the area an open row takes from the text of remaining: the text with each run of white space (a control
+// character is white space) as one space, and cut to the longest area the ledger keeps (the cut is never inside a character and
+// ends in an ellipsis). It reports false when the text says that nothing was left: it is empty or only punctuation, or it is one of
+// workRemainingNothing.
+func workRemainingArea(remaining string) (string, bool) {
+	area := strings.Join(strings.Fields(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, remaining)), " ")
+	bare := strings.ToLower(strings.TrimFunc(area, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsPunct(r) || unicode.IsSymbol(r) }))
+	if bare == "" || slices.Contains(workRemainingNothing, bare) {
+		return "", false
+	}
+	if len(area) > store.CoverageAreaMax {
+		const ellipsis = "\u2026"
+		cut := store.CoverageAreaMax - len(ellipsis)
+		for !utf8.RuneStart(area[cut]) {
+			cut--
+		}
+		area = area[:cut] + ellipsis
+	}
+	return area, true
+}
+
+// recordWorkCoverage writes what the project's ledger keeps of a result that is ready, and tells the reply what the result opened
+// and handed over. It runs for a full record and for the repair of a result by ref, from the saved result: the coverage rows are
+// written, and a result with no coverage row writes its remaining as an open row of origin remaining (workRemainingArea). Every
+// ready result also closes the open rows of remaining that it takes over (store.CoverageHandover): the rows of its own session and
+// the rows its preparation listed. A record sent again writes nothing again. A ledger that cannot be written is an error of the
+// record (kind coverage): the same record sent again writes it. A result with nothing to write, whose ledger cannot be read, is not
+// failed for it.
+func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCompletion, session string, result *workResult, add func(workItem)) {
+	if c == nil {
 		return
 	}
 	source, signature, ready := readyCoverageResult(w, c)
 	if !ready {
 		return
 	}
-	if c.Ref == "" && len(c.Coverage) == 0 {
-		result.Coverage = &workCoverageReply{Open: []string{}, NextAction: workCoverageRemainingNext}
+	fail := func(err error) {
+		add(workItem{Kind: "coverage", Ref: "coverage", Error: "the coverage of the result could not be written to the project's ledger: " + err.Error() + "; send the same record again"})
+	}
+	var saved workCompletion
+	if c.Ref != "" || len(c.Coverage) > 0 || strings.TrimSpace(c.Remaining) != "" {
+		var err error
+		if saved, err = savedCompletion(book, source, signature); err != nil {
+			fail(err)
+			return
+		}
+	}
+	rows := saved.Coverage
+	ledger := make([]store.CoverageRow, len(rows))
+	open := []string{}
+	for i, row := range rows {
+		ledger[i] = store.CoverageRow{Area: row.Area, Outcome: row.Outcome, Reason: row.Reason}
+		if row.Outcome == store.CoverageOpen {
+			area, _ := store.NormalizeCoverageArea(row.Area)
+			open = append(open, area)
+		}
+	}
+	handover := store.CoverageHandover{Session: store.CoverageSession(session), Shown: w.CoverageShown}
+	if area, left := workRemainingArea(saved.Remaining); len(rows) == 0 && left {
+		ledger = append(ledger, store.CoverageRow{Area: area, Outcome: store.CoverageOpen, Origin: store.CoverageFromRemaining, Session: handover.Session})
+		open = append(open, area)
+	}
+	st := store.Store{Dir: root}
+	if len(ledger) == 0 {
+		if held, err := st.OpenCoverage(book.Scope); err != nil || !slices.ContainsFunc(held, func(r store.CoverageRow) bool { return r.Origin == store.CoverageFromRemaining }) {
+			return // nothing to write and no row of remaining that this result could take over
+		}
+	}
+	handed, err := st.RecordCoverage(book.Scope, source, ledger, handover)
+	if err != nil {
+		fail(err)
 		return
 	}
-	rows, err := savedCoverage(book, source, signature)
-	if err == nil && len(rows) > 0 {
-		ledger := make([]store.CoverageRow, len(rows))
-		open := []string{}
-		for i, row := range rows {
-			ledger[i] = store.CoverageRow{Area: row.Area, Outcome: row.Outcome, Reason: row.Reason}
-			if row.Outcome == store.CoverageOpen {
-				area, _ := store.NormalizeCoverageArea(row.Area)
-				open = append(open, area)
-			}
-		}
-		if err = (store.Store{Dir: root}).RecordCoverage(book.Scope, source, ledger); err == nil {
-			result.Coverage = &workCoverageReply{Rows: len(rows), Open: open}
-		}
-	}
-	if err != nil {
-		add(workItem{Kind: "coverage", Ref: "coverage", Error: "the coverage of the result could not be written to the project's ledger: " + err.Error() + "; send the same record again"})
+	if len(rows) > 0 || len(open) > 0 || len(handed) > 0 {
+		result.Coverage = &workCoverageReply{Rows: len(rows), Open: open, HandedOver: handed}
 	}
 }
 
-// preparedCoverage is the open rows of the project's ledger for a preparation, or nil when none is open. A ledger that cannot be
-// read says so in place of the rows: a preparation is not refused for it.
-func preparedCoverage(root, scope string) map[string]any {
+// preparedCoverage is the open rows of the project's ledger for a preparation, or nil when none is open, and the areas of the rows it
+// names (the work remembers them: it is handed those rows). A row from remaining says so. A ledger that cannot be read says so in
+// place of the rows: a preparation is not refused for it.
+func preparedCoverage(root, scope string) (map[string]any, []string) {
 	open, err := (store.Store{Dir: root}).OpenCoverage(scope)
 	if err != nil {
-		return map[string]any{"error": "the coverage ledger could not be read: " + err.Error()}
+		return map[string]any{"error": "the coverage ledger could not be read: " + err.Error()}, nil
 	}
 	if len(open) == 0 {
-		return nil
+		return nil, nil
 	}
-	rows := []any{}
+	rows, shown := []any{}, []string{}
 	for _, row := range open[:min(workCoverageShown, len(open))] {
-		rows = append(rows, map[string]any{"area": row.Area, "source": row.Source})
+		entry := map[string]any{"area": row.Area, "source": row.Source}
+		if row.Origin == store.CoverageFromRemaining {
+			entry["from"] = store.CoverageFromRemaining
+		}
+		rows, shown = append(rows, entry), append(shown, row.Area)
 	}
-	return map[string]any{"open": len(open), "rows": rows, "next_action": workCoverageNext}
+	return map[string]any{"open": len(open), "rows": rows, "next_action": workCoverageNext}, shown
 }

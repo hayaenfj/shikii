@@ -341,49 +341,116 @@ func TestOpenMissesSkipWhatIsNotASearchOfWords(t *testing.T) {
 	}
 }
 
-// The reader of the journal refuses a miss list it would not write, like its other fields; a file from before the misses is read.
-func TestSearchJournalRefusesMissedSearchesItWouldNotWrite(t *testing.T) {
+// The misses of the journal are read as an allow-list and never make the journal unreadable: a miss that is not in the form the
+// journal writes is dropped, more than 64 are cut to the newest 64, and the other misses are read. A file from before the misses
+// is read as before.
+func TestSearchJournalReadsOnlyTheMissedSearchesItWouldWrite(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
 	path := journalPath(t, b)
-	misses := func(n int) string {
+	const at = `"at":"2026-11-01T09:00:00Z"`
+	miss := func(query string) string { return `{"query":"` + query + `",` + at + `}` }
+	misses := func(from, to int) []string { // topic <from> .. topic <to-1>, as JSON objects
 		parts := []string{}
-		for i := 0; i < n; i++ {
-			parts = append(parts, fmt.Sprintf(`{"query":"topic %d","at":"2026-11-01T09:00:00Z"}`, i))
+		for i := from; i < to; i++ {
+			parts = append(parts, miss(fmt.Sprintf("topic %d", i)))
 		}
-		return "[" + strings.Join(parts, ",") + "]"
+		return parts
+	}
+	topics := func(from, to int) []string {
+		out := []string{}
+		for i := from; i < to; i++ {
+			out = append(out, fmt.Sprintf("topic %d", i))
+		}
+		return out
+	}
+	list := func(parts ...string) string {
+		return `{"lookups":[],"discoveries":[],"misses":[` + strings.Join(parts, ",") + `]}`
 	}
 	for _, c := range []struct {
-		name    string
-		file    string
-		refused bool
-		count   int // the misses read from an accepted file
+		name string
+		file string
+		want []string // the words of the misses that are read, oldest first
 	}{
-		{"file from before the misses", `{"lookups":[],"discoveries":[]}`, false, 0},
-		{"one miss", `{"lookups":[],"discoveries":[],"misses":` + misses(1) + `}`, false, 1},
-		{"64 misses", `{"lookups":[],"discoveries":[],"misses":` + misses(64) + `}`, false, 64},
-		{"query of 200 bytes", `{"misses":[{"query":"` + strings.Repeat("x", 200) + `","at":"2026-11-01T09:00:00Z"}]}`, false, 1},
-		{"65 misses", `{"lookups":[],"discoveries":[],"misses":` + misses(65) + `}`, true, 0},
-		{"query of 201 bytes", `{"misses":[{"query":"` + strings.Repeat("x", 201) + `","at":"2026-11-01T09:00:00Z"}]}`, true, 0},
-		{"empty query", `{"misses":[{"query":"","at":"2026-11-01T09:00:00Z"}]}`, true, 0},
-		{"no time", `{"misses":[{"query":"topic"}]}`, true, 0},
-		{"zero time", `{"misses":[{"query":"topic","at":"0001-01-01T00:00:00Z"}]}`, true, 0},
+		{"file from before the misses", `{"lookups":[],"discoveries":[]}`, nil},
+		{"one miss", list(misses(0, 1)...), topics(0, 1)},
+		{"64 misses", list(misses(0, 64)...), topics(0, 64)},
+		{"65 misses keep the newest 64", list(misses(0, 65)...), topics(1, 65)},
+		{"query of 200 bytes", list(miss(strings.Repeat("x", 200))), []string{strings.Repeat("x", 200)}},
+		{"query of 201 bytes", list(miss("kept before"), miss(strings.Repeat("x", 201)), miss("kept after")), []string{"kept before", "kept after"}},
+		{"empty query", list(miss("kept before"), miss(""), miss("kept after")), []string{"kept before", "kept after"}},
+		{"no time", list(miss("kept before"), `{"query":"no time"}`, miss("kept after")), []string{"kept before", "kept after"}},
+		{"zero time", list(miss("kept before"), `{"query":"zero time","at":"0001-01-01T00:00:00Z"}`, miss("kept after")), []string{"kept before", "kept after"}},
+		{"query that is not UTF-8", list(miss("kept before"), "{\"query\":\"bad \xff text\","+at+"}", miss("kept after")), []string{"kept before", "kept after"}},
+		{"time that is no time", list(miss("kept before"), `{"query":"bad time","at":"yesterday"}`, miss("kept after")), []string{"kept before", "kept after"}},
+		{"query that is no text", list(miss("kept before"), `{"query":5,`+at+`}`, miss("kept after")), []string{"kept before", "kept after"}},
+		{"entries that are no objects", list(miss("kept before"), `"a string"`, `7`, `null`, `[]`, miss("kept after")), []string{"kept before", "kept after"}},
+		{"damaged ones are dropped before the newest 64 are kept", list(append(append([]string{miss("")}, misses(0, 66)...), miss(strings.Repeat("x", 201)))...), topics(2, 66)},
+		{"misses that are no list", `{"lookups":[],"discoveries":[],"misses":{"query":"topic","at":"2026-11-01T09:00:00Z"}}`, nil},
+		{"misses that are null", `{"lookups":[],"discoveries":[],"misses":null}`, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if err := os.WriteFile(path, []byte(c.file), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			dir := filepath.Dir(path)
-			j, err := readSearchJournal(dir)
-			if c.refused != (err != nil) {
-				t.Fatalf("refused=%v, got error %v", c.refused, err)
+			j, err := readSearchJournal(filepath.Dir(path))
+			if err != nil {
+				t.Fatalf("the journal is read: %v", err)
 			}
-			if !c.refused && len(j.Misses) != c.count {
-				t.Fatalf("read %d misses, want %d", len(j.Misses), c.count)
+			got := []string{}
+			for _, m := range j.Misses {
+				got = append(got, m.Query)
 			}
-			if _, err := b.OpenMisses(time.Time{}, 8); c.refused != (err != nil) {
-				t.Fatalf("the listing of open misses: refused=%v, got error %v", c.refused, err)
+			if want := append([]string{}, c.want...); !slices.Equal(got, want) {
+				t.Fatalf("the misses read are %q, want %q", got, want)
+			}
+			if _, err := b.OpenMisses(time.Time{}, 8); err != nil {
+				t.Fatalf("the listing of open misses: %v", err)
 			}
 		})
+	}
+	// the other collections of the journal are checked as before: only the misses are read leniently
+	file := `{"lookups":[{"id":"0123456789abcdef","query":"x"}],"misses":[` + miss("topic") + `]}`
+	if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readSearchJournal(filepath.Dir(path)); err == nil {
+		t.Fatal("a lookup whose id is not its hash is still refused")
+	}
+}
+
+// A journal with damaged misses written by hand (or by another version of the program) does not stop the wiki: a search of words,
+// the record of a lookup, the maintenance listing and the record of a miss all succeed, and what is kept of the misses is the
+// valid ones.
+func TestDamagedMissedSearchesDoNotStopTheWiki(t *testing.T) {
+	b := missFixture(t)
+	damaged := `{"lookups":[],"discoveries":[],"misses":[` +
+		`{"query":"","at":"2026-11-01T09:00:00Z"},` +
+		`{"query":"older words","at":"2026-11-01T09:01:00Z"},` +
+		`{"query":"` + strings.Repeat("x", 201) + `","at":"2026-11-01T09:02:00Z"},` +
+		`{"query":"no time"},` +
+		`{"query":"newer words","at":"2026-11-01T09:03:00Z"}]}`
+	if err := os.WriteFile(journalPath(t, b), []byte(damaged), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	view, err := b.QueryPage("quartz exports", "")
+	if err != nil || len(view.Lessons) == 0 {
+		t.Fatalf("a search of words succeeds: %v", err)
+	}
+	if _, err := b.Maintenance(); err != nil {
+		t.Fatalf("the maintenance listing succeeds: %v", err)
+	}
+	if _, err := b.RecordLookup("quartz exports", view.Lessons); err != nil {
+		t.Fatalf("the record of a lookup succeeds: %v", err)
+	}
+	if got := diskQueries(missesOnDisk(t, b)); !slices.Equal(got, []string{"older words", "newer words"}) {
+		t.Fatalf("what the write keeps of the misses is the valid ones: %q", got)
+	}
+	empty := emptyView()
+	if err := b.RecordMiss("saffron lanterns", "", empty); err != nil {
+		t.Fatalf("the record of a miss succeeds: %v", err)
+	}
+	if got := diskQueries(missesOnDisk(t, b)); !slices.Equal(got, []string{"older words", "newer words", "saffron lanterns"}) {
+		t.Fatalf("the new miss follows the valid ones: %q", got)
 	}
 }
 

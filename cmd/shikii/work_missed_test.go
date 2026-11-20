@@ -225,8 +225,21 @@ func TestRecordReplyNamesAtMostThreeOpenMisses(t *testing.T) {
 		t.Fatalf("the three newest of the four open misses, without the answered one: %q", got)
 	}
 	reply := saved["missed_searches"].(map[string]any)
-	if next, _ := reply["next_action"].(string); !strings.Contains(next, "not an instruction") || !strings.Contains(next, "a note in a work record with the same receipt") || len(reply) != 2 {
-		t.Fatalf("the note says it is not an instruction and where an answer goes: %v", reply)
+	next, _ := reply["next_action"].(string)
+	for _, part := range []string{
+		"found no article while this work was open",
+		"found the answer to one of them with evidence",
+		"the next search of those words will miss again",
+		"add a short note (the answer, or where it is written) in a work record with the same receipt",
+		"If it did not, leave it as it is",
+		"not an instruction to search again",
+	} {
+		if !strings.Contains(next, part) {
+			t.Fatalf("the note says %q: %q", part, next)
+		}
+	}
+	if len(reply) != 2 {
+		t.Fatalf("the reply holds the queries and the note only: %v", reply)
 	}
 }
 
@@ -263,17 +276,17 @@ func TestRecordReplyHasNoMissedSearchesUnlessItIsDue(t *testing.T) {
 	}
 }
 
-// The misses are an addition to the maintenance listing: a search journal the reader refuses (here a miss with an empty query,
-// written by hand) lists none, and the addition never fails the listing it is added to. The listing reads the same journal for
-// its own purposes (Maintenance) and answers an unreadable journal with its own refusal before the addition is reached, so the
-// addition is pinned where it is made.
+// The misses are an addition to the maintenance listing: a search journal the reader refuses (here a lookup whose id is not the
+// hash of its content, written by hand; a damaged miss no longer refuses the journal) lists none, and the addition never fails the
+// listing it is added to. The listing reads the same journal for its own purposes (Maintenance) and answers an unreadable journal
+// with its own refusal before the addition is reached, so the addition is pinned where it is made.
 func TestListedMissedSearchesAreBestEffort(t *testing.T) {
 	f := newMissedFlow(t)
 	f.wiki("alpha lanterns") // creates the journal
 	if got := listedMissedSearches(f.b); len(got) != 1 || got[0].Query != "alpha lanterns" {
 		t.Fatalf("control: a readable journal lists its open miss: %+v", got)
 	}
-	if err := os.WriteFile(f.journalPath(), []byte(`{"misses":[{"query":"","at":"2026-11-01T09:00:00Z"}]}`), 0o600); err != nil {
+	if err := os.WriteFile(f.journalPath(), []byte(`{"lookups":[{"id":"0123456789abcdef","query":"alpha lanterns"}],"misses":[{"query":"alpha lanterns","at":"2026-11-01T09:00:00Z"}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.b.OpenMisses(time.Time{}, 8); err == nil {
