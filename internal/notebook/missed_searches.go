@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // A missed search is a word search of the wiki that found no candidate at all. The journal keeps the words (never an answer), so a
@@ -25,8 +27,8 @@ const (
 	openMissExamineMax = 16
 )
 
-// Miss is one word search that found no candidate. Query is stored with white space trimmed and each run of it collapsed to one
-// space; At is when the search last found nothing. Result is the id of the saved result of the work that had the miss open when it
+// Miss is one word search that found no candidate. Query is stored as the words were last typed, with white space trimmed, each run
+// of it collapsed to one space and its characters composed (normalizeMissQuery); At is when the search last found nothing. Result is the id of the saved result of the work that had the miss open when it
 // recorded its result (NoteMissResult), or empty: the report of that work, never an answer the wiki holds.
 type Miss struct {
 	Query  string    `json:"query"`
@@ -87,13 +89,21 @@ func onlySourceIDs(q string) bool {
 	return q != ""
 }
 
-// normalizeMissQuery is the form in which two queries count as the same search.
+// normalizeMissQuery is the form a miss is stored in: the words as typed, with white space trimmed, each run of it collapsed to one
+// space, and a letter and its combining mark composed to one character (NFC), so that the same text pasted in another composition
+// is stored, listed and searched again in one form.
 func normalizeMissQuery(query string) string {
-	return strings.Join(strings.Fields(query), " ")
+	return strings.Join(strings.Fields(norm.NFC.String(query)), " ")
+}
+
+// missKey is the form in which two queries count as the same search: the stored form in lower case. The search compares its words
+// in lower case, so words that differ in case only find the same articles and are one miss.
+func missKey(query string) string {
+	return strings.ToLower(normalizeMissQuery(query))
 }
 
 // missQuery is the allow-list of what a miss is kept for: the first page of a search (no cursor) for words, in at most
-// missQueryMax bytes of UTF-8, that are not a reference. It returns the normalized words. Whatever is not listed here is never
+// missQueryMax bytes of UTF-8 as typed and as stored, that are not a reference. It returns the words in the stored form. Whatever is not listed here is never
 // recorded, so a new kind of query is not recorded until it is added here. OpenMisses applies the same list to what it reads.
 // A query whose words are all ids of sources (one or several, in any case) is a reading of sources, not a search of words.
 func missQuery(query, cursor string) (string, bool) {
@@ -101,8 +111,9 @@ func missQuery(query, cursor string) (string, bool) {
 		return "", false
 	}
 	q := normalizeMissQuery(query)
-	// "lesson:<id>" reads an article and a word of 16 hexadecimal digits is the id of a source: neither is a search of words.
-	if q == "" || strings.HasPrefix(q, "lesson:") || onlySourceIDs(q) {
+	// "lesson:<id>" reads an article and a word of 16 hexadecimal digits is the id of a source: neither is a search of words. The
+	// composed form of a few characters is longer than the typed one, and the reader drops a query over the bound.
+	if q == "" || len(q) > missQueryMax || strings.HasPrefix(q, "lesson:") || onlySourceIDs(q) {
 		return "", false
 	}
 	return q, true
@@ -114,10 +125,10 @@ func (v View) searchFoundNothing() bool {
 	return v.Search != nil && v.Search.Total == 0 && len(v.Lessons) == 0
 }
 
-// lastMiss is a copy of the newest miss of the normalized words, or nil.
-func lastMiss(misses []Miss, query string) *Miss {
+// lastMiss is a copy of the newest miss of the same words (key is their missKey), or nil.
+func lastMiss(misses []Miss, key string) *Miss {
 	for i := len(misses) - 1; i >= 0; i-- {
-		if normalizeMissQuery(misses[i].Query) == query {
+		if missKey(misses[i].Query) == key {
 			m := misses[i]
 			return &m
 		}
@@ -125,10 +136,11 @@ func lastMiss(misses []Miss, query string) *Miss {
 	return nil
 }
 
-func withoutMiss(misses []Miss, query string) []Miss {
+// withoutMiss is the misses without those of the same words (key is their missKey).
+func withoutMiss(misses []Miss, key string) []Miss {
 	kept := make([]Miss, 0, len(misses))
 	for _, m := range misses {
-		if normalizeMissQuery(m.Query) != query {
+		if missKey(m.Query) != key {
 			kept = append(kept, m)
 		}
 	}
@@ -137,8 +149,8 @@ func withoutMiss(misses []Miss, query string) []Miss {
 
 // RecordMiss is called where the agent asks the wiki a question in words: an explicit wiki query, and the search of a prepare that
 // carries a receipt. The query of a standalone preparation is the topic of a task, not a question, and does not call it. It keeps
-// the words of a search that found no candidate (a repeated search keeps one entry with a newer time, and keeps the result the
-// earlier one was tied to). It records nothing for any other query or page, and the internal searches of the wiki (delivery,
+// the words of a search that found no candidate (a repeated search of the same words, in any case and composition, keeps one entry
+// with a newer time, and keeps the result the earlier one was tied to). It records nothing for any other query or page, and the internal searches of the wiki (delivery,
 // placement, consultation) never call it. A search that found a candidate is not recorded here; its lookup (or CloseMiss) closes the miss.
 //
 // It returns the earlier miss of the same words (as it was before this search) when that one was tied to a result, so the caller can
@@ -154,11 +166,11 @@ func (b Book) recordMissAt(query, cursor string, view View, at time.Time) (*Miss
 	}
 	var earlier *Miss
 	err := b.updateJournal(true, func(j *searchJournal) bool {
-		miss := Miss{Query: q, At: at}
-		if before := lastMiss(j.Misses, q); before != nil && before.Result != "" {
+		miss, key := Miss{Query: q, At: at}, missKey(q)
+		if before := lastMiss(j.Misses, key); before != nil && before.Result != "" {
 			miss.Result, earlier = before.Result, before
 		}
-		j.Misses = append(withoutMiss(j.Misses, q), miss)
+		j.Misses = append(withoutMiss(j.Misses, key), miss)
 		if len(j.Misses) > missedSearchMax {
 			j.Misses = j.Misses[len(j.Misses)-missedSearchMax:]
 		}
@@ -204,11 +216,12 @@ func (b Book) CloseMiss(query string) error {
 	if !ok {
 		return nil
 	}
+	key := missKey(q)
 	return b.updateJournal(false, func(j *searchJournal) bool {
-		if lastMiss(j.Misses, q) == nil {
+		if lastMiss(j.Misses, key) == nil {
 			return false
 		}
-		j.Misses = withoutMiss(j.Misses, q)
+		j.Misses = withoutMiss(j.Misses, key)
 		return true
 	})
 }
@@ -223,12 +236,12 @@ func (b Book) NoteMissResult(queries []string, result string) error {
 	}
 	words := make([]string, len(queries))
 	for i, q := range queries {
-		words[i] = normalizeMissQuery(q)
+		words[i] = missKey(q)
 	}
 	return b.updateJournal(false, func(j *searchJournal) bool {
 		changed := false
 		for i := range j.Misses {
-			if m := &j.Misses[i]; m.Result != result && slices.Contains(words, normalizeMissQuery(m.Query)) {
+			if m := &j.Misses[i]; m.Result != result && slices.Contains(words, missKey(m.Query)) {
 				m.Result, changed = result, true
 			}
 		}

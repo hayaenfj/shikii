@@ -190,7 +190,7 @@ func (b Book) RecordLookup(query string, pages []Page) (*Lookup, error) {
 		j.Lookups = j.Lookups[len(j.Lookups)-64:]
 	}
 	// The same words returned an article: a miss of them is closed, inside the lock of this write.
-	j.Misses = withoutMiss(j.Misses, normalizeMissQuery(query))
+	j.Misses = withoutMiss(j.Misses, missKey(query))
 	if err = saveSearchJournal(dir, j); err != nil {
 		return nil, err
 	}
