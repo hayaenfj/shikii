@@ -300,6 +300,10 @@ func (s Store) RecordCoverage(scope, source string, rows []CoverageRow, handover
 // that its session's handover takes over and the open list still puts it where it was first written. A row that would be too long
 // to be read back is left, and does not fail the record. The newline that the append puts before its lines when the file does not
 // end in one is not counted: it is far inside coverageCarryZone.
+//
+// The limit of this way: only the carried lines move the point forward, so when the open rows together come close to what is read
+// less the oldest 1MB (about 3MB), the point does not catch up with them, and every call that writes a row writes all the open
+// rows it read again. No row is lost, but the ledger then grows by the size of the open rows with each such call.
 func coverageCarry(ledger []coverageLine, newest map[string]int, appended map[string]bool, size int64, added int) []byte {
 	keep := int64(feedbackReadMax - coverageCarryZone)
 	var carry []byte

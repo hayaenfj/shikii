@@ -98,19 +98,16 @@ func (b Book) Recall(query string) ([]Page, error) {
 	return pages, err
 }
 
-func (b Book) query(query string, recall bool) (View, error) {
-	v := View{Lessons: []Page{}, Pending: []store.Feedback{}, Issues: []Issue{}}
-	if !recall && strings.HasPrefix(query, "lesson:") && strings.Contains(query, "@") {
-		p, err := b.readRevision(query)
-		if err != nil {
-			return v, err
-		}
-		v.Lessons = append(v.Lessons, p)
-		return v, nil
-	}
+// searchPages is the part of a query that comes before the ranking: the readable pages of the wiki with the issues met on the way, and
+// the pages a search ranks (not deleted, not replaced, their sources intact; with their discovery contexts when the query has words
+// or is a recall). done is true when the query is a direct reference to one article ("lesson:<id>"), and v is then its whole result.
+// A query of words that is not a reference takes the same pages whatever its words are, so several such queries over one reading of
+// the wiki (WordsFoundAlone) ask for them once.
+func (b Book) searchPages(query string, recall bool) (v View, done bool, err error) {
+	v = View{Lessons: []Page{}, Pending: []store.Feedback{}, Issues: []Issue{}}
 	pages, issues, err := b.pages()
 	if err != nil {
-		return v, err
+		return v, false, err
 	}
 	v.Issues = append(v.Issues, issues...)
 	superseded := map[string]bool{}
@@ -128,7 +125,7 @@ func (b Book) query(query string, recall bool) (View, error) {
 		valid = append(valid, p)
 		// A direct reference can also read pages from before replacement. Source checks are not skipped.
 		if !recall && query == "lesson:"+p.ID {
-			return View{Lessons: []Page{p}, Pending: v.Pending, Issues: v.Issues}, nil
+			return View{Lessons: []Page{p}, Pending: v.Pending, Issues: v.Issues}, true, nil
 		}
 	}
 	for _, p := range valid {
@@ -140,12 +137,31 @@ func (b Book) query(query string, recall bool) (View, error) {
 	if query != "" || recall {
 		contexts, err := b.discoveryContexts()
 		if err != nil {
-			return v, err
+			return v, false, err
 		}
 		for i := range v.Lessons {
 			p := &v.Lessons[i]
 			p.discovered = contexts[p.ID+":"+p.Revision]
 		}
+	}
+	return v, false, nil
+}
+
+func (b Book) query(query string, recall bool) (View, error) {
+	if !recall && strings.HasPrefix(query, "lesson:") && strings.Contains(query, "@") {
+		v := View{Lessons: []Page{}, Pending: []store.Feedback{}, Issues: []Issue{}}
+		p, err := b.readRevision(query)
+		if err != nil {
+			return v, err
+		}
+		v.Lessons = append(v.Lessons, p)
+		return v, nil
+	}
+	v, done, err := b.searchPages(query, recall)
+	if err != nil || done {
+		return v, err
+	}
+	if query != "" || recall {
 		v.Lessons, v.Matches = rankPages(v.Lessons, query, recall)
 	}
 	if recall {

@@ -40,6 +40,9 @@ const (
 type workMissedSearches struct {
 	Queries    []string `json:"queries"`
 	NextAction string   `json:"next_action"`
+	// tied is every open miss the record may tie to its result, the newest first: the ones Queries names and the older ones the reply
+	// does not name. It is not part of the reply.
+	tied []string
 }
 
 const workMissedNext = "These searches of this project's wiki found no article while this work was open. If this work found the answer to one of them with evidence, the next search of those words will miss again: add a short note (the answer, or where it is written) in a work record with the same receipt. If it did not, leave it as it is. This is not an instruction to search again."
@@ -93,28 +96,34 @@ func closeMissedSearch(book notebook.Book, query string, view notebook.View) {
 	}
 }
 
-// tieMissedSearches ties the misses a record named to the saved result of its work, those whose words the text of the result speaks
-// of (the last work that searched those words, found nothing and reported them is the one a later search is pointed at). A miss the
-// result does not speak of keeps the result it had, so a work that named it only because it was open then does not take it. session
-// is missSession of the work. It is best effort: the record is not changed for a journal that cannot be written or a result that
-// cannot be read.
+// tieMissedSearches ties the open misses of a record to the saved result of its work, those whose words the text of the result speaks
+// of (the last work that searched those words, found nothing and reported them is the one a later search is pointed at). They are all
+// the open misses the record found (workMissedSearches.tied), not only the ones the reply names: the result may speak of words
+// searched long before the last three. A miss the result does not speak of keeps the result it had, so a work that named it only
+// because it was open then does not take it. session is missSession of the work. It is best effort: the record is not changed for a
+// journal that cannot be written or a result that cannot be read.
 func tieMissedSearches(book notebook.Book, named *workMissedSearches, result *workCompletionRef, session string) {
 	if named == nil || result == nil || result.Source == "" {
 		return
 	}
-	_ = book.NoteMissResult(named.Queries, result.Source, session)
+	_ = book.NoteMissResult(named.tied, result.Source, session)
 }
 
 // recordedMissedSearches is the open misses since the work was prepared that its session made or that no session is known for
 // (session is missSession of the work), or nil when there are none or the journal cannot be read (the record is not changed for it).
+// It asks the journal once, for as many misses as one call examines: the reply names the newest workMissedSearchesShown of them, and
+// all of them are what the record may tie to its result.
 func recordedMissedSearches(book notebook.Book, preparedAt time.Time, session string) *workMissedSearches {
-	misses, err := book.OpenMisses(preparedAt, workMissedSearchesShown, session)
+	misses, err := book.OpenMisses(preparedAt, notebook.OpenMissesMax, session)
 	if err != nil || len(misses) == 0 {
 		return nil
 	}
-	reply := &workMissedSearches{Queries: make([]string, len(misses)), NextAction: workMissedNext}
+	reply := &workMissedSearches{Queries: make([]string, 0, min(len(misses), workMissedSearchesShown)), NextAction: workMissedNext, tied: make([]string, len(misses))}
 	for i, m := range misses {
-		reply.Queries[i] = m.Query
+		reply.tied[i] = m.Query
+		if i < workMissedSearchesShown {
+			reply.Queries = append(reply.Queries, m.Query)
+		}
 	}
 	return reply
 }

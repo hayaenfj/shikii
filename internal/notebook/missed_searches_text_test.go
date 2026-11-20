@@ -212,25 +212,73 @@ func TestNoteMissResultIsNotTiedByTheFieldNamesOfAResult(t *testing.T) {
 	}
 }
 
-// The words of a coverage row (an object in an array in the result) are the author's words: a miss whose words appear only in the area
-// or the reason of a row is tied, and so are words deeper in any object or array, an array of strings included. Words that are in no
-// value are not.
-func TestNoteMissResultIsTiedByTheValuesNestedInAResult(t *testing.T) {
-	b := missedBook(t, "saffron wiring", "juniper meadow", "kestrel harbor", "quartz ledger", "walnut grove")
-	result := savedResult(t, b, `{"changed":"Reviewed.","coverage":[{"area":"Saffron wiring","outcome":"excluded","reason":"The juniper meadow has none."}],"notes":{"inner":[{"text":"Kestrel harbor"}],"list":["a quartz ledger"]}}`)
-	if err := b.NoteMissResult([]string{"saffron wiring", "juniper meadow", "kestrel harbor", "quartz ledger", "walnut grove"}, result, ""); err != nil {
+// The text of a saved result is what its author wrote in the fields the author writes: changed, checked and remaining, and the area
+// and the reason of each coverage row (an object in an array of the result). A miss whose words appear only in one of those is tied.
+// Words in any other field are not: an unknown field, however deep, is not the author's report.
+func TestNoteMissResultIsTiedByTheFieldsTheAuthorWritesAndNoOther(t *testing.T) {
+	b := missedBook(t, "numbat bilby", "saffron wiring", "juniper meadow", "kestrel harbor", "quartz ledger", "walnut grove", "orchid valley")
+	result := savedResult(t, b, `{"changed":"Reviewed.","remaining":"The numbat and the bilby were not seen.","coverage":[{"area":"Saffron wiring","outcome":"excluded","reason":"The juniper meadow has none."}],"notes":{"inner":[{"text":"Kestrel harbor"}],"list":["a quartz ledger"]},"extra":"orchid valley"}`)
+	if err := b.NoteMissResult([]string{"numbat bilby", "saffron wiring", "juniper meadow", "kestrel harbor", "quartz ledger", "walnut grove", "orchid valley"}, result, ""); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{"saffron wiring": result, "juniper meadow": result, "kestrel harbor": result, "quartz ledger": result, "walnut grove": ""}
+	want := map[string]string{"numbat bilby": result, "saffron wiring": result, "juniper meadow": result, "kestrel harbor": "", "quartz ledger": "", "walnut grove": "", "orchid valley": ""}
 	if got := tiedResults(t, b); !sameResults(got, want) {
-		t.Fatalf("the words of the nested values tie, the words in none do not: %v, want %v", got, want)
+		t.Fatalf("remaining, the area and the reason tie; a field that is not one the author writes, a nested one included, does not: %v, want %v", got, want)
+	}
+}
+
+// The words of the program are not the author's: the outcome of a coverage row (open, reported, clear, excluded), the refs that
+// evidence names (new1, current), the ref of the result and the fields that hold no report tie nothing. A control words the result
+// does speak of in changed and checked are tied.
+func TestNoteMissResultIsNotTiedByAnOutcomeAnEvidenceRefOrAnUnknownField(t *testing.T) {
+	words := []string{"open", "reported", "clear", "excluded", "new1", "current", "result", "walnut grove", "kestrel harbor", "export code"}
+	b := missedBook(t, words...)
+	result := savedResult(t, b, `{"ref":"result","sufficient":true,"changed":"Audited the export.","checked":"Read the export code.","evidence":["new1","current"],"extra":"walnut grove","notes":{"text":"kestrel harbor"},"coverage":[{"area":"First part","outcome":"open"},{"area":"Second part","outcome":"reported","evidence":"new1"},{"area":"Third part","outcome":"clear","evidence":"current"},{"area":"Fourth part","outcome":"excluded","reason":"Not needed."}]}`)
+	if err := b.NoteMissResult(words, result, ""); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{}
+	for _, word := range words {
+		want[word] = ""
+	}
+	want["export code"] = result
+	if got := tiedResults(t, b); !sameResults(got, want) {
+		t.Fatalf("only the words the author wrote tie: %v, want %v", got, want)
+	}
+}
+
+// A JSON value that is not an object (an array, a string, a number) and an object that has none of the fields the author writes are
+// no report: they tie nothing, although they hold strings.
+func TestNoteMissResultIsNotTiedByJSONThatHoldsNoReport(t *testing.T) {
+	for _, c := range []struct{ name, content string }{
+		{"an array", `["saffron lanterns"]`},
+		{"a string", `"saffron lanterns"`},
+		{"a number", `4242`},
+		{"another object", `{"other":"saffron lanterns","notes":["saffron lanterns"]}`},
+		{"an empty object", `{}`},
+		{"fields of another kind", `{"changed":5,"checked":["saffron lanterns"],"remaining":{"text":"saffron lanterns"},"coverage":["saffron lanterns",{"area":7,"reason":null}]}`},
+	} {
+		name, content := c.name, c.content
+		b := missedBook(t, "saffron lanterns")
+		result := savedResult(t, b, content)
+		path := journalPath(t, b)
+		before, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := b.NoteMissResult([]string{"saffron lanterns"}, result, ""); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if after, err := os.ReadFile(path); err != nil || string(after) != string(before) {
+			t.Fatalf("%s: a content that holds no report ties nothing and writes nothing: %s (%v)", name, after, err)
+		}
 	}
 }
 
 // Numbers, booleans and null are not text: a miss of one of them is not tied, and the words of a string next to them are.
 func TestNoteMissResultIsNotTiedByANumberABooleanOrNull(t *testing.T) {
 	b := missedBook(t, "4242", "false", "null", "saffron lanterns")
-	result := savedResult(t, b, `{"count":4242,"flag":false,"none":null,"note":"Saffron lanterns."}`)
+	result := savedResult(t, b, `{"count":4242,"flag":false,"none":null,"changed":"Saffron lanterns."}`)
 	if err := b.NoteMissResult([]string{"4242", "false", "null", "saffron lanterns"}, result, ""); err != nil {
 		t.Fatal(err)
 	}

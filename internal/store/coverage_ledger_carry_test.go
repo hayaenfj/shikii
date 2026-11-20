@@ -2,11 +2,13 @@ package store
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // coverageFiller is the source of the raw lines that fill a ledger in these tests: lines of one area that ends closed, so they never
@@ -238,5 +240,57 @@ func TestCoverageLedgerReadsTheLineTheTailBeginsAtTheHeadOf(t *testing.T) {
 	}
 	if got := openAreas(t, s); strings.Join(got, "|") != "inside the tail|at the head of the tail" {
 		t.Fatalf("the tail begins at the head of a row, which is read; the row before the tail is not: %q", got)
+	}
+}
+
+// The carried lines are appended, so the newest feedbackReadMax-coverageCarryZone bytes begin later once the call has written them than
+// they did before: an open row that sat just inside those bytes is outside them when the carried line is behind it, and it has to be
+// carried too (coverageCarry counts what it has carried so far). Here the second open row begins half a carried line after the point
+// the bytes begin at without the carried line, and the first open row is far before it: both must end up inside the newest bytes.
+func TestCoverageLedgerCarriesAnOpenRowThatTheCarriedLinePushesOutOfTheNewestBytes(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	row := func(area string) string {
+		line, err := json.Marshal(CoverageRow{At: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Area: area, Outcome: CoverageOpen, Reason: strings.Repeat(area[len(area)-1:], 250), Source: coverageFiller})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(line) + "\n"
+	}
+	first, second := row("area a"), row("area b")
+	own, err := json.Marshal(CoverageRow{At: time.Now().UTC(), Area: "own", Outcome: CoverageOpen, Source: coverageA})
+	if err != nil {
+		t.Fatal(err)
+	}
+	added := len(own) + 1 // the line the call writes of its own; its time is when it is written, so the length is within a few bytes of this
+	gap := strings.Repeat("x", 899) + "\n"
+	secondAt := len(first) + len(gap)
+	size := secondAt + coverageKeep - added - len(first)/2
+	tail := strings.Repeat("x", size-secondAt-len(second)-1) + "\n"
+	if err := os.MkdirAll(filepath.Dir(s.coveragePath(coverageScope)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(s.coveragePath(coverageScope), []byte(first+gap+second+tail), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if ledgerSize(t, s) != size || size >= feedbackReadMax {
+		t.Fatalf("the fixture is %d bytes, want %d (under what a reader takes)", ledgerSize(t, s), size)
+	}
+	record(t, s, coverageC, []CoverageRow{{Area: "own", Outcome: CoverageOpen}}, CoverageHandover{})
+	ownLines := ledgerLinesOf(t, s, "own")
+	if len(ownLines) != 1 {
+		t.Fatalf("the call wrote one line of its own: %v", ownLines)
+	}
+	actual := len(ownLines[0].text) + 1
+	if secondAt < size+actual-coverageKeep || secondAt >= size+actual+len(first)-coverageKeep {
+		t.Fatalf("the fixture: the second row begins %d bytes after the point the newest bytes begin at without the carried line, which must be under the %d bytes of a carried line", secondAt-(size+actual-coverageKeep), len(first))
+	}
+	for _, area := range []string{"area a", "area b"} {
+		lines := ledgerLinesOf(t, s, area)
+		if len(lines) != 2 {
+			t.Fatalf("%s: the row is written once more by the call, %d lines", area, len(lines))
+		}
+		if last := lines[len(lines)-1]; last.offset < ledgerSize(t, s)-coverageKeep {
+			t.Fatalf("%s: the latest line of the open area begins %d bytes from the end of the file, over the %d bytes a call that writes keeps it in", area, ledgerSize(t, s)-last.offset, coverageKeep)
+		}
 	}
 }

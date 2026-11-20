@@ -230,3 +230,16 @@ func TestWordsFoundAloneRecordsNothing(t *testing.T) {
 	}
 	same("a journal with a lookup and a miss", before, tree())
 }
+
+// A word of 16 hexadecimal digits is an id, not a word that was searched: it is left out when the words are searched alone, also when
+// the text of an article holds it. (Searched as a word, it would find that article, which the control shows.)
+func TestWordsFoundAloneDoesNotSearchAnIDAsAWordThatAnArticleHolds(t *testing.T) {
+	const id = "0123456789abcdef"
+	b := foundAloneBook(t, [3]string{"Order numbers", "The order " + id + " was shipped.", "orders"})
+	if v, err := b.query(id, false); err != nil || len(v.Lessons) == 0 {
+		t.Fatalf("control: the id searched as a word finds the article: %v", err)
+	}
+	if got := aloneOf(t, b, "kestrel "+id+" harbor"); got != nil {
+		t.Fatalf("the id is not searched, and no other word finds an article: %q", got)
+	}
+}

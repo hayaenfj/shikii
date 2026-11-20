@@ -62,13 +62,14 @@ func TestWikiQueryNamesTheWordsThatFindAnArticleAlone(t *testing.T) {
 	if got := f.journalMisses(); !slices.Equal(got, []string{foundAloneQuery}) {
 		t.Fatalf("the miss of the whole query is recorded as before: %q", got)
 	}
-	for name, query := range map[string]string{
-		"a search that finds an article":       "export audit kestrel",
-		"a miss of one word":                   "saffron",
-		"words none of which finds an article": "saffron lanterns",
+	// an array, not a map: the journal keeps its misses in the order they were searched, and the check below reads that order
+	for _, c := range []struct{ name, query string }{
+		{"a search that finds an article", "export audit kestrel"},
+		{"a miss of one word", "saffron"},
+		{"words none of which finds an article", "saffron lanterns"},
 	} {
-		if reply := f.wiki(query); reply["found_alone"] != nil {
-			t.Fatalf("%s carries no found_alone: %v", name, reply["found_alone"])
+		if reply := f.wiki(c.query); reply["found_alone"] != nil {
+			t.Fatalf("%s carries no found_alone: %v", c.name, reply["found_alone"])
 		}
 	}
 	if got := f.journalMisses(); !slices.Equal(got, []string{foundAloneQuery, "saffron", "saffron lanterns"}) {

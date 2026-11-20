@@ -398,8 +398,9 @@ func TestWordlessQueryListsAtMostEightOpenMisses(t *testing.T) {
 	}
 }
 
-// A record that names open misses ties exactly those to the saved result of its work: not a miss from before its preparation, and not
-// one the reply left out for the limit of three. The id it ties is the result's own, and a query of it returns the saved result.
+// A record ties to the saved result of its work the open misses made since its preparation that its result speaks of, the ones the
+// reply left out for the limit of three included (the fourth, alpha bravo): not a miss from before its preparation. The id it ties
+// is the result's own, and a query of it returns the saved result.
 func TestRecordTiesTheMissesItNamesToTheSavedResultOfItsWork(t *testing.T) {
 	f := newMissedFlow(t)
 	prepared := f.prepare("export audit", "")
@@ -412,15 +413,13 @@ func TestRecordTiesTheMissesItNamesToTheSavedResultOfItsWork(t *testing.T) {
 		t.Fatalf("the record names the three newest misses: %q", got)
 	}
 	id := resultID(t, saved)
-	for _, query := range []string{"golf hotel", "echo foxtrot", "charlie delta"} {
+	for _, query := range []string{"golf hotel", "echo foxtrot", "charlie delta", "alpha bravo"} {
 		if _, result, found := f.journalMiss(query); !found || result != id {
-			t.Fatalf("%q is named and is tied to the saved result %s: %q %v", query, id, result, found)
+			t.Fatalf("%q is an open miss of this work that the result speaks of, named or not, and is tied to the saved result %s: %q %v", query, id, result, found)
 		}
 	}
-	for _, query := range []string{"alpha bravo", "topic before the work"} {
-		if _, result, found := f.journalMiss(query); !found || result != "" {
-			t.Fatalf("%q is not named, so it is tied to nothing: %q %v", query, result, found)
-		}
+	if _, result, found := f.journalMiss("topic before the work"); !found || result != "" {
+		t.Fatalf("a miss from before the preparation is tied to nothing: %q %v", result, found)
 	}
 	if text := f.savedResultText(id); !strings.Contains(text, "Audited the export.") {
 		t.Fatalf("a query of the id returns the saved result: %s", text)

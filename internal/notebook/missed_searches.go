@@ -3,7 +3,6 @@ package notebook
 import (
 	"encoding/json"
 	"errors"
-	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -26,6 +25,9 @@ const (
 	// openMissExamineMax is how many misses one OpenMisses call examines. Each examined miss runs a whole search of the wiki, so the
 	// cost of a call is bounded by it, not by how many misses the journal keeps.
 	openMissExamineMax = 16
+	// OpenMissesMax is the most misses one OpenMisses call lists, whatever its limit: a caller that wants all of the open misses asks
+	// for this many.
+	OpenMissesMax = openMissExamineMax
 )
 
 // Miss is one word search that found no candidate. Query is stored as the words were last typed, with white space trimmed, each run
@@ -141,6 +143,18 @@ func lastMiss(misses []Miss, key string) *Miss {
 	return nil
 }
 
+// lastTiedMiss is a copy of the newest miss of the same words (key is their missKey) that is tied to a result, or nil: the journal of
+// an earlier version may hold the words twice (typed in another case), and the result may be on the older of the two.
+func lastTiedMiss(misses []Miss, key string) *Miss {
+	for i := len(misses) - 1; i >= 0; i-- {
+		if misses[i].Result != "" && missKey(misses[i].Query) == key {
+			m := misses[i]
+			return &m
+		}
+	}
+	return nil
+}
+
 // withoutMiss is the misses without those of the same words (key is their missKey).
 func withoutMiss(misses []Miss, key string) []Miss {
 	kept := make([]Miss, 0, len(misses))
@@ -178,7 +192,7 @@ func (b Book) recordMissAt(query, cursor, session string, view View, at time.Tim
 	var earlier *Miss
 	err := b.updateJournal(true, func(j *searchJournal) bool {
 		miss, key := Miss{Query: q, At: at, Session: session}, missKey(q)
-		if before := lastMiss(j.Misses, key); before != nil && before.Result != "" {
+		if before := lastTiedMiss(j.Misses, key); before != nil {
 			miss.Result, earlier = before.Result, before
 		}
 		j.Misses = append(withoutMiss(j.Misses, key), miss)
@@ -239,7 +253,7 @@ func (b Book) CloseMiss(query string) error {
 
 // NoteMissResult ties the misses of the given words to a saved result: the id of the result of the work that had them open, when the
 // text of that result speaks of the words (wordsFind: a word search of the wiki for them would find it; the text is what the author
-// wrote, the string values of the result and not its field names: authoredText). A named miss whose words the
+// wrote, in the fields a person writes and not in those the program chose: authoredText). A named miss whose words the
 // text does not speak of is left as it is, tied to the result it had or to none, so a later search is pointed only at a result that
 // says something of its words. A result tied before is replaced by a later one that speaks of the words (the last work that searched
 // those words and found nothing and reported them is the one reported). session is the session of that work: a miss that another
@@ -291,35 +305,43 @@ func (b Book) resultText(id string) (string, error) {
 	return authoredText(observations[0].Content), nil
 }
 
-// authoredText is the words of a saved result that its author wrote. The result of a work is JSON, and its field names are the
-// program's, not the author's: a search of "checked" must not find every result there is. When the content is a JSON value, the text is
-// the string values in it, one to a line, taken through the objects (in the order of their names) and the arrays; the names, numbers,
-// booleans and null are structure, not text. It knows no field by name, so a field added later is covered. Content that is not JSON
-// is the text as it is.
+// authoredText is the words of a saved result that its author wrote. The result of a work is a JSON object whose fields are the
+// program's, and several of them hold words the program chose (the outcome of a coverage row, the refs of the evidence): a search of
+// "reported" or "new1" must not find every result there is. So the text is an allow-list: when the content is a JSON object, it is the
+// strings of the fields the author writes (resultTextFields: changed, checked, remaining), then the strings of area and reason of
+// each row of coverage, one to a line. Nothing else is text: not another field, a nested one or one added later until it is listed here
+// (the fields are those of the result a work saves, workCompletion in cmd/shikii), and not a name, a number, a boolean or null. A JSON
+// value that is not an object, or an object with none of those fields, is no report and its text is empty. Content that is not JSON is
+// the text as it is.
 func authoredText(content string) string {
 	var value any
 	if json.Unmarshal([]byte(content), &value) != nil {
 		return content
 	}
-	return strings.Join(stringValues(value, nil), "\n")
-}
-
-// stringValues appends to lines the string values in value (a decoded JSON value), objects in the order of their names.
-func stringValues(value any, lines []string) []string {
-	switch v := value.(type) {
-	case string:
-		lines = append(lines, v)
-	case []any:
-		for _, item := range v {
-			lines = stringValues(item, lines)
-		}
-	case map[string]any:
-		for _, name := range slices.Sorted(maps.Keys(v)) {
-			lines = stringValues(v[name], lines)
+	report, _ := value.(map[string]any)
+	var lines []string
+	for _, field := range resultTextFields {
+		if text, ok := report[field].(string); ok {
+			lines = append(lines, text)
 		}
 	}
-	return lines
+	rows, _ := report["coverage"].([]any)
+	for _, raw := range rows {
+		row, _ := raw.(map[string]any)
+		for _, field := range coverageTextFields {
+			if text, ok := row[field].(string); ok {
+				lines = append(lines, text)
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
 }
+
+// resultTextFields are the fields of a saved result that hold what the author wrote; coverageTextFields those of a coverage row.
+var (
+	resultTextFields   = []string{"changed", "checked", "remaining"}
+	coverageTextFields = []string{"area", "reason"}
+)
 
 // readJournalIfAny reads the search journal of the book; a book that has none has an empty one.
 func (b Book) readJournalIfAny() (searchJournal, error) {
@@ -345,29 +367,53 @@ func (m Miss) mineOrUnknown(session string) bool {
 // the misses before since are.
 //
 // A call examines at most openMissExamineMax misses: the newest ones that are at or after since and of an allowed form (the others
-// are skipped and not counted). A miss older than those is not examined in that call, whether it is open or not, so a journal full
-// of answered misses costs a bounded number of searches. The searches of one call share the parsing of the articles (ReadView:
-// every read still opens the files and compares all bytes, so an article changed in between is read as it is then).
+// are skipped and not counted, and so is a miss of words that a newer miss of the same words names already). A miss older than those is not examined in that call, whether it is open or not, so a journal full
+// of answered misses costs a bounded number of searches. The searches of one call share one reading of the wiki (wordSearcher: the
+// articles are read, their sources checked and their texts split once for all the words of the misses it examines, not once for each
+// of them), and each answers as a wiki query of its words does.
 func (b Book) OpenMisses(since time.Time, limit int, session string) ([]Miss, error) {
 	j, err := b.readJournalIfAny()
 	if err != nil {
 		return nil, err
 	}
-	b = b.ReadView()
 	open := []Miss{}
-	examined := 0
+	if limit <= 0 {
+		return open, nil
+	}
+	examined := []Miss{}
+	seen := map[string]bool{}
 	// the journal keeps its misses oldest first
-	for i := len(j.Misses) - 1; i >= 0 && len(open) < limit && examined < openMissExamineMax; i-- {
+	for i := len(j.Misses) - 1; i >= 0 && len(examined) < openMissExamineMax; i-- {
 		m := j.Misses[i]
 		if _, ok := missQuery(m.Query, ""); !ok || m.At.Before(since) || !m.mineOrUnknown(session) {
 			continue
 		}
-		examined++
-		v, err := b.Query(m.Query)
-		if err != nil {
-			return nil, err
+		key := missKey(m.Query)
+		if seen[key] {
+			continue // the same words again (a journal of an earlier version holds them twice): the newer miss names them
 		}
-		if v.searchFoundNothing() {
+		seen[key] = true
+		if tied := lastTiedMiss(j.Misses, key); tied != nil {
+			m.Result = tied.Result
+		}
+		examined = append(examined, m)
+	}
+	if len(examined) == 0 {
+		return open, nil
+	}
+	queries := make([]string, len(examined))
+	for i, m := range examined {
+		queries[i] = m.Query
+	}
+	searcher, err := b.searcherFor(queries)
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range examined {
+		if len(open) == limit {
+			break
+		}
+		if !searcher.finds(m.Query) {
 			open = append(open, m)
 		}
 	}

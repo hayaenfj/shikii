@@ -4,6 +4,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"unicode"
 	"unicode/utf8"
 
@@ -218,7 +219,17 @@ type searchDocument struct {
 	fields []map[string]bool
 }
 
+// pageTokenizations counts the pages whose texts were split into terms for a ranking (the tests hold a search of several words over
+// one reading of the wiki to one pass per page).
+var pageTokenizations atomic.Uint64
+
 func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
+	return rankPagesWith(pages, query, recall, nil)
+}
+
+// rankPagesWith is rankPages over pages whose terms may already be split (shared, see pageTerms): the ranking is the same, only
+// the splitting of the texts is not done again. shared is nil for a ranking of its own, and is not used by a recall.
+func rankPagesWith(pages []Page, query string, recall bool, shared *pageTerms) ([]Page, []Match) {
 	names, weights := []string{"title", "applies_to", "lesson", "body", "rationale", "discovery"}, []float64{4, 3, 2, 1, 2, 3}
 	if recall {
 		names, weights = []string{"title", "applies_to", "rationale", "discovery"}, []float64{4, 3, 2, 3}
@@ -232,18 +243,28 @@ func rankPages(pages []Page, query string, recall bool) ([]Page, []Match) {
 	}
 	sort.Strings(orderedTerms)
 	docs, frequency := []searchDocument{}, map[string]int{}
-	for _, p := range pages {
+	for i, p := range pages {
 		d := searchDocument{page: p}
 		seen := map[string]bool{}
 		texts := []string{p.Title, p.AppliesTo, p.Lesson, p.Body, p.Rationale, p.discovered}
 		if recall {
 			texts = []string{p.Title, p.AppliesTo, p.Rationale, p.discovered}
 		}
-		for _, text := range texts[:len(names)] {
+		var split []map[string]bool
+		if !recall && shared != nil {
+			split = shared.fieldsOf(i, terms)
+		}
+		if split == nil {
+			pageTokenizations.Add(1)
+		}
+		for j, text := range texts[:len(names)] {
 			var field map[string]bool
-			if recall {
+			switch {
+			case recall:
 				field = searchTerms(text)
-			} else {
+			case split != nil:
+				field = split[j]
+			default:
 				field = searchTermsFor(text, terms)
 			}
 			d.fields = append(d.fields, field)

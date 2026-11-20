@@ -26,7 +26,8 @@ type FoundAlone struct {
 // foundAloneMax are returned. A word that is itself a reference (an id, lesson:<id>) is not searched.
 //
 // Each word is searched as a wiki query of that word is: the same pages, thresholds and discovery contexts, over one shared reading
-// of the articles (ReadView, as OpenMisses does). It records nothing: no lookup, no miss, no change to the journal.
+// of the wiki (wordSearcher: the pages are read, their sources checked and their texts split once for all the words, not once for
+// each). It records nothing: no lookup, no miss, no change to the journal.
 func (b Book) WordsFoundAlone(query, cursor string, view View) ([]string, error) {
 	q, ok := missQuery(query, cursor)
 	if !ok || !view.searchFoundNothing() {
@@ -36,9 +37,8 @@ func (b Book) WordsFoundAlone(query, cursor string, view View) ([]string, error)
 	if len(words) < 2 {
 		return nil, nil
 	}
-	b = b.ReadView().scopedRead()
 	seen := map[string]bool{}
-	found := []string{}
+	examined := []string{}
 	for _, word := range words {
 		key := missKey(word)
 		if seen[key] {
@@ -48,14 +48,20 @@ func (b Book) WordsFoundAlone(query, cursor string, view View) ([]string, error)
 		if len(seen) > foundAloneExamineMax {
 			break
 		}
-		if _, ok := missQuery(word, ""); !ok {
-			continue
+		if _, ok := missQuery(word, ""); ok {
+			examined = append(examined, word)
 		}
-		v, err := b.query(word, false)
-		if err != nil {
-			return nil, err
-		}
-		if len(v.Lessons) > 0 || v.Search != nil && v.Search.Total > 0 {
+	}
+	if len(examined) == 0 {
+		return nil, nil
+	}
+	searcher, err := b.searcherFor(examined)
+	if err != nil {
+		return nil, err
+	}
+	found := []string{}
+	for _, word := range examined {
+		if searcher.finds(word) {
 			if found = append(found, word); len(found) == foundAloneMax {
 				break
 			}

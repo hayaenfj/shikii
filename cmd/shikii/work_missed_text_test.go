@@ -3,6 +3,9 @@ package main
 import (
 	"slices"
 	"testing"
+	"time"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
 // A record names the misses made while its work was open and ties to its result only those the result speaks of, through the whole
@@ -61,12 +64,13 @@ func TestTwoRecordsOfAWikiQueryTieEachWordsToTheResultThatSpeaksOfThem(t *testin
 					t.Fatalf("both works name both misses: %q", got)
 				}
 			}
-			for query, want := range map[string]string{"saffron lanterns": resultID(t, savedSaffron), "juniper meadow": resultID(t, savedJuniper)} {
-				if _, result, found := f.journalMiss(query); !found || result != want {
-					t.Fatalf("%q is tied to the result that speaks of it (%s): %q %v", query, want, result, found)
+			// an array, not a map: each search below records its miss again, so the order it runs in is fixed
+			for _, c := range []struct{ query, want string }{{"saffron lanterns", resultID(t, savedSaffron)}, {"juniper meadow", resultID(t, savedJuniper)}} {
+				if _, result, found := f.journalMiss(c.query); !found || result != c.want {
+					t.Fatalf("%q is tied to the result that speaks of it (%s): %q %v", c.query, c.want, result, found)
 				}
-				if earlier := earlierSearchOf(t, f.wiki(query)); earlier["result"] != want {
-					t.Fatalf("a later search of %q is pointed at the result that speaks of it (%s): %v", query, want, earlier)
+				if earlier := earlierSearchOf(t, f.wiki(c.query)); earlier["result"] != c.want {
+					t.Fatalf("a later search of %q is pointed at the result that speaks of it (%s): %v", c.query, c.want, earlier)
 				}
 			}
 		})
@@ -94,5 +98,89 @@ func TestRecordIsNotTiedByTheFieldNamesOfItsResult(t *testing.T) {
 		if _, result, found := f.journalMiss(query); !found || result != "" {
 			t.Fatalf("%q is the name of a field of every result and ties none: %q %v", query, result, found)
 		}
+	}
+}
+
+// The words the program chose are not the author's: the outcome of a coverage row and the ref the evidence names are in the saved
+// result of a real work, and a search of them is tied to nothing; the area of a row is the author's, and ties.
+func TestRecordIsNotTiedByTheOutcomeOrTheEvidenceRefOfItsResult(t *testing.T) {
+	f := newMissedFlow(t)
+	prepared := f.prepare("export audit", "")
+	for _, query := range []string{"reported excluded", "new1", "second part"} {
+		f.wiki(query)
+	}
+	result := &workCompletion{Changed: "Audited the export.", Checked: "Read the export code.", Evidence: []string{"new1"}, Coverage: []workCoverageRow{
+		{Area: "First part", Outcome: "reported", Evidence: "new1"},
+		{Area: "Second part", Outcome: "excluded", Reason: "Not needed."},
+	}}
+	saved := f.record(prepared, result)
+	if saved["complete"] != true {
+		t.Fatalf("the record is complete: %v", saved)
+	}
+	if got := missedQueriesOf(t, saved); !slices.Equal(got, []string{"second part", "new1", "reported excluded"}) {
+		t.Fatalf("the record names the three open misses, newest first: %q", got)
+	}
+	id := resultID(t, saved)
+	if _, tied, found := f.journalMiss("second part"); !found || tied != id {
+		t.Fatalf("the area of a row is the author's and is tied to the result (%s): %q %v", id, tied, found)
+	}
+	for _, query := range []string{"reported excluded", "new1"} {
+		if _, tied, found := f.journalMiss(query); !found || tied != "" {
+			t.Fatalf("%q is the outcome or the evidence ref the program wrote, and ties none: %q %v", query, tied, found)
+		}
+	}
+}
+
+// A record names at most three open misses, but it ties to its result every open miss of its own session (and those no session is
+// known for) whose words the result speaks of, as many as one search of the open misses examines: the words of an older search that
+// the result speaks of are tied although the reply does not name them. The words the result does not speak of are not tied, named or
+// not, and the misses of another session are not tied at all.
+func TestRecordTiesEveryOpenMissItsResultSpeaksOfAndNamesThreeOfThem(t *testing.T) {
+	f := newMissedFlow(t)
+	prepared := f.prepare("export audit", "")
+	receipt := prepared["receipt"].(string)
+	for _, query := range []string{"quokka wombat", "numbat bilby", "kestrel harbor", "juniper meadow", "walnut grove"} {
+		f.prepare(query, receipt) // a search of this session through its receipt, oldest first
+	}
+	f.addMissRowAt("orchid valley", "2099-01-01T00:00:00Z", "2222222222222222") // another session searched these words after the preparation
+	saved := f.record(prepared, goodResultAbout("quokka wombat", "juniper meadow", "orchid valley"))
+	if saved["complete"] != true {
+		t.Fatalf("the record is complete: %v", saved)
+	}
+	if got := missedQueriesOf(t, saved); !slices.Equal(got, []string{"walnut grove", "juniper meadow", "kestrel harbor"}) {
+		t.Fatalf("the reply names the three newest open misses of its session, as before: %q", got)
+	}
+	id := resultID(t, saved)
+	for query, want := range map[string]string{
+		"quokka wombat":  id, // not named, and the result speaks of it
+		"juniper meadow": id, // named, and the result speaks of it
+		"numbat bilby":   "", // not named, and the result does not speak of it
+		"kestrel harbor": "", // named, and the result does not speak of it
+		"walnut grove":   "",
+		"orchid valley":  "", // the result speaks of it, and another session searched it
+	} {
+		if _, result, found := f.journalMiss(query); !found || result != want {
+			t.Fatalf("%q is tied to %q, want %q: %v", query, result, want, found)
+		}
+	}
+	if earlier := earlierSearchOf(t, f.wiki("quokka wombat")); earlier["result"] != id {
+		t.Fatalf("the same words that miss again are pointed at the result: %v", earlier)
+	}
+}
+
+// A record asks the journal of open misses once, however many misses it names and ties: each call searches the wiki for every miss it
+// examines, so the count of parses of the one article is the measure (it does not depend on how fast a machine is).
+func TestRecordAsksTheJournalOfOpenMissesOnce(t *testing.T) {
+	f := newMissedFlow(t)
+	for _, query := range []string{"quokka wombat", "numbat bilby", "kestrel harbor", "juniper meadow", "walnut grove"} {
+		f.wiki(query)
+	}
+	before := notebook.PageParses()
+	named := recordedMissedSearches(f.b, time.Time{}, missSession("session-of-the-work"))
+	if named == nil || len(named.Queries) != workMissedSearchesShown || len(named.tied) != 5 {
+		t.Fatalf("the reply names %d of the 5 open misses and keeps all 5 to tie: %+v", workMissedSearchesShown, named)
+	}
+	if parses := notebook.PageParses() - before; parses != 1 {
+		t.Fatalf("5 open misses over one article are examined in one call that parses it once, got %d passes", parses)
 	}
 }
