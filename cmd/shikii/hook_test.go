@@ -21,15 +21,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// patientGit lets the git that the hook's code starts take a minute, not the three seconds real hooks have (hookGitTimeout). A test that
-// compares what the hook reads from git with what git says, or that asks whether git was started, must not take a loaded machine (make
-// test runs eight groups at once) for a wrong answer: past the limit the hook answers "" (HEAD, the listing, the commits) by design.
+// patientGit lets the git that the hook's code starts take a minute, not the three seconds real hooks have (hookGitTimeout), nor the one
+// second the question about where the repository is has (hookPlaceTimeout, the first git call of a request). A test that compares what the
+// hook reads from git with what git says, or that asks whether git was started, must not take a loaded machine (make test runs eight
+// groups at once) for a wrong answer: past the limit the hook answers "" (HEAD, the listing, the commits) by design, and a question that
+// ran out of time is asked again by the next step that needs it (one git call more than the test expects).
 // hookEnv calls it; a test that does not use hookEnv calls it first. A test whose subject is the limit sets its own after this.
 func patientGit(t *testing.T) {
 	t.Helper()
-	oldGit := hookGitTimeout
-	hookGitTimeout = time.Minute
-	t.Cleanup(func() { hookGitTimeout = oldGit })
+	oldGit, oldPlace := hookGitTimeout, hookPlaceTimeout
+	hookGitTimeout, hookPlaceTimeout = time.Minute, time.Minute
+	t.Cleanup(func() { hookGitTimeout, hookPlaceTimeout = oldGit, oldPlace })
 }
 
 // patientProbe is patientGit for the probe of the local model and of the project's page (hookProbeTimeout, 300 ms in a real hook): a test

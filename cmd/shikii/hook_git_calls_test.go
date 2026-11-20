@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // gitCallLog puts a git in front of the real one that writes down the arguments of each call (one line per call), and returns a
@@ -34,6 +36,43 @@ func gitCallLog(t *testing.T) func() []string {
 			return nil
 		}
 		return strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+	}
+}
+
+// slowFirstPlaceGit puts a git in front of the real one whose first question about where the repository is (rev-parse --show-toplevel) takes
+// `delay` before it goes on: a machine so loaded that git is slow. Every other call goes straight through. Call it before gitCallLog, which
+// puts its own git in front of this one, so the slow call is written down at once, as it is when it is started and then runs out of time.
+func slowFirstPlaceGit(t *testing.T, delay time.Duration) {
+	t.Helper()
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("no git")
+	}
+	bin, mark := t.TempDir(), filepath.Join(t.TempDir(), "slowed")
+	script := "#!/bin/sh\nif [ \"$1\" = rev-parse ] && [ \"$2\" = --show-toplevel ] && [ ! -e '" + mark + "' ]; then\n  : > '" + mark + "'\n  sleep " + fmt.Sprintf("%.3f", delay.Seconds()) + "\nfi\nexec '" + real + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// Found on 2026-11-21: under make test (eight groups of cmd/shikii tests at the same time) a request in a linked worktree once made two
+// of the questions about where the repository is (TestAHookEventInAWorktreeOrSubmoduleAsksGitWhereTheRepositoryIsOnce). The first one is
+// asked with a limit of its own, a second (hookPlaceTimeout), which patientGit did not stretch; a git slower than that (here 1.2 s) ran
+// out of time, was not kept, and the next step asked again. A test that counts git calls must see the same calls on a slow machine: the
+// answer is waited for, and asked once.
+func TestASlowAnswerOfGitToTheFirstQuestionIsStillAskedOnce(t *testing.T) {
+	const place = "rev-parse --show-toplevel --git-path objects --git-path info/exclude --verify -q HEAD"
+	snapshot := []string{"add -A -- .", "ls-files -z --cached --ignored --exclude-standard", "ls-files --stage --full-name -- . :(exclude).shikii"}
+	repo, _, _ := planningFixture(t)
+	t.Chdir(repo)
+	forgetKeptPlaces(t)
+	slowFirstPlaceGit(t, 1200*time.Millisecond)
+	calls := gitCallLog(t)
+	runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "slow-first", "cwd": repo, "prompt": planningTestRequest})
+	want := append([]string{place}, snapshot...)
+	if got := calls(); !reflect.DeepEqual(got, want) {
+		t.Errorf("a request with a slow git made these git calls:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
 

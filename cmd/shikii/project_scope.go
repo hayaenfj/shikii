@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 // projectScopeAt is the project a folder belongs to. It is the folder shikii init prepares from there (projectTopAt: the top of its
@@ -74,7 +73,7 @@ func projectTopAt(cwd string) string {
 	if cwd == "" {
 		return ""
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), hookPlaceTimeout)
 	defer cancel()
 	scope := feedbackScope(cwd)
 	if place, ok := gitPlaceAt(ctx, cwd); ok {

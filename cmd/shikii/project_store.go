@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 )
 
 func validateStoreDirectories(root string) error {
@@ -95,7 +94,7 @@ func checkProjectStore(root string, create bool) error {
 
 // Keep personal conversations out of git add -A. The handling of already-tracked files does not change.
 func excludeProjectStore(scope string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), hookPlaceTimeout)
 	defer cancel()
 	path := ""
 	if place, ok := gitPlaceAt(ctx, scope); ok {

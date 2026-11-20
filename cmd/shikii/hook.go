@@ -32,6 +32,7 @@ var (
 	hookSessionTTL    = 7 * 24 * time.Hour
 	hookLockWait      = 2 * time.Second  // upper limit for waiting on the lock
 	hookGitTimeout    = 3 * time.Second  // upper limit for reading the working tree state (git). Past it: none (no truth is attached)
+	hookPlaceTimeout  = time.Second      // upper limit for the question about where the repository is in projectTopAt and excludeProjectStore (the first git call of a request)
 	hookCalibrateGap  = 10 * time.Minute // gap before auto-calibration of the same spec is started again
 	// hookCalibrate draws the line. By default it starts a detached separate process (shikii calibrate --write): even a long replay does not hit the hook's timeout. Tests swap in an in-process one
 	hookCalibrate = spawnCalibrate
