@@ -158,6 +158,7 @@ func guardRecordsFor(root, id string) []guardRecord {
 
 // 4. commit-body does not look at commits when the current HEAD cannot be reached from the HEAD at request time (switched branches or pulled).
 func TestCommitBodyIgnoresCommitsNotMadeInTheTurn(t *testing.T) {
+	patientGit(t)
 	repo := gitRepo(t)
 	write := func(name, body string) {
 		if err := os.WriteFile(filepath.Join(repo, name), []byte(body), 0o644); err != nil {

@@ -104,6 +104,7 @@ func TestStopWithoutTheRecordsLockWritesNothingAndGoesOn(t *testing.T) {
 // One store shared by two repositories (worktrees of one project): the record is the repository's, so a Stop in the second
 // keeps the first one's stopped line, and the first one's comparison still counts it as added.
 func TestStoppedLinesOfARepositoryStayWhenAnotherRepositoryIsUsed(t *testing.T) {
+	patientGit(t)
 	root := t.TempDir()
 	writeGuard(t, root, guard{ID: "no-word", Kind: guardKindForbiddenWords, Title: "do not use the word", Words: []string{"FORBIDDENWORD"}})
 	guards := lineGuards(root)
@@ -134,6 +135,7 @@ func TestStoppedLinesOfARepositoryStayWhenAnotherRepositoryIsUsed(t *testing.T) 
 // The comparison with HEAD (no kept table and no blob, and the start's HEAD not known, as for a request before the first
 // commit) applies the record too: the turn committing its stopped line does not make it a line from before the start.
 func TestComparisonWithHeadAppliesTheRecord(t *testing.T) {
+	patientGit(t)
 	root := t.TempDir()
 	writeGuard(t, root, guard{ID: "no-word", Kind: guardKindForbiddenWords, Title: "do not use the word", Words: []string{"FORBIDDENWORD"}})
 	repo := gitRepo(t)

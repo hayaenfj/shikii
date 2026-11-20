@@ -43,6 +43,7 @@ func TestForbiddenWordCommittedInTheTurnStillStops(t *testing.T) {
 // The other direction: a line that was already in the file when the request arrived is not an added line, also when
 // the turn commits: old text with the word, a clean line added and committed in the turn, must not stop the turn.
 func TestLinesFromBeforeTheRequestAreNotAddedLinesAfterACommit(t *testing.T) {
+	patientGit(t)
 	repo := gitRepo(t)
 	readme := filepath.Join(repo, "README.md")
 	if err := os.WriteFile(readme, []byte("# project\n\nan old line with FORBIDDENWORD\n"), 0o644); err != nil {
@@ -68,6 +69,7 @@ func TestLinesFromBeforeTheRequestAreNotAddedLinesAfterACommit(t *testing.T) {
 // temporary store, so the comparison falls back to a commit. That commit must be the HEAD kept at the request, not the
 // HEAD the turn's own commit moved to.
 func TestForbiddenWordCommittedInTheTurnStillStopsForAFileDirtyAtTheRequest(t *testing.T) {
+	patientGit(t)
 	repo := gitRepo(t)
 	readme := filepath.Join(repo, "README.md")
 	if err := os.WriteFile(readme, []byte("# project\n"), 0o644); err != nil {

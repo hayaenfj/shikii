@@ -11,6 +11,7 @@ import (
 // that say which files changed, whether git ignores them (the usual case, info/exclude), does not ignore them yet, or tracks them
 // although an ignore rule names them. A change of a real file still changes both (the control).
 func TestTheInternalRecordsStayOutOfTheListingAndTheHash(t *testing.T) {
+	patientGit(t)
 	for _, c := range []struct {
 		name    string
 		ignored bool // /.shikii/ in info/exclude

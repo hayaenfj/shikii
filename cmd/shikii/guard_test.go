@@ -126,6 +126,7 @@ func TestGuardEnableShowsRedThenGreen(t *testing.T) {
 
 // audit R2: commit-body ignores merge commits, and stops a commit with no subject and no body.
 func TestCommitBodySkipsMergesAndStopsEmptyMessages(t *testing.T) {
+	patientGit(t)
 	repo := gitRepo(t)
 	write := func(name, body string) {
 		if err := os.WriteFile(filepath.Join(repo, name), []byte(body), 0o644); err != nil {

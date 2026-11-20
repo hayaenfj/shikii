@@ -234,6 +234,7 @@ func TestTheHeadOfALinkedWorktreeIsReadFromItsFiles(t *testing.T) {
 // What the files do not settle is left to git: a ref that belongs to the worktree alone (the files hold it in the worktree's own folder,
 // not in the shared one), a reftable, and a symbolic ref.
 func TestWhatTheFilesOfALinkedWorktreeDoNotSettleIsLeftToGit(t *testing.T) {
+	patientGit(t)
 	for _, c := range []struct {
 		name  string
 		state func(t *testing.T, main, top, commonDir string)
@@ -1016,6 +1017,7 @@ func TestAKeptTopFollowsALinkThatTheConfigurationNamesItThrough(t *testing.T) {
 // A repository git reads in a form it accepts is kept as before: a refs folder that is a link (git follows it), and a HEAD written
 // `ref:refs/...` (no space; git skips the spaces after the colon).
 func TestAPlainRepositoryInAFormGitAcceptsIsStillKept(t *testing.T) {
+	patientGit(t)
 	for _, c := range []struct {
 		name string
 		do   func(t *testing.T, repo string)

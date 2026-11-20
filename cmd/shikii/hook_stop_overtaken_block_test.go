@@ -126,6 +126,7 @@ func TestStopAfterTheCompletionBlockHaltsWhenTheRecordIsGone(t *testing.T) {
 // A file whose name ends with a space, on the last line of the listing: the changed file and the guard see its real name.
 // (The whole listing was trimmed, which cut the last name.)
 func TestChangedFileWhoseNameEndsWithASpaceKeepsItsName(t *testing.T) {
+	patientGit(t)
 	repo := gitRepo(t)
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# project\n"), 0o644); err != nil {
 		t.Fatal(err)

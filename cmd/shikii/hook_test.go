@@ -21,6 +21,27 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// patientGit lets the git that the hook's code starts take a minute, not the three seconds real hooks have (hookGitTimeout). A test that
+// compares what the hook reads from git with what git says, or that asks whether git was started, must not take a loaded machine (make
+// test runs eight groups at once) for a wrong answer: past the limit the hook answers "" (HEAD, the listing, the commits) by design.
+// hookEnv calls it; a test that does not use hookEnv calls it first. A test whose subject is the limit sets its own after this.
+func patientGit(t *testing.T) {
+	t.Helper()
+	oldGit := hookGitTimeout
+	hookGitTimeout = time.Minute
+	t.Cleanup(func() { hookGitTimeout = oldGit })
+}
+
+// patientProbe is patientGit for the probe of the local model and of the project's page (hookProbeTimeout, 300 ms in a real hook): a test
+// that starts a server and asserts that the probe found it up must not take a loaded machine for "not up". Unlike hookEnv it is not
+// applied to every test, because a probe of a socket that never answers waits out the whole limit.
+func patientProbe(t *testing.T) {
+	t.Helper()
+	oldProbe := hookProbeTimeout
+	hookProbeTimeout = 10 * time.Second
+	t.Cleanup(func() { hookProbeTimeout = oldProbe })
+}
+
 // hookEnv puts the tools in a temporary HOME, prepares .shikii for the given work, and replaces the model and the page.
 func hookEnv(t *testing.T, model *httptest.Server, roots ...string) (agent string) {
 	home := t.TempDir()
@@ -38,11 +59,9 @@ func hookEnv(t *testing.T, model *httptest.Server, roots ...string) (agent strin
 		hookLocalURL = model.URL
 	}
 	hookPageURL = "http://127.0.0.1:1"
-	oldGit := hookGitTimeout
-	hookGitTimeout = time.Minute // a loaded machine (make test runs eight groups at once) must not turn the changed files into unknown
+	patientGit(t)
 	t.Cleanup(func() {
 		hookLocalURL, hookPageURL, hookCalibrate, hookTune, hookSpawn, openBrowser = oldLocal, oldPage, oldCal, oldTune, oldSpawn, oldOpen // without restoring these, tests that check TestMain's replacements depend on test order (re-audit GH)
-		hookGitTimeout = oldGit
 	})
 	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
 	spawned = nil // what install started is not counted

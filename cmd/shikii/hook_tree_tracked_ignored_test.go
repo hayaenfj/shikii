@@ -35,6 +35,7 @@ func trackedIgnoredRepo(t *testing.T) string {
 // The listing the hooks compare is every file of the repository as Git sees it. A tracked file stays tracked when .gitignore
 // names it, so it belongs to the listing; an ignored file Git does not track stays out.
 func TestTreeListingKeepsTrackedFilesThatGitignoreNames(t *testing.T) {
+	patientGit(t)
 	repo := trackedIgnoredRepo(t)
 	_, listing, listed, _ := treeState(repo)
 	if !listed {

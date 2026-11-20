@@ -356,6 +356,7 @@ func TestHookInstallIsIdempotentAndKeepsOtherHooks(t *testing.T) {
 // The 2nd audit: reading the tree state does not dirty the repo's index and .git/objects, parallel updates are not lost, spot checks also wait for an answer,
 // and 50 truths for the same input do not try to draw a line (counted like calibrate).
 func TestHookSecondAudit(t *testing.T) {
+	patientGit(t)
 	// treeState: untracked file contents do not stay in .git/objects, and the real index is not touched. The listing contains the path
 	repo := gitRepo(t)
 	if err := os.WriteFile(filepath.Join(repo, ".env"), []byte("SECRET=hunter2\n"), 0o600); err != nil {
@@ -455,6 +456,7 @@ func TestHookSecondAudit(t *testing.T) {
 // Codex: the same 2 in ~/.codex/hooks.json too (no matcher). Other hooks stay, the 2nd time adds nothing, the old PreToolUse is removed, and uninstall removes only its own.
 // The stdin keys are the same as Claude Code's, so Codex's Stop (with turn_id) makes the same record.
 func TestHookCodex(t *testing.T) {
+	patientGit(t)
 	model := fakeAgentModel(t, func(string) float64 { return 0.1 })
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -603,6 +605,7 @@ func TestHookAutoTunesWhenTruthsPileUp(t *testing.T) {
 // Reproducing the audit: a session started from a subdirectory also sees the whole repo. A chmod-only change also counts as "changed". A hook.log line is cut.
 // The background start guard is exclusive by flock (once out of 30 in parallel), and does not start past 10 minutes while the previous child is alive. The tune guard counts again when the spec's wording changes.
 func TestHookSecondAuditRound(t *testing.T) {
+	patientGit(t)
 	repo := gitRepo(t)
 	sub := filepath.Join(repo, "sub")
 	if err := os.MkdirAll(sub, 0o755); err != nil {

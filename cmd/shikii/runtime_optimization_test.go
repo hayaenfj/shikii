@@ -14,6 +14,7 @@ import (
 )
 
 func TestPageProbeSkipsStatusAndChecksIdentity(t *testing.T) {
+	patientProbe(t)
 	hookEnv(t, nil)
 	scope := t.TempDir()
 	var statusCalls atomic.Int32

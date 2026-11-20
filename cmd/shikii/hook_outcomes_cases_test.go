@@ -341,6 +341,7 @@ func TestHookCalibratedStopSpeaksInTheConfiguredLanguage(t *testing.T) {
 
 // The Stop summary: one line if there are waiting answers (the URL if the page is running, otherwise the start command), no output otherwise. Answered ones drop out of the count. The same count is not repeated every turn.
 func TestHookStopSummarizesWhatWaitsForAPerson(t *testing.T) {
+	patientProbe(t)
 	model := fakeAgentModel(t, func(string) float64 { return 0.6 }) // noul is unsure (ask): all wait for an answer
 	cwd := t.TempDir()
 	agent := hookEnv(t, model, cwd)

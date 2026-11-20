@@ -214,6 +214,7 @@ func (e *syntheticError) Error() string { return e.s }
 // that turn (stopTurn) after prepareHookProject and ensureModel: a request noted while the Stop probes the model's health (the Stop
 // had come before it) is the turn the Stop reads, and the Stop ends it.
 func TestAuditNARequestNotedWhileTheStopProbesTheModel(t *testing.T) {
+	patientProbe(t)
 	f := auditCFinishedFirstRequest(t)
 	upstream := hookLocalURL
 	var noted atomic.Bool

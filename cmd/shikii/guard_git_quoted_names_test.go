@@ -75,6 +75,7 @@ func TestStopPairedFilesMatchNonASCIINames(t *testing.T) {
 // A watch saved before the fix: its keys are the names as git quoted them. A new file that is still there must not
 // read as "removed again" (reverted) once the listing carries the real names.
 func TestScopeWatchSavedWithQuotedNamesIsNotReverted(t *testing.T) {
+	patientGit(t)
 	repo := gitRepo(t)
 	name := h1Kanji + ".md"
 	if err := os.WriteFile(filepath.Join(repo, name), []byte("new\n"), 0o644); err != nil {
@@ -96,6 +97,7 @@ func TestScopeWatchSavedWithQuotedNamesIsNotReverted(t *testing.T) {
 
 // Guard try: `git status --porcelain` quotes names with spaces or non-ASCII characters too.
 func TestGuardWorkingTreeInputReadsQuotedNames(t *testing.T) {
+	patientGit(t)
 	repo := gitRepo(t)
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# r\n"), 0o644); err != nil {
 		t.Fatal(err)

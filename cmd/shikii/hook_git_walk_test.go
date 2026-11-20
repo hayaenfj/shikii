@@ -469,6 +469,7 @@ func realHead(t *testing.T, dir string) string {
 // of a process of its own. The answers are compared with git's own in every state the files can be in; where the files are not
 // the whole story (a linked worktree, a reftable) git is asked.
 func TestHeadIsReadFromTheFilesOfARepositoryWithAGitFolder(t *testing.T) {
+	patientGit(t)
 	t.Setenv("HOME", t.TempDir())
 	repo := gitRepo(t)
 	sub := filepath.Join(repo, "pkg", "inner")

@@ -96,6 +96,7 @@ func TestAFolderNamedWithALineEndIsStillInItsRepository(t *testing.T) {
 // `GIT_LITERAL_PATHSPECS=1` (some tools export it) reads `:(exclude).shikii` as a file name: the records came into the listing and the
 // hash, and the working tree seemed to change at every record the hook itself wrote.
 func TestTheRecordsStayOutOfTheListingWhenGitReadsPathspecsLiterally(t *testing.T) {
+	patientGit(t)
 	t.Setenv("GIT_LITERAL_PATHSPECS", "1")
 	repo := gitRepo(t)
 	for name, body := range map[string]string{"a.txt": "a\n", ".shikii/wiki/page.md": "one\n"} {

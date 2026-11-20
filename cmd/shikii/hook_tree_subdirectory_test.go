@@ -13,6 +13,7 @@ import (
 // repo's objects folder; a path that does not exist makes git write every file of the repo into the temporary store on
 // every hook, which is what pushes large repos past the 3 second limit (then nothing is compared and no guard runs).
 func TestTreeSnapshotFromASubdirectoryUsesTheReposObjects(t *testing.T) {
+	patientGit(t)
 	repo := gitRepo(t)
 	sub := filepath.Join(repo, "pkg", "inner")
 	if err := os.MkdirAll(sub, 0o755); err != nil {

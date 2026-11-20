@@ -17,6 +17,7 @@ import (
 // 0.8.0: with --port 0, serve takes a free port and writes the port and pid to ~/.shikii/agent/pages/<id>.json.
 // livePage returns the URL of the page that is up; a dead pid or an endpoint that does not answer means "not up".
 func TestServePicksAFreePortAndRecordsIt(t *testing.T) {
+	patientProbe(t)
 	hookEnv(t, nil)
 	common, _ := agentHome()
 	repo := gitRepo(t)
@@ -31,9 +32,12 @@ func TestServePicksAFreePortAndRecordsIt(t *testing.T) {
 	if !ok || rec.Port != port || rec.PID != os.Getpid() || rec.Scope != repo {
 		t.Fatalf("records the free port and pid: %+v (port %d)", rec, port)
 	}
+	patient := hookProbeTimeout
+	hookProbeTimeout = 100 * time.Millisecond // nothing serves ln yet, so this probe has to give up: the patience below would wait it out
 	if livePage(repo) != "" {
 		t.Fatal("not up until the endpoint answers")
 	}
+	hookProbeTimeout = patient
 	if len(opened) != 1 || !strings.Contains(opened[0], strconv.Itoa(port)) {
 		t.Fatalf("serve itself opens the page started by the hook (port 0) in the browser: %v", opened)
 	}
@@ -78,6 +82,7 @@ func TestServePicksAFreePortAndRecordsIt(t *testing.T) {
 // The first request's hook starts exactly one `serve --store <root> --port 0` if this project's page is not up (it does not wait; serve opens the browser).
 // If it is up, it does not start one and tells the location once per session. Other projects' pages are not counted.
 func TestFirstRequestStartsOneProjectPageAndOpensTheBrowser(t *testing.T) {
+	patientProbe(t)
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
 	common, _ := agentHome()
@@ -151,6 +156,7 @@ func TestPageRestartsSoonAfterItDied(t *testing.T) {
 
 // Audit R5-3: look at the response code (503 is not up), hub writes no mark, shikii page starts and waits, and the second time is up.
 func TestPageProbeHubAndCommand(t *testing.T) {
+	patientProbe(t)
 	model := fakeAgentModel(t, func(string) float64 { return .1 })
 	hookEnv(t, model)
 	common, _ := agentHome()
