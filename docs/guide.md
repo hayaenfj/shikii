@@ -678,3 +678,28 @@ The edited article itself still needs review. New evidence, changed premises and
 a real review supplies comparison evidence. Submissions still require current
 revision and key values, including the current related revisions.
 See [the recording contract](../skills/shikii/references/recording.md#prepare-once-record-the-result).
+
+## Passing on what was left and what the wiki could not answer (0.38.0)
+
+### Examined areas and what was left
+
+The `result` of `work record` takes `coverage`. A row is `{area, outcome, evidence?:ref, reason?}`, at most 16 rows. `area` is a short name of what was examined (one line, at most 160 bytes), and `outcome` is one of four:
+
+| `outcome` | Meaning | Written with it |
+| --- | --- | --- |
+| `reported` | a problem was found and reported | nothing |
+| `clear` | examined, no problem found | `evidence` (one of `result.evidence`; `current` is not accepted) |
+| `excluded` | left out on purpose | `reason` (at most 300 bytes) |
+| `open` | not examined | nothing (it cannot be sent with `sufficient:true`) |
+
+An `open` row stays in the project's records (`.shikii/records/coverage/`) and reaches the `coverage` of later `work prepare` replies. `rows` names the five newest, and `open` is the number of open areas. When a later result records the same `area` as `reported`, `clear` or `excluded`, that area alone is closed. A row is the agent's report of what it looked at. It is neither a guarantee that the area has no problem nor a permission.
+
+The `remaining` of a result that sent no `coverage` becomes one `open` area as it is. Fixed phrases such as `none`, an empty text and punctuation alone make none. A text over 160 bytes is cut and ends in `…`. The next `work prepare` hands the row over with `from:"remaining"`. When the task that was handed it (the row was in its preparation's reply) records a result, the row is closed. The next result of the same session closes it too. If it is still left, that task writes it again in its own `remaining`. The same text written again stays one open area. The record's reply says `coverage:{rows, open, handed_over?}`; `handed_over` lists the areas this record closed.
+
+### What the wiki could not answer
+
+When a search by words (a `wiki query` with words, or the `query` of a `work prepare` that carries a receipt) finds no candidate, the words are remembered: one entry per set of words, at most 64. `lesson:<id>`, ids alone, a continuing cursor and words over 200 bytes are not remembered. The reply to a `work record` with a result lists up to three of them since the task started in `missed_searches`. A `wiki query` without words (the maintenance list) lists up to eight in `missed_searches`. The list searches again when it is shown and leaves out words that now find a candidate because an article was added. One call searches again for at most the 16 newest.
+
+A record whose reply lists `missed_searches` ties those words to the id of its task's result. When the same words find nothing again, the reply carries `earlier_search:{query, at, result, next_action}`. Passing the `result` id to a search as it is (`shikii wiki query <id>`, or the `query` of `operation:"query"` over MCP) returns the result the earlier task recorded. It is that task's report, not a verified article: confirm it before relying on it.
+
+A search made only of ids (one or more 16-digit hexadecimal ids separated by white space) reads saved sources over the CLI, MCP and HTTP alike. To read an article, write `lesson:<id>`.

@@ -2,6 +2,19 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.38.0 — What a task left undone, and what the wiki could not answer, reach the next task
+
+### Changes
+
+- When an agent writes what is left in its work record, the next task now receives it when it starts. Until now the note stayed in the record and never reached the agent of the next session. When the task that received it records its own result, the item is closed; if it is still left, the agent writes it again in its own record.
+- An agent can now record which areas it examined. For each area it says one of four things: a problem was reported, it was examined and no problem was found, it was left out on purpose, or it was not examined. An area that was not examined is delivered at the start of every task until a later task records that it examined it.
+- When a search of the wiki by words finds nothing, shikii now remembers the words. They appear in the reply to the work record and in the wiki's maintenance list, so you can see which topics the wiki lacks. They leave the list once an article is added and the same words find it.
+- When the same words find nothing again, shikii points to the record of the earlier task that searched them. If that task found the answer somewhere else, the agent can follow it from there. What it points to is that task's own report, not a verified article.
+
+### Fixes
+
+- Fixed the MCP search returning nothing when it was given only the id of a saved record. It now returns that record, as the command `shikii wiki query <id>` does. When it is given only the id of an article, the refusal now says to write `lesson:<id>` to read the article.
+
 ## 0.37.4 — The hooks start git less often in a worktree or a submodule too
 
 ### Changes

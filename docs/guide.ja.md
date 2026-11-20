@@ -619,3 +619,28 @@ prepareのmax_bytesで応答量を制限できます(CLIの既定は28672バイ�
 実際の再確認まで従来の動作を保ちます。確認の送信時には、関連記事の現行版を含む
 最新のrevisionとkeyが必要です。
 [記録の契約](../skills/shikii/references/recording.md#prepare-once-record-the-result)を参照してください。
+
+## 残ったことと、wiki に無かった話題を次の作業へ渡す（0.38.0）
+
+### 確かめた範囲と、残ったこと
+
+`work record` の `result` に `coverage` を書けます。1 行は `{area, outcome, evidence?:ref, reason?}` で、16 行までです。`area` は確かめた範囲の短い名前(1 行、160 バイトまで)で、`outcome` は次の 4 つです。
+
+| `outcome` | 意味 | 一緒に書くもの |
+| --- | --- | --- |
+| `reported` | 問題を見つけて報告した | なし |
+| `clear` | 確かめて問題が無かった | `evidence`(`result.evidence` のどれか。`current` は使えません) |
+| `excluded` | わざと対象から外した | `reason`(300 バイトまで) |
+| `open` | 確かめていない | なし(`sufficient:true` と一緒には書けません) |
+
+`open` の行は、プロジェクトの記録(`.shikii/records/coverage/`)に残り、後の `work prepare` の返事の `coverage` に届きます。`rows` に名前が出るのは新しい方から 5 件で、`open` は開いている範囲の数です。後の result が同じ `area` を `reported`・`clear`・`excluded` で書くと、その範囲だけが閉じます。行は、エージェントが見た範囲の報告です。その範囲に問題が無いことの保証でも、許可でもありません。
+
+`coverage` を書かなかった result の `remaining` は、そのまま 1 件の `open` の範囲になります。「なし」「none」などの決まった言い方、空、記号だけの時は作りません。160 バイトを越える文は、切って `…` を付けます。次の `work prepare` は、その行を `from:"remaining"` 付きで渡します。渡された作業(準備の返事にその行が載った作業)が result を記録すると、行は閉じます。同じセッションの次の result でも閉じます。まだ残っている時は、その作業が自分の `remaining` に書き直します。同じ文を書き直した時は、開いたまま 1 件です。記録の返事は `coverage:{rows, open, handed_over?}` で、`handed_over` はこの記録で閉じた範囲です。
+
+### wiki に無かった話題
+
+言葉の検索(言葉のある `wiki query` と、receipt を付けた `work prepare` の `query`)で候補が 1 件も無かった時、その語を覚えます。同じ語は 1 件、全部で 64 件までです。`lesson:<id>`、id だけ、続きの cursor、200 バイトを越える語は覚えません。result のある `work record` の返事の `missed_searches` に、その作業を始めてからの語が 3 件まで出ます。言葉の無い `wiki query`(手入れの一覧)の `missed_searches` には 8 件まで出ます。一覧は、出す時にもう一度検索し、記事が足されて候補が出るようになった語を出しません。1 回に調べ直すのは新しい方から 16 件までです。
+
+返事に `missed_searches` が出た記録は、その語に、その作業の result の id を結びます。同じ語がまた見つからなかった時は、返事に `earlier_search:{query, at, result, next_action}` が付きます。`result` の id をそのまま検索に渡すと(`shikii wiki query <id>`、MCP なら `operation:"query"` の `query`)、前の作業が記録した result が読めます。これは前の作業の報告で、確かめられた記事ではありません。使う前に確かめます。
+
+id だけの検索(16 桁の 16 進を 1 つ以上、空白で区切る)は、CLI・MCP・HTTP のどれでも保存済みの原資料を読みます。記事を読む時は `lesson:<id>` と書きます。
