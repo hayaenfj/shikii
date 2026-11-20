@@ -191,9 +191,15 @@ func workRemainingArea(remaining string) (string, bool) {
 // is not made a row, and the reply's open does not name the area, whatever the ledger held before.
 // The result the receipt holds now also closes the open rows of remaining that it takes over (store.CoverageHandover): the rows of
 // its own session and the rows its preparation listed. Both are done for that result only, and once: a result that was repaired by
-// ref while the receipt holds another one writes its coverage rows and nothing else, and a result whose source the work remembers
-// (CoverageHandled) takes nothing over when it is sent again. The source is saved with the work state by the next save of the
-// record, or at its end when none follows (unsaved). A record sent again writes nothing again. A ledger that cannot be written is an error of the record (kind coverage): the same record sent again
+// ref while the receipt holds another one writes its coverage rows and nothing else. The work remembers the results it handled
+// (CoverageHandled, newest first): the coverage rows of a result whose source it remembers are not given to the ledger again when it
+// is sent again, and neither is a handover. The ledger's own check of a record sent again sees only the lines the store reads, the
+// newest 4MB; once the lines of the result are further back than that, only this memory keeps an open row from coming back for an area
+// a later result closed. The row made from the remaining of a result is not covered by it: a result that was repaired by ref while
+// the receipt held another one is remembered although its remaining was not written, and written when it is recorded in full later,
+// so the store's own check is what keeps that row from being written twice (inside its window only). The source is saved with the
+// work state by the next save of the record, or at its end when none follows (unsaved), and is remembered only after the ledger was
+// written without error. A record sent again writes nothing again. A ledger that cannot be written is an error of the record (kind coverage): the same record sent again
 // writes it, and the source is not remembered. A result with nothing to write, whose ledger cannot be read, is not failed for it.
 func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCompletion, session string, result *workResult, add func(workItem), unsaved func()) {
 	if c == nil {
@@ -216,17 +222,20 @@ func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCo
 	}
 	current := w.Result != nil && w.Result.Source == source
 	rows := saved.Coverage
-	ledger := make([]store.CoverageRow, len(rows))
+	handled := slices.Contains(w.CoverageHandled, source)
+	var ledger []store.CoverageRow
 	open := []string{}
-	for i, row := range rows {
-		ledger[i] = store.CoverageRow{Area: row.Area, Outcome: row.Outcome, Reason: row.Reason}
+	for _, row := range rows {
+		if !handled { // the coverage rows of a result the work handled were written then, and are not sent to the ledger again
+			ledger = append(ledger, store.CoverageRow{Area: row.Area, Outcome: row.Outcome, Reason: row.Reason})
+		}
 		if row.Outcome == store.CoverageOpen {
 			area, _ := store.NormalizeCoverageArea(row.Area)
 			open = append(open, area)
 		}
 	}
 	var handover store.CoverageHandover
-	takesOver := current && !slices.Contains(w.CoverageHandled, source)
+	takesOver := current && !handled
 	if takesOver {
 		handover = store.CoverageHandover{Session: store.CoverageSession(session), Shown: w.CoverageShown}
 	}
