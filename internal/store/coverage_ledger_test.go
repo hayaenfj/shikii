@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -126,8 +127,10 @@ func TestCoverageLedgerReaderDropsWhatItDoesNotKnow(t *testing.T) {
 	if _, err := s.RecordCoverage(coverageScope, coverageA, []CoverageRow{{Area: "before the junk", Outcome: CoverageOpen}}, CoverageHandover{}); err != nil {
 		t.Fatal(err)
 	}
+	// the lines of the later writers carry a time after the row written first: the open list is newest first by time
+	laterAt := time.Now().UTC().Format(time.RFC3339Nano)
 	line := func(area, outcome, source string) string {
-		return `{"at":"2026-11-20T00:00:00Z","area":"` + area + `","outcome":"` + outcome + `","source":"` + source + `"}` + "\n"
+		return `{"at":"` + laterAt + `","area":"` + area + `","outcome":"` + outcome + `","source":"` + source + `"}` + "\n"
 	}
 	junk := line("unknown outcome", "done", coverageB) +
 		line("closed by a word it does not know", "open", coverageB) + line("closed by a word it does not know", "resolved", coverageB) +

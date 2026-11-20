@@ -41,6 +41,12 @@ const (
 	// coverageLineMax is the longest line (with its newline) a row may take: the reader skips longer ones and the writer refuses them.
 	// An area and a reason at their limits, each byte escaped to six, are still under it.
 	coverageLineMax = 4 << 10
+
+	// coverageCarryZone is the slack between what the reader takes (the last feedbackReadMax bytes) and where RecordCoverage keeps
+	// the open rows it carries forward: after a call that writes, every open row sits in the newest feedbackReadMax-coverageCarryZone
+	// bytes of the file. The zone is what lines appended after that call (by a call that carries nothing, or by a version of the
+	// program that does not carry) may add before the oldest open row would leave the bytes the reader takes.
+	coverageCarryZone = 1 << 20
 )
 
 // CoverageRow is one line of the ledger. The caller of RecordCoverage fills Area, Outcome, Reason, Origin and Session; the store
@@ -106,60 +112,80 @@ func validCoverageRow(r CoverageRow) bool {
 		textTrace.MatchString(r.Source) && !r.At.IsZero()
 }
 
-// readCoverage reads the valid lines of the ledger, oldest first: the last 4MB, without a line cut before its newline. A broken
-// line, a line over its limit, an unknown outcome and an empty or unnormalized area are dropped.
-func (s Store) readCoverage(path string) ([]CoverageRow, error) {
+// coverageLine is a valid line of the ledger and where it begins in the file.
+type coverageLine struct {
+	row    CoverageRow
+	offset int64
+}
+
+// readCoverage reads the valid lines of the ledger, oldest first: the last 4MB, without a line cut before its newline, and the size
+// of the file. A broken line, a line over its limit, an unknown outcome and an empty or unnormalized area are dropped. When the
+// last 4MB begins inside a line, that line is not taken; when it begins exactly at the head of a line (the byte before it is a
+// newline), the line is whole and is taken.
+func (s Store) readCoverage(path string) ([]coverageLine, int64, error) {
 	f, start, err := s.openRecentHistory(path)
 	if os.IsNotExist(err) {
-		return nil, nil
+		return nil, 0, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, feedbackReadMax))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	if start > 0 { // the tail starts inside a line
-		cut := bytes.IndexByte(data, '\n')
-		if cut < 0 {
-			return nil, nil
+	size := start + int64(len(data))
+	offset := start
+	if start > 0 {
+		var before [1]byte
+		if _, err := f.ReadAt(before[:], start-1); err != nil {
+			return nil, 0, err
 		}
-		data = data[cut+1:]
+		if before[0] != '\n' { // the tail starts inside a line
+			cut := bytes.IndexByte(data, '\n')
+			if cut < 0 {
+				return nil, size, nil
+			}
+			data, offset = data[cut+1:], offset+int64(cut)+1
+		}
 	}
-	var rows []CoverageRow
+	var lines []coverageLine
 	for {
 		end := bytes.IndexByte(data, '\n')
 		if end < 0 {
-			return rows, nil // what follows the last newline is a line cut before its end
+			return lines, size, nil // what follows the last newline is a line cut before its end
 		}
 		line := data[:end+1]
-		data = data[end+1:]
+		at := offset
+		data, offset = data[end+1:], offset+int64(end)+1
 		var row CoverageRow
 		if len(line) > coverageLineMax || json.Unmarshal(line, &row) != nil || !validCoverageRow(row) {
 			continue
 		}
-		rows = append(rows, row)
+		lines = append(lines, coverageLine{row, at})
 	}
 }
 
-// OpenCoverage returns the areas the ledger holds open, newest first: the latest line of an area is an open one.
+// OpenCoverage returns the areas the ledger holds open, newest first: the latest line of an area is an open one. Newest is by the
+// time a row was first written (At), the latest line first among rows of one time: a row that RecordCoverage carried forward keeps
+// its time, and its line is later in the file than the lines of rows that were written after it.
 func (s Store) OpenCoverage(scope string) ([]CoverageRow, error) {
-	rows, err := s.readCoverage(s.coveragePath(scope))
+	lines, _, err := s.readCoverage(s.coveragePath(scope))
 	if err != nil {
 		return nil, err
 	}
 	latest := map[string]int{}
-	for i, r := range rows {
-		latest[r.Area] = i
+	for i, l := range lines {
+		latest[l.row.Area] = i
 	}
 	open := []CoverageRow{}
-	for i := len(rows) - 1; i >= 0; i-- {
-		if rows[i].Outcome == CoverageOpen && latest[rows[i].Area] == i {
-			open = append(open, rows[i])
+	for i := len(lines) - 1; i >= 0; i-- {
+		if lines[i].row.Outcome == CoverageOpen && latest[lines[i].row.Area] == i {
+			open = append(open, lines[i].row)
 		}
 	}
+	slices.SortStableFunc(open, func(a, b CoverageRow) int { return b.At.Compare(a.At) }) // stable: the rows of one call share a time and keep their order
 	return open, nil
 }
 
@@ -175,6 +201,16 @@ func (s Store) OpenCoverage(scope string) ([]CoverageRow, error) {
 // source), and it takes nothing over when the ledger already has a line from this source: a record sent again changes nothing, and
 // an old result sent again does not close what a later one opened. The lock is held from the read to the append. A row that is not a
 // valid row refuses the whole call before anything is written.
+//
+// The check of a record sent again sees only the lines this call reads, the newest 4MB: a result whose lines are further back would
+// write its rows again. The caller that can remember which results it recorded does not send them twice (the work layer keeps the
+// sources it handled).
+//
+// A call that appends a line of its own also writes the open rows that are about to leave the bytes the reader takes, again as
+// they were read, before its own lines (coverageCarry): the reader takes only the last 4MB, and an open row never closes by itself,
+// so a row that later lines pushed out of those 4MB would go off the open list although no result closed it. A call that writes
+// nothing carries nothing, so a record sent again still adds no line. What stays limited: the open rows together must fit in what
+// is read, and lines appended by a version of the program that does not carry are not carried by it.
 func (s Store) RecordCoverage(scope, source string, rows []CoverageRow, handover CoverageHandover) ([]string, error) {
 	if !textTrace.MatchString(source) {
 		return nil, errors.New("a coverage row needs the id of the saved result it came from")
@@ -184,17 +220,18 @@ func (s Store) RecordCoverage(scope, source string, rows []CoverageRow, handover
 	var handed []string
 	err := s.withJSONLAppendLock(path, func() error {
 		handed = nil
-		ledger, err := s.readCoverage(path)
+		ledger, size, err := s.readCoverage(path)
 		if err != nil {
 			return err
 		}
 		latest := map[string]CoverageRow{}
-		newest := map[string]int{} // the index in ledger of the latest line of an area
-		wrote := map[string]bool{} // the areas this result has a line for already
-		for i, r := range ledger {
-			latest[r.Area], newest[r.Area] = r, i
-			if r.Source == source {
-				wrote[r.Area] = true
+		newest := map[string]int{}    // the index in ledger of the latest line of an area
+		wrote := map[string]bool{}    // the areas this result has a line for already
+		appended := map[string]bool{} // the areas this call writes a line for
+		for i, l := range ledger {
+			latest[l.row.Area], newest[l.row.Area] = l.row, i
+			if l.row.Source == source {
+				wrote[l.row.Area] = true
 			}
 		}
 		recorded := len(wrote) > 0
@@ -208,7 +245,7 @@ func (s Store) RecordCoverage(scope, source string, rows []CoverageRow, handover
 				return errors.New("a coverage row is too long to be read back")
 			}
 			out = append(append(out, line...), '\n')
-			latest[row.Area], wrote[row.Area] = row, true
+			latest[row.Area], wrote[row.Area], appended[row.Area] = row, true, true
 			return nil
 		}
 		for _, row := range rows {
@@ -232,7 +269,7 @@ func (s Store) RecordCoverage(scope, source string, rows []CoverageRow, handover
 			}
 		}
 		for i := len(ledger) - 1; i >= 0 && !recorded; i-- { // newest first, as the open list is read
-			r := ledger[i]
+			r := ledger[i].row
 			taken := handover.Session != "" && r.Session == handover.Session || slices.Contains(handover.Shown, r.Area)
 			if !taken || newest[r.Area] != i || r.Outcome != CoverageOpen || r.Origin != CoverageFromRemaining || latest[r.Area].Source == source {
 				continue // not taken over, closed since, not made from remaining, or written by this result itself just now
@@ -243,12 +280,41 @@ func (s Store) RecordCoverage(scope, source string, rows []CoverageRow, handover
 			handed = append(handed, r.Area)
 		}
 		if len(out) == 0 {
-			return nil
+			return nil // a record sent again writes nothing, and carries nothing
 		}
-		return s.appendJSONLBytesLocked(path, out)
+		carry := coverageCarry(ledger, newest, appended, size, len(out))
+		return s.appendJSONLBytesLocked(path, append(carry, out...))
 	})
 	if err != nil {
 		return nil, err
 	}
 	return handed, nil
+}
+
+// coverageCarry is the lines that RecordCoverage writes ahead of its own, so that every open row sits in the newest
+// feedbackReadMax-coverageCarryZone bytes of the file once the call has appended. size is the size of the file before the append and
+// added the bytes of the call's own lines. The rows that were read are walked oldest first, with where each line begins: a row
+// before the first one that is already inside those bytes (counting what has been carried so far, which moves the point forward:
+// one pass is enough) is carried when it is the latest line of its area, the area is open, and the call writes no line of its own
+// for the area. A row is written as it was read, with its time, its source, its origin and its session, so it is still the row
+// that its session's handover takes over and the open list still puts it where it was first written. A row that would be too long
+// to be read back is left, and does not fail the record. The newline that the append puts before its lines when the file does not
+// end in one is not counted: it is far inside coverageCarryZone.
+func coverageCarry(ledger []coverageLine, newest map[string]int, appended map[string]bool, size int64, added int) []byte {
+	keep := int64(feedbackReadMax - coverageCarryZone)
+	var carry []byte
+	for i, l := range ledger {
+		if l.offset >= size+int64(added)+int64(len(carry))-keep {
+			break // this row and every later one is inside the newest bytes
+		}
+		if newest[l.row.Area] != i || l.row.Outcome != CoverageOpen || appended[l.row.Area] {
+			continue
+		}
+		line, err := json.Marshal(l.row)
+		if err != nil || len(line)+1 > coverageLineMax {
+			continue
+		}
+		carry = append(append(carry, line...), '\n')
+	}
+	return carry
 }
