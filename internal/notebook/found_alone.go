@@ -11,7 +11,8 @@ const (
 )
 
 // FoundAlone is the reply field that says which words of a search of several words that found nothing would find an article if they
-// were searched alone. A search of several words needs at least two of them in one article, so words an agent put in as alternatives
+// were searched alone. A search of several words usually needs at least two of them in one article (two of the units it splits
+// its words into), so words an agent put in as alternatives
 // for one thing find nothing together although one of them finds the article. Words are those words, in the order of the query;
 // the caller fills NextAction. It is a note on the search, not an answer: the articles themselves are not in it.
 type FoundAlone struct {

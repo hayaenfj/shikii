@@ -53,9 +53,10 @@ const workMissedNext = "These searches of this project's wiki found no article w
 // searched (several sessions run side by side in a project), it is not an article, and it is to be confirmed.
 const earlierSearchNext = "These same words found no article before, and a work that was open then recorded a result that speaks of them. Read that result with a query of its id: it may say what was found or where the answer is written. It is that work's own report (it may not be the work that searched), not an article and not verified: confirm it before relying on it."
 
-// foundAloneNext is the note of found_alone: a search of several words needs at least two of them in one article, so words put in as
+// foundAloneNext is the note of found_alone: a search of several words usually needs at least two of them in one article (two of the
+// units the search splits its words into: a word of letters and digits is one, kanji and kana go two characters at a time), so words put in as
 // alternatives for one thing find nothing together. It is a note on the search, not an instruction to keep searching.
-const foundAloneNext = "No article has these words together (a search of several words needs at least two of them in one article). Searched alone, each word in `words` finds an article: search one of them. Search alternatives for one thing one or two words at a time. It is a note, not an instruction to keep searching."
+const foundAloneNext = "No article has these words together (a search of several words usually needs at least two of them in one article). Searched alone, each word in `words` finds an article: search one of them. Search alternatives for one thing one word at a time. It is a note, not an instruction to keep searching."
 
 // noteFoundAlone says which words of a public word search that found no candidate find an article when searched alone
 // (found_alone), or returns nil. It is asked where noteMissedSearch is, for the same searches, and records nothing. It is best

@@ -46,10 +46,10 @@ func TestWikiQueryNamesTheWordsThatFindAnArticleAlone(t *testing.T) {
 	}
 	for _, part := range []string{
 		"No article has these words together",
-		"a search of several words needs at least two of them in one article",
+		"a search of several words usually needs at least two of them in one article",
 		"each word in `words` finds an article",
 		"search one of them",
-		"Search alternatives for one thing one or two words at a time",
+		"Search alternatives for one thing one word at a time",
 		"not an instruction to keep searching",
 	} {
 		if !strings.Contains(next, part) {
