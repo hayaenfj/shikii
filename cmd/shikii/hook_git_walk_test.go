@@ -331,7 +331,7 @@ func TestAKeptPlaceThatNamesAnotherFolderIsNotUsed(t *testing.T) {
 	}
 }
 
-// The test above writes the kept answer in the form 0.37.3 wrote it, which is refused for its missing fields before its top is looked at.
+// The test above writes the kept answer in the form 0.37.3 wrote it, which is refused for its missing fields even without the check of its top.
 // A kept answer in the current form, with the git folder and the ids of the configuration files all in order but a top that names another
 // folder, must be refused for its top: it is what a copied or edited file looks like.
 func TestAKeptPlaceOfAnotherTopIsNotUsedWhenTheRestOfItAgrees(t *testing.T) {
