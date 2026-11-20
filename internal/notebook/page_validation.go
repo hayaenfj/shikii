@@ -86,6 +86,9 @@ type View struct {
 	// EarlierSearch is set by a word search that found no candidate, when an earlier work searched the same words, found none and
 	// recorded a result: where that result is. The query of the CLI and MCP only; the caller fills it (RecordMiss returns the earlier miss).
 	EarlierSearch *EarlierSearch `json:"earlier_search,omitempty"`
+	// FoundAlone is set by a search of several words that found no candidate, when some of those words find an article if they are
+	// searched alone (WordsFoundAlone). The query of the CLI and MCP only; the caller fills it.
+	FoundAlone *FoundAlone `json:"found_alone,omitempty"`
 }
 
 type Result struct {

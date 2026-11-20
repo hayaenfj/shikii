@@ -208,7 +208,7 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		}
 	}
 	if size(reply) > budget-1000 {
-		for _, field := range []string{"reasoning", "reading", "attention", "coverage", "earlier_search", "pending", "observations"} {
+		for _, field := range []string{"reasoning", "reading", "attention", "coverage", "earlier_search", "found_alone", "pending", "observations"} {
 			if size(reply) <= budget-1000 {
 				break
 			}

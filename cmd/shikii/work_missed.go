@@ -16,6 +16,10 @@ import (
 // returns an article closes the miss at either entrance (RecordLookup, closeMissedSearch). A miss says what was searched and
 // found nothing: it is no proof that an article is missing, and no instruction.
 //
+// A search of several words that found nothing at either entrance also says which of its words find an article when searched alone
+// (found_alone, noteFoundAlone): a search of several words needs two of them in one article, so alternatives put in one query find
+// nothing together. It records nothing and carries no article.
+//
 // A record that names misses ties to the saved result of its work only those whose words that result speaks of (tieMissedSearches: a
 // word search of the wiki for the words would find the text of the result); the others keep the result they had, or none. A later
 // search of the same words that finds nothing again is told where that result is (earlier_search), without asking the agent to
@@ -44,6 +48,21 @@ const workMissedNext = "These searches of this project's wiki found no article w
 // recorded a result that speaks of them (a word search of the wiki for them finds its text): it is not necessarily the work that
 // searched (several sessions run side by side in a project), it is not an article, and it is to be confirmed.
 const earlierSearchNext = "These same words found no article before, and a work that was open then recorded a result that speaks of them. Read that result with a query of its id: it may say what was found or where the answer is written. It is that work's own report (it may not be the work that searched), not an article and not verified: confirm it before relying on it."
+
+// foundAloneNext is the note of found_alone: a search of several words needs at least two of them in one article, so words put in as
+// alternatives for one thing find nothing together. It is a note on the search, not an instruction to keep searching.
+const foundAloneNext = "No article has these words together (a search of several words needs at least two of them in one article). Searched alone, each word in `words` finds an article: search one of them. Search alternatives for one thing one or two words at a time. It is a note, not an instruction to keep searching."
+
+// noteFoundAlone says which words of a public word search that found no candidate find an article when searched alone
+// (found_alone), or returns nil. It is asked where noteMissedSearch is, for the same searches, and records nothing. It is best
+// effort: a wiki that cannot be read leaves the answered search as it was.
+func noteFoundAlone(book notebook.Book, query, cursor string, view notebook.View) *notebook.FoundAlone {
+	words, err := book.WordsFoundAlone(query, cursor, view)
+	if err != nil || len(words) == 0 {
+		return nil
+	}
+	return &notebook.FoundAlone{Words: words, NextAction: foundAloneNext}
+}
 
 // missSession is what a miss keeps of the session of the work that searched: the same 16 hexadecimal digits the coverage ledger
 // keeps of a session, never the session id itself.

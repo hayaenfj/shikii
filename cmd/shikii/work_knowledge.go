@@ -287,6 +287,9 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		if earlier := noteMissedSearch(book, query, req.Cursor, missSession(token.Session), view); earlier != nil {
 			reply["earlier_search"] = earlier
 		}
+		if alone := noteFoundAlone(book, query, req.Cursor, view); alone != nil {
+			reply["found_alone"] = alone
+		}
 		closeMissedSearch(book, query, view)
 		for _, p := range view.Lessons {
 			if e = add(p); e != nil {

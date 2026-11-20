@@ -116,7 +116,8 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 			return view, err
 		}
 		view.EarlierSearch = noteMissedSearch(b, req.Query, req.Cursor, "", view) // a wiki query carries no session
-		if req.Query == "" && req.Cursor == "" {                                  // the maintenance listing carries the searches that still find nothing
+		view.FoundAlone = noteFoundAlone(b, req.Query, req.Cursor, view)
+		if req.Query == "" && req.Cursor == "" { // the maintenance listing carries the searches that still find nothing
 			view.MissedSearches = listedMissedSearches(b)
 		}
 		return view, nil
