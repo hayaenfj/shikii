@@ -96,7 +96,7 @@ left unexamined, not an instruction: a result that records the same area as repo
 unrelated rows stay. The record's reply says `coverage:{rows,open,handed_over?}` (`rows` counts the rows sent, `open` names the areas this result
 opened, `handed_over` names the `from:"remaining"` areas it took over and closed); if the ledger cannot be written, `errors`
 names it (kind `coverage`) and the same record sent again writes it. The `result.remaining` of a result with no open coverage row is
-kept as an open area too (a result with an open row of its own does not make it a second one): the next work's prepare lists it
+kept as an open area too (a result with an open row of its own does not make it a second one, and a remaining that repeats the area of one of the result's own reported, clear or excluded rows is not made a row: that row says what the state of the area is): the next work's prepare lists it
 as `from:"remaining"`, and it closes when that work records a result (until then a later prepare lists it again); write it in that result's `remaining` if it still matters.
 
 For a prepared memory whose lesson the work followed, without evidence that the lesson changed the work, record

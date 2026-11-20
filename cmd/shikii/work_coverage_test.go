@@ -1303,3 +1303,78 @@ func TestWorkCoverageIsWrittenWhenALaterRequestRepairsAnEarlierResult(t *testing
 		t.Fatalf("%v", reply)
 	}
 }
+
+// The row an agent wrote for an area says what the state of that area is: a remaining that repeats the area of one of the result's
+// own reported, clear or excluded rows (compared as normalized areas) is not made a row, so the ledger and the reply's open agree
+// whatever the ledger held before. The expectations are written out: the lines of the ledger as area/outcome/origin, and the areas
+// open in the ledger (the latest line of an area is an open one), in the reply of the record and in the next preparation.
+func TestWorkCoverageARemainingThatRepeatsTheAreaOfTheResultsOwnRowIsNotMadeARow(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		earlier   *workCompletion // recorded first by another work: it leaves an area open
+		next      workCompletion
+		wantLines []string
+		wantOpen  []string
+	}{
+		{
+			name:      "the area handed from a remaining, closed by a clear row and the same words in remaining",
+			earlier:   &workCompletion{Changed: "Audited the export.", Evidence: []string{"new1"}, Remaining: "export filters"},
+			next:      withRemaining(coverageResult(coverageRow("export filters", "clear", "new1")), "export filters"),
+			wantLines: []string{"export filters/open/remaining", "export filters/clear/"},
+		},
+		{
+			name:      "the area of an agent's own open row, closed by a reported row and the same words spaced differently in remaining",
+			earlier:   &workCompletion{Changed: "Audited the export.", Evidence: []string{"new1"}, Coverage: []workCoverageRow{coverageRow("export filters", "open")}},
+			next:      withRemaining(coverageResult(coverageRow("export  filters", "reported")), " export\tfilters \n"),
+			wantLines: []string{"export filters/open/", "export filters/reported/"},
+		},
+		{
+			name:      "an area never open, with an excluded row and the same words in remaining",
+			next:      withRemaining(coverageResult(coverageRow("export filters", "excluded", "", "out of scope")), "export filters"),
+			wantLines: []string{},
+		},
+		{
+			name:      "control: a clear row for one area and a remaining that names another area",
+			next:      withRemaining(coverageResult(coverageRow("export filters", "clear", "new1")), "export totals"),
+			wantLines: []string{"export totals/open/remaining"},
+			wantOpen:  []string{"export totals"},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newCoverageFlow(t)
+			if c.earlier != nil {
+				if earlier := f.record(f.prepare(), *c.earlier); earlier["complete"] != true {
+					t.Fatalf("the earlier record is complete: %v", earlier)
+				}
+			}
+			saved := f.record(f.prepare(), c.next)
+			reply := coverageReplyOf(t, saved)
+			replied := []string{}
+			for _, raw := range reply["open"].([]any) {
+				replied = append(replied, raw.(string))
+			}
+			lines := []string{}
+			latest := map[string]string{} // the outcome of the latest line of an area
+			for _, line := range f.ledger() {
+				area, outcome := line["area"].(string), line["outcome"].(string)
+				origin, _ := line["origin"].(string)
+				lines, latest[area] = append(lines, area+"/"+outcome+"/"+origin), outcome
+			}
+			held := []string{}
+			for area, outcome := range latest {
+				if outcome == "open" {
+					held = append(held, area)
+				}
+			}
+			if saved["complete"] != true || reply["rows"] != float64(1) || reply["handed_over"] != nil {
+				t.Fatalf("the record is complete, counts the row it sent and hands nothing over: %v", saved)
+			}
+			if !slices.Equal(lines, c.wantLines) {
+				t.Fatalf("the ledger holds %q, want %q", lines, c.wantLines)
+			}
+			if !slices.Equal(held, c.wantOpen) || !slices.Equal(replied, c.wantOpen) || !slices.Equal(openAreasOf(t, f.prepare()), c.wantOpen) {
+				t.Fatalf("the areas open: in the ledger %q, in the reply %q, in the next preparation %q; want %q", held, replied, openAreasOf(t, f.prepare()), c.wantOpen)
+			}
+		})
+	}
+}

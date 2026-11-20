@@ -22,7 +22,9 @@ import (
 // only reported, clear and excluded rows) therefore leaves its remaining (unless it says that nothing is left) in the ledger as an
 // open row of origin remaining; a preparation lists it with from:remaining; and the work that was handed it closes it by recording a
 // result, as does the next result of the session that wrote it. A result that wrote an open row itself uses the ledger for what it
-// left, and its remaining is not made a row (the same left-over would be listed twice).
+// left, and its remaining is not made a row (the same left-over would be listed twice). Nor is a remaining that repeats the area of
+// one of the result's own rows (reported, clear or excluded): the row the agent wrote says what the state of that area is, so neither
+// the ledger nor the reply's open names the area, whether or not the ledger held it open before.
 //
 // Only the result a receipt holds now (workState.Result) opens its remaining and takes rows over, and only once (CoverageHandled):
 // an older result that is sent again, or repaired by ref after a later one was recorded, must not change what the later one left.
@@ -111,6 +113,15 @@ func workCoverageOpen(rows []workCoverageRow) bool {
 	return false
 }
 
+// workCoverageNames reports whether one of the rows is about the area: the areas are compared as normalized areas (area is already
+// one: it comes from workRemainingArea).
+func workCoverageNames(rows []workCoverageRow, area string) bool {
+	return slices.ContainsFunc(rows, func(row workCoverageRow) bool {
+		named, _ := store.NormalizeCoverageArea(row.Area)
+		return named == area
+	})
+}
+
 // readyCoverageResult names the saved result that this record made ready, and the signature it was saved under. A full record names
 // the result of the receipt; a repair by ref names the result it repaired, which a repair of an earlier request may complete
 // while the receipt holds another result.
@@ -175,7 +186,9 @@ func workRemainingArea(remaining string) (string, bool) {
 
 // recordWorkCoverage writes what the project's ledger keeps of a result that is ready, and tells the reply what the result opened
 // and handed over. It runs for a full record and for the repair of a result by ref, from the saved result: the coverage rows are
-// written; and a result that has no open coverage row writes its remaining as an open row of origin remaining (workRemainingArea).
+// written; and a result that has no open coverage row writes its remaining as an open row of origin remaining (workRemainingArea),
+// unless one of its own rows names the same area (workCoverageNames): that row says what the state of the area is, so the remaining
+// is not made a row, and the reply's open does not name the area, whatever the ledger held before.
 // The result the receipt holds now also closes the open rows of remaining that it takes over (store.CoverageHandover): the rows of
 // its own session and the rows its preparation listed. Both are done for that result only, and once: a result that was repaired by
 // ref while the receipt holds another one writes its coverage rows and nothing else, and a result whose source the work remembers
@@ -217,7 +230,7 @@ func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCo
 	if takesOver {
 		handover = store.CoverageHandover{Session: store.CoverageSession(session), Shown: w.CoverageShown}
 	}
-	if area, left := workRemainingArea(saved.Remaining); current && left && !workCoverageOpen(rows) {
+	if area, left := workRemainingArea(saved.Remaining); current && left && !workCoverageOpen(rows) && !workCoverageNames(rows, area) {
 		ledger = append(ledger, store.CoverageRow{Area: area, Outcome: store.CoverageOpen, Origin: store.CoverageFromRemaining, Session: store.CoverageSession(session)})
 		open = append(open, area)
 	}
