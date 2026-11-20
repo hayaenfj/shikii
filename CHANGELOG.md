@@ -2,34 +2,34 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## 0.39.0 — A search that finds nothing now says what to search next
+## 0.39.0 — When a wiki search finds nothing, shikii now shows which word to try next
 
 ### Changes
 
-- When a search of several words finds nothing and one of the words finds an article alone, the reply now names that word. A list of alternative words for one thing can find nothing even when one of them is in an article.
-- The pointer for words that found nothing before now leads only to a work record that speaks of those words. Until now it could lead to a record that said nothing about them.
-- Words that found nothing in a search made while preparing a task are now reported only in the work record of the session that searched. Words searched with `wiki query` (the command or MCP) carry no session, so they are still reported in the record of the task that was open then.
-- When the reply to a task's preparation is over its size limit, shikii now names fewer of the areas that were not examined before it drops the text of an article. An area that is not named stays open and reaches a later task.
+- When several words are searched together and nothing is found, the search result now shows any of the words that would find an article if it were searched alone. Until now the search could end with nothing even when one of the words was in an article.
+- When the same words are searched again and still find nothing, shikii points to an earlier work record. It now points only to a record that says something about the words that were searched. Until now it could point to an unrelated record.
+- When a search that an agent makes as part of preparing a task finds nothing, the words are now reported only to the session that searched. Until now they could also be reported to another session running at the same time. For a search made directly with the command or MCP, the reporting is unchanged.
+- When there is too much to give an agent that is starting a task, shikii now shortens the list of areas not yet examined (what earlier tasks left unexamined) before it cuts the text of wiki articles. An area left off the list is kept and is given to a later task.
 
 ### Fixes
 
-- Fixed words that found nothing being remembered as different words when they differed only in upper and lower case or in how a character is composed (a letter followed by a combining mark, or one precomposed character).
-- Fixed the wiki search treating a precomposed character and its decomposed form as different words. A search in either form now finds the same article.
-- Fixed older open areas dropping out of the list once the record of areas that were not examined grew past about 4 MB.
-- Fixed the same area being added once more when the record of an old task was sent again after the record of areas had grown large.
+- Fixed the wiki search missing an article when a word was written with a different form of a character that looks the same, for example "é" as one character or as "e" followed by a separate accent mark. The same applies to Japanese kana with a voicing mark.
+- Fixed words that found nothing being saved as different words when they differed only in upper and lower case, or only in the form of a character.
+- Fixed older areas no longer being given to later tasks once many areas not yet examined had piled up.
+- Fixed the same area not yet examined being registered twice when a work record was sent again.
 
-## 0.38.0 — What a task left undone, and what the wiki could not answer, reach the next task
+## 0.38.0 — What a task left undone, and topics the wiki search could not find, are handed on to the next task
 
 ### Changes
 
-- When an agent writes what is left in its work record, the next task now receives it when it starts. Until now the note stayed in the record and never reached the agent of the next session. When the task that received it records its own result, the item is closed; if it is still left, the agent writes it again in its own record.
-- An agent can now record which areas it examined. For each area it says one of four things: a problem was reported, it was examined and no problem was found, it was left out on purpose, or it was not examined. An area that was not examined is delivered when a later task starts (the five newest are named and the rest are counted). It is closed when a later task records that it examined the area or left it out on purpose.
-- When a search of the wiki by words finds nothing, shikii now remembers the words. The agent is told the words when it records its work and when it tidies the wiki, so it can see which topics the wiki may lack. Once an article is added and the same words find it, they are no longer reported.
-- When the same words find nothing again, and the task during which they found nothing recorded its result, shikii points to that record. If that task found the answer somewhere else, the agent can follow it from there. What it points to is that task's own report, not a verified article.
+- What an agent writes in its work record as left undone is now given to the agent that starts the next task. Until now it was only written in the record and never reached the agent of the next session.
+- An agent can now write in its work record which areas it examined and which it has not yet examined. An area not yet examined is given to the agent that starts a later task, and leaves the list once a later task examines it or decides not to.
+- When a wiki search finds nothing, shikii now saves the words that were searched. Until an article is added and the words find it, the agent is told the saved words when it records its work and when it tidies the wiki.
+- When the same words are searched again and still find nothing, shikii now points to the work record of the earlier task in which the same words found nothing, if there is one. If the earlier task found the answer somewhere other than the wiki, the agent can follow the record to the answer.
 
 ### Fixes
 
-- Fixed the MCP search returning nothing when it was given only the id of a saved record. It now returns that record, as the command `shikii wiki query <id>` does. When it is given only the id of an article, the refusal now says to write `lesson:<id>` to read the article.
+- Fixed the MCP search returning no result when it was given only the id of a saved record. It now returns the record, as the command `shikii wiki query <id>` does. When it is given the id of an article, it says to pass it as `lesson:<id>`.
 
 ## 0.37.4 — The hooks start git less often in a worktree or a submodule too
 
