@@ -6,16 +6,16 @@
 
 ### Changes
 
-- When a search of several words finds nothing and one of the words finds an article alone, the reply now names that word. A search of several words needs at least two of them in one article, so a list of alternative words for one thing found nothing even when one of them was in an article.
+- When a search of several words finds nothing and one of the words finds an article alone, the reply now names that word. A list of alternative words for one thing could find nothing even when one of them was in an article.
 - The pointer for words that found nothing before now leads only to a work record that speaks of those words. Until now it could lead to a record that said nothing about them.
-- Words that found nothing in a search that continues a task's preparation are now reported only in the record of the session that searched. They no longer appear in the record of another session running at the same time. Words searched with `shikii wiki query` carry no session, so they are still reported in the record of the task that was open then.
+- Words that found nothing in a search that continues a task's preparation are now reported only in the work record of the session that searched. Words searched with `wiki query` (the command or MCP) carry no session, so they are still reported in the record of the task that was open then.
 - When the reply to a task's preparation is over its size limit, shikii now names fewer of the areas that were not examined before it drops the text of an article. An area that is not named stays open and reaches a later task.
 
 ### Fixes
 
 - Fixed words that found nothing being remembered as different words when they differed only in upper and lower case or in how a character is composed (a letter followed by a combining mark, or one precomposed character).
 - Fixed the wiki search treating a precomposed character and its decomposed form as different words. A search in either form now finds the same article.
-- Fixed open areas dropping out of the list once the record of areas that were not examined grew past about 4 MB. An open area now stays in the list until it is closed.
+- Fixed older open areas dropping out of the list once the record of areas that were not examined grew past about 4 MB.
 - Fixed the same area being added once more when the record of an old task was sent again after the record of areas had grown large.
 
 ## 0.38.0 — What a task left undone, and what the wiki could not answer, reach the next task

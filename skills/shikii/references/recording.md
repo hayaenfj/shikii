@@ -50,8 +50,8 @@ receipt can carry `earlier_search`: these words found no article before, and a
 work recorded a result whose own text these words find; its id is `result` (it
 may not be the work that searched). A query of that id reads it
 (`wiki query <id>`). It is that work's own report, not an article: confirm it
-before relying on it. A result that says nothing of the words is never pointed
-at, so say in `checked` what the missed words turned out to be.
+before relying on it. A result that says nothing of the words is not tied, so
+say in `checked` what the missed words turned out to be.
 
 Hook IDs can record only the hook's initial preparation in that project and turn.
 An explicit replacement prepare can reassign local references, so it requires its

@@ -84,10 +84,10 @@ type View struct {
 	// MissedSearches is filled by the wordless query of the CLI and MCP only: the word searches that still find no candidate (OpenMisses).
 	MissedSearches []Miss `json:"missed_searches,omitempty"`
 	// EarlierSearch is set by a word search that found no candidate, when an earlier work searched the same words, found none and
-	// recorded a result: where that result is. The query of the CLI and MCP only; the caller fills it (RecordMiss returns the earlier miss).
+	// recorded a result: where that result is. The word query of the CLI, MCP and HTTP only; the caller fills it (RecordMiss returns the earlier miss).
 	EarlierSearch *EarlierSearch `json:"earlier_search,omitempty"`
 	// FoundAlone is set by a search of several words that found no candidate, when some of those words find an article if they are
-	// searched alone (WordsFoundAlone). The query of the CLI and MCP only; the caller fills it.
+	// searched alone (WordsFoundAlone). The word query of the CLI, MCP and HTTP only; the caller fills it.
 	FoundAlone *FoundAlone `json:"found_alone,omitempty"`
 }
 
