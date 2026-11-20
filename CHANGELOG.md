@@ -11,7 +11,7 @@
 
 ### Fixes
 
-- Fixed a case where, after the link that a repository's settings use to point to its working folder was pointed at another folder, the hooks kept looking at the old folder for a while. The hooks now ask git again.
+- Fixed a case where the hooks kept using an old folder as the repository's folder for a while. It happened when a repository's working folder was set through a symbolic link and the link was later pointed at another folder. The hooks now notice the change and use the new folder.
 
 ## 0.37.3 — The hooks start git much less often
 
