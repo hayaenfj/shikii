@@ -20,14 +20,14 @@ func TestTheSameWordsInAnotherCaseOrCompositionAreOneMiss(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
-			if earlier, err := b.recordMissAt(c.first, "", emptyView(), base); earlier != nil || err != nil {
+			if earlier, err := b.recordMissAt(c.first, "", "", emptyView(), base); earlier != nil || err != nil {
 				t.Fatalf("a first miss has no earlier one: %+v %v", earlier, err)
 			}
 			// the record of a work names the words as the journal holds them; a caller that names them in another case ties them too
-			if err := b.NoteMissResult([]string{strings.ToUpper(c.again)}, resultA); err != nil {
+			if err := b.NoteMissResult([]string{strings.ToUpper(c.again)}, resultA, ""); err != nil {
 				t.Fatal(err)
 			}
-			earlier, err := b.recordMissAt(c.again, "", emptyView(), base.Add(time.Minute))
+			earlier, err := b.recordMissAt(c.again, "", "", emptyView(), base.Add(time.Minute))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -52,7 +52,7 @@ func TestTheSameWordsInAnotherCaseOrCompositionAreOneMiss(t *testing.T) {
 // The lookup of a wiki query closes the miss of the same words in another case too.
 func TestALookupClosesTheMissOfTheSameWordsInAnotherCase(t *testing.T) {
 	b := missFixture(t)
-	if _, err := b.recordMissAt("Quartz EXPORTS", "", emptyView(), time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)); err != nil {
+	if _, err := b.recordMissAt("Quartz EXPORTS", "", "", emptyView(), time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
 	view, err := b.QueryPage("quartz exports", "")
@@ -75,14 +75,14 @@ func TestOtherWordsStayOtherMissesAndTheComposedFormIsBounded(t *testing.T) {
 	// U+0958 is 3 bytes and its composed form (NFC) is two characters of 3 bytes: 34 of them are 102 bytes as typed and 204 composed
 	long := strings.Repeat("\u0958", 34)
 	for i, query := range []string{"saffron lantern", "saffron lanterns", "caf\u00e9 menus", "cafe menus", long} {
-		if _, err := b.recordMissAt(query, "", emptyView(), base.Add(time.Duration(i)*time.Minute)); err != nil {
+		if _, err := b.recordMissAt(query, "", "", emptyView(), base.Add(time.Duration(i)*time.Minute)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if got := diskQueries(missesOnDisk(t, b)); !slices.Equal(got, []string{"saffron lantern", "saffron lanterns", "caf\u00e9 menus", "cafe menus"}) {
 		t.Fatalf("other words are other misses, and a form over the bound is not kept: %+q", got)
 	}
-	open, err := b.OpenMisses(time.Time{}, 8)
+	open, err := b.OpenMisses(time.Time{}, 8, "")
 	if err != nil || len(open) != 4 {
 		t.Fatalf("every miss the journal wrote is read back: %+q %v", openQueries(open), err)
 	}

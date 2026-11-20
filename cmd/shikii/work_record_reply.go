@@ -4,7 +4,7 @@ import (
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
-func finishWorkRecordReply(book notebook.Book, w *workState, req workRequest, result *workResult, stampReview func() error) {
+func finishWorkRecordReply(book notebook.Book, w *workState, req workRequest, session string, result *workResult, stampReview func() error) {
 	if e := stampReview(); e != nil {
 		result.Complete = false
 		result.Errors = append(result.Errors, workItem{Kind: "context", Ref: "result-review", Error: e.Error()})
@@ -45,8 +45,8 @@ func finishWorkRecordReply(book notebook.Book, w *workState, req workRequest, re
 		result.NextAction += lessonsToAssessNext
 	}
 	if req.Result != nil && result.Complete {
-		result.MissedSearches = recordedMissedSearches(book, w.At)
-		tieMissedSearches(book, result.MissedSearches, w.Result)
+		result.MissedSearches = recordedMissedSearches(book, w.At, missSession(session))
+		tieMissedSearches(book, result.MissedSearches, w.Result, missSession(session))
 	}
 	limitSavedReviewArticles(req, result)
 }

@@ -353,7 +353,7 @@ func TestListedMissedSearchesAreBestEffort(t *testing.T) {
 	if err := os.WriteFile(f.journalPath(), []byte(`{"lookups":[{"id":"0123456789abcdef","query":"alpha lanterns"}],"misses":[{"query":"alpha lanterns","at":"2026-11-01T09:00:00Z"}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.b.OpenMisses(time.Time{}, 8); err == nil {
+	if _, err := f.b.OpenMisses(time.Time{}, 8, ""); err == nil {
 		t.Fatal("control: the journal is one the reader refuses")
 	}
 	if got := listedMissedSearches(f.b); len(got) != 0 {
@@ -463,13 +463,15 @@ func TestTheSameWordsMissingAgainAreToldWhereTheEarlierResultIs(t *testing.T) {
 }
 
 // The note does not say that the work whose result it names searched the words: it names the work that was open when the words
-// missed and then recorded a result, which several sessions of one project running side by side make a different work.
+// missed and then recorded a result. A wiki query carries no session, so when several sessions of one project run side by side the
+// words it missed are tied to the result of a work that was open then, whichever searched (a search through a receipt is tied to
+// its own session: TestARecordNamesAndTiesOnlyTheMissesOfItsOwnSession).
 func TestEarlierSearchNoteDoesNotSayTheWorkThatSearched(t *testing.T) {
 	f := newMissedFlow(t)
-	first := f.prepare("export audit", "")
+	f.prepare("export audit", "")
 	other := f.prepare("export audit", "")
-	f.prepare("saffron lanterns", first["receipt"].(string)) // only the first work searches the words
-	idOther := resultID(t, f.record(other, goodResult()))    // the work that never searched records first, and the words are tied to its result
+	f.wiki("saffron lanterns")                            // a wiki query: no one knows which of the two open works asked
+	idOther := resultID(t, f.record(other, goodResult())) // the work that records first while the words miss is the one they are tied to
 	earlier := earlierSearchOf(t, f.wiki("saffron lanterns"))
 	next, _ := earlier["next_action"].(string)
 	if earlier["result"] != idOther {

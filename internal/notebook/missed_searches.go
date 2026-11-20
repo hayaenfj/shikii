@@ -29,11 +29,15 @@ const (
 
 // Miss is one word search that found no candidate. Query is stored as the words were last typed, with white space trimmed, each run
 // of it collapsed to one space and its characters composed (normalizeMissQuery); At is when the search last found nothing. Result is the id of the saved result of the work that had the miss open when it
-// recorded its result (NoteMissResult), or empty: the report of that work, never an answer the wiki holds.
+// recorded its result (NoteMissResult), or empty: the report of that work, never an answer the wiki holds. Session is the session of
+// the search that last found nothing, as 16 hexadecimal digits the caller derives from the session id (never the id itself), or
+// empty when the entrance knows no session (a wiki query): a miss with a session is named and tied by the records of that session
+// only, so a work of another session that was open at the time does not take it for its own.
 type Miss struct {
-	Query  string    `json:"query"`
-	At     time.Time `json:"at"`
-	Result string    `json:"result,omitempty"`
+	Query   string    `json:"query"`
+	At      time.Time `json:"at"`
+	Result  string    `json:"result,omitempty"`
+	Session string    `json:"session,omitempty"`
 }
 
 // EarlierSearch is the reply field that points a search that found nothing at the result of an earlier work that searched the same
@@ -47,7 +51,7 @@ type EarlierSearch struct {
 
 // missedList is the misses of the search journal, read as an allow-list: a miss that is not in the form the journal writes (not a
 // JSON object of the right fields, an empty query, a query over missQueryMax bytes, text that is not UTF-8, no time, a result that
-// is not the 16-digit id of a source) is dropped, and
+// is not the 16-digit id of a source, a session that is not 16 hexadecimal digits) is dropped, and
 // more than missedSearchMax of them are cut to the newest. The misses never make the journal unreadable: they are a note on gaps,
 // and an older or newer version of the program may have written another form or another bound (the other collections of the
 // journal are still refused when they are invalid).
@@ -62,7 +66,7 @@ func (l *missedList) UnmarshalJSON(data []byte) error {
 	kept := missedList{}
 	for _, r := range raw {
 		var m Miss
-		if utf8.Valid(r) && json.Unmarshal(r, &m) == nil && m.Query != "" && len(m.Query) <= missQueryMax && !m.At.IsZero() && (m.Result == "" || idPattern.MatchString(m.Result)) {
+		if utf8.Valid(r) && json.Unmarshal(r, &m) == nil && m.Query != "" && len(m.Query) <= missQueryMax && !m.At.IsZero() && (m.Result == "" || idPattern.MatchString(m.Result)) && (m.Session == "" || idPattern.MatchString(m.Session)) {
 			kept = append(kept, m)
 		}
 	}
@@ -153,20 +157,26 @@ func withoutMiss(misses []Miss, key string) []Miss {
 // with a newer time, and keeps the result the earlier one was tied to). It records nothing for any other query or page, and the internal searches of the wiki (delivery,
 // placement, consultation) never call it. A search that found a candidate is not recorded here; its lookup (or CloseMiss) closes the miss.
 //
+// session is the session of the search (Miss.Session), or empty when the entrance knows none; the miss takes the session of the
+// search that found nothing last. A session that is not 16 hexadecimal digits is refused, which the reader would drop.
+//
 // It returns the earlier miss of the same words (as it was before this search) when that one was tied to a result, so the caller can
 // say where that result is; otherwise it returns nil.
-func (b Book) RecordMiss(query, cursor string, view View) (*Miss, error) {
-	return b.recordMissAt(query, cursor, view, time.Now().UTC())
+func (b Book) RecordMiss(query, cursor, session string, view View) (*Miss, error) {
+	return b.recordMissAt(query, cursor, session, view, time.Now().UTC())
 }
 
-func (b Book) recordMissAt(query, cursor string, view View, at time.Time) (*Miss, error) {
+func (b Book) recordMissAt(query, cursor, session string, view View, at time.Time) (*Miss, error) {
 	q, ok := missQuery(query, cursor)
 	if !ok || !view.searchFoundNothing() {
 		return nil, nil
 	}
+	if session != "" && !idPattern.MatchString(session) {
+		return nil, errors.New("the session of a missed search is 16 hexadecimal digits, or none")
+	}
 	var earlier *Miss
 	err := b.updateJournal(true, func(j *searchJournal) bool {
-		miss, key := Miss{Query: q, At: at}, missKey(q)
+		miss, key := Miss{Query: q, At: at, Session: session}, missKey(q)
 		if before := lastMiss(j.Misses, key); before != nil && before.Result != "" {
 			miss.Result, earlier = before.Result, before
 		}
@@ -227,10 +237,11 @@ func (b Book) CloseMiss(query string) error {
 }
 
 // NoteMissResult ties the misses of the given words to a saved result: the id of the result of the work that had them open. A
-// result tied before is replaced (the last work that searched those words and found nothing is the one reported). It writes nothing
-// when the journal does not exist or holds none of the words, and it refuses a result that is not a 16-digit id, which the reader
-// would drop.
-func (b Book) NoteMissResult(queries []string, result string) error {
+// result tied before is replaced (the last work that searched those words and found nothing is the one reported). session is the
+// session of that work: a miss that another session made (mineOrUnknown) is left as it is, also when that session missed the words
+// after the record read them. It writes nothing when the journal does not exist or holds none of the words, and it refuses a result
+// that is not a 16-digit id, which the reader would drop.
+func (b Book) NoteMissResult(queries []string, result, session string) error {
 	if !idPattern.MatchString(result) {
 		return errors.New("a missed search is tied to the 16-digit id of a saved result")
 	}
@@ -241,7 +252,7 @@ func (b Book) NoteMissResult(queries []string, result string) error {
 	return b.updateJournal(false, func(j *searchJournal) bool {
 		changed := false
 		for i := range j.Misses {
-			if m := &j.Misses[i]; m.Result != result && slices.Contains(words, missKey(m.Query)) {
+			if m := &j.Misses[i]; m.Result != result && m.mineOrUnknown(session) && slices.Contains(words, missKey(m.Query)) {
 				m.Result, changed = result, true
 			}
 		}
@@ -261,14 +272,22 @@ func (b Book) readJournalIfAny() (searchJournal, error) {
 	return readSearchJournal(dir)
 }
 
+// mineOrUnknown reports whether the miss is one a record of the session names and ties: a miss that session made, or a miss whose
+// session nobody knows. An empty session asks for the misses of every session (the maintenance listing).
+func (m Miss) mineOrUnknown(session string) bool {
+	return session == "" || m.Session == "" || m.Session == session
+}
+
 // OpenMisses returns the misses made at since or later that are still open, newest first, at most limit of them. A miss is open
-// while the same search, run now, still finds no candidate; an article added since closes it with no write. It only reads.
+// while the same search, run now, still finds no candidate; an article added since closes it with no write. It only reads. With a
+// session it returns the misses that session made and the ones whose session is unknown (mineOrUnknown); the others are skipped as
+// the misses before since are.
 //
 // A call examines at most openMissExamineMax misses: the newest ones that are at or after since and of an allowed form (the others
 // are skipped and not counted). A miss older than those is not examined in that call, whether it is open or not, so a journal full
 // of answered misses costs a bounded number of searches. The searches of one call share the parsing of the articles (ReadView:
 // every read still opens the files and compares all bytes, so an article changed in between is read as it is then).
-func (b Book) OpenMisses(since time.Time, limit int) ([]Miss, error) {
+func (b Book) OpenMisses(since time.Time, limit int, session string) ([]Miss, error) {
 	j, err := b.readJournalIfAny()
 	if err != nil {
 		return nil, err
@@ -279,7 +298,7 @@ func (b Book) OpenMisses(since time.Time, limit int) ([]Miss, error) {
 	// the journal keeps its misses oldest first
 	for i := len(j.Misses) - 1; i >= 0 && len(open) < limit && examined < openMissExamineMax; i-- {
 		m := j.Misses[i]
-		if _, ok := missQuery(m.Query, ""); !ok || m.At.Before(since) {
+		if _, ok := missQuery(m.Query, ""); !ok || m.At.Before(since) || !m.mineOrUnknown(session) {
 			continue
 		}
 		examined++

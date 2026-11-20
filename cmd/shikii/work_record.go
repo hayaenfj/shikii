@@ -154,7 +154,7 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 	}
 	defer func() {
 		lessonsLeft(root, scope, w, token, &result)
-		finishWorkRecordReply(book, w, req, &result, stampReview)
+		finishWorkRecordReply(book, w, req, token.Session, &result, stampReview)
 		if retErr == nil {
 			reply = result
 		}

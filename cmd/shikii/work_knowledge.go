@@ -284,7 +284,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 			return nil, e
 		}
 		w.candidateCursor = after
-		if earlier := noteMissedSearch(book, query, req.Cursor, view); earlier != nil {
+		if earlier := noteMissedSearch(book, query, req.Cursor, missSession(token.Session), view); earlier != nil {
 			reply["earlier_search"] = earlier
 		}
 		closeMissedSearch(book, query, view)

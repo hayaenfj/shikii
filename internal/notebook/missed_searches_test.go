@@ -99,7 +99,7 @@ func TestRecordMissKeepsASearchThatFoundNothing(t *testing.T) {
 		if (c.name == "found") != (view.Search.Total > 0) {
 			t.Fatalf("the fixture changed: %s search has %d candidates", c.name, view.Search.Total)
 		}
-		if _, err := b.RecordMiss(c.query, "", view); err != nil {
+		if _, err := b.RecordMiss(c.query, "", "", view); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -147,7 +147,7 @@ func TestRecordMissAllowsOnlyWordSearchesOfTheListedForm(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
-			if _, err := b.RecordMiss(c.query, c.cursor, c.view); err != nil {
+			if _, err := b.RecordMiss(c.query, c.cursor, "", c.view); err != nil {
 				t.Fatal(err)
 			}
 			if got := diskQueries(missesOnDisk(t, b)); !slices.Equal(got, append([]string{}, c.want...)) {
@@ -163,7 +163,7 @@ func TestRecordMissMergesTheSameWordsAndKeepsSixtyFour(t *testing.T) {
 	base := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 	record := func(query string, minutes int) {
 		t.Helper()
-		if _, err := b.recordMissAt(query, "", emptyView(), base.Add(time.Duration(minutes)*time.Minute)); err != nil {
+		if _, err := b.recordMissAt(query, "", "", emptyView(), base.Add(time.Duration(minutes)*time.Minute)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -197,11 +197,11 @@ func TestMissClosesOnceAnArticleAnswersTheSameWords(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := b.RecordMiss(query, "", view); err != nil {
+		if _, err := b.RecordMiss(query, "", "", view); err != nil {
 			t.Fatal(err)
 		}
 	}
-	open, err := b.OpenMisses(time.Time{}, 8)
+	open, err := b.OpenMisses(time.Time{}, 8, "")
 	if err != nil || !slices.Equal(openQueries(open), []string{"saffron lanterns", "quartz exports"}) {
 		t.Fatalf("both are open, newest first: %+v %v", open, err)
 	}
@@ -210,7 +210,7 @@ func TestMissClosesOnceAnArticleAnswersTheSameWords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	open, err = b.OpenMisses(time.Time{}, 8)
+	open, err = b.OpenMisses(time.Time{}, 8, "")
 	if err != nil || !slices.Equal(openQueries(open), []string{"saffron lanterns"}) {
 		t.Fatalf("the answered words are no longer open: %+v %v", open, err)
 	}
@@ -234,7 +234,7 @@ func TestOpenMissesAreNewestFirstSinceTheTimeAndLimited(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
 	base := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 	for i := 0; i < 5; i++ {
-		if _, err := b.recordMissAt(fmt.Sprintf("topic %d", i), "", emptyView(), base.Add(time.Duration(i)*time.Hour)); err != nil {
+		if _, err := b.recordMissAt(fmt.Sprintf("topic %d", i), "", "", emptyView(), base.Add(time.Duration(i)*time.Hour)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -251,7 +251,7 @@ func TestOpenMissesAreNewestFirstSinceTheTimeAndLimited(t *testing.T) {
 		{"limit and since", base.Add(3 * time.Hour), 1, []string{"topic 4"}},
 		{"no limit", time.Time{}, 0, []string{}},
 	} {
-		open, err := b.OpenMisses(c.since, c.limit)
+		open, err := b.OpenMisses(c.since, c.limit, "")
 		if err != nil || !slices.Equal(openQueries(open), c.want) {
 			t.Errorf("%s: got %q (%v), want %q", c.name, openQueries(open), err, c.want)
 		}
@@ -280,7 +280,7 @@ func TestOpenMissesExamineAtMostTheSixteenNewest(t *testing.T) {
 			record := func(query string) {
 				t.Helper()
 				minute++
-				if _, err := b.recordMissAt(query, "", emptyView(), base.Add(time.Duration(minute)*time.Minute)); err != nil {
+				if _, err := b.recordMissAt(query, "", "", emptyView(), base.Add(time.Duration(minute)*time.Minute)); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -290,7 +290,7 @@ func TestOpenMissesExamineAtMostTheSixteenNewest(t *testing.T) {
 			for i := 0; i < c.answered; i++ {
 				record(fmt.Sprintf("quartz exports %02d", i))
 			}
-			got, err := b.OpenMisses(time.Time{}, 8)
+			got, err := b.OpenMisses(time.Time{}, 8, "")
 			if err != nil || !slices.Equal(openQueries(got), c.want) {
 				t.Fatalf("the open misses among the 16 newest: %q (%v), want %q", openQueries(got), err, c.want)
 			}
@@ -313,7 +313,7 @@ func TestOpenMissesCountOnlyTheMissesTheyExamine(t *testing.T) {
 		t.Fatal(err)
 	}
 	since := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
-	got, err := b.OpenMisses(since, 8)
+	got, err := b.OpenMisses(since, 8, "")
 	if want := []string{"kestrel harbor", "saffron lanterns"}; err != nil || !slices.Equal(openQueries(got), want) {
 		t.Fatalf("the 14 answered misses and the 2 open ones are the 16 examined: %q (%v), want %q", openQueries(got), err, want)
 	}
@@ -325,12 +325,12 @@ func TestOpenMissesShareTheReadingOfTheArticles(t *testing.T) {
 	b := missFixture(t)
 	base := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 	for i := 0; i < 8; i++ {
-		if _, err := b.recordMissAt(fmt.Sprintf("quartz exports %02d", i), "", emptyView(), base.Add(time.Duration(i)*time.Minute)); err != nil {
+		if _, err := b.recordMissAt(fmt.Sprintf("quartz exports %02d", i), "", "", emptyView(), base.Add(time.Duration(i)*time.Minute)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	before := PageParses()
-	got, err := b.OpenMisses(time.Time{}, 8)
+	got, err := b.OpenMisses(time.Time{}, 8, "")
 	if err != nil || len(got) != 0 {
 		t.Fatalf("all 8 are answered: %+v (%v)", got, err)
 	}
@@ -346,7 +346,7 @@ func TestOpenMissesSkipWhatIsNotASearchOfWords(t *testing.T) {
 	if err := os.WriteFile(journalPath(t, b), []byte(file), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	open, err := b.OpenMisses(time.Time{}, 8)
+	open, err := b.OpenMisses(time.Time{}, 8, "")
 	if err != nil || !slices.Equal(openQueries(open), []string{"saffron lanterns"}) {
 		t.Fatalf("only the search of words is open: %q (%v)", openQueries(open), err)
 	}
@@ -414,7 +414,7 @@ func TestSearchJournalReadsOnlyTheMissedSearchesItWouldWrite(t *testing.T) {
 			if want := append([]string{}, c.want...); !slices.Equal(got, want) {
 				t.Fatalf("the misses read are %q, want %q", got, want)
 			}
-			if _, err := b.OpenMisses(time.Time{}, 8); err != nil {
+			if _, err := b.OpenMisses(time.Time{}, 8, ""); err != nil {
 				t.Fatalf("the listing of open misses: %v", err)
 			}
 		})
@@ -457,7 +457,7 @@ func TestDamagedMissedSearchesDoNotStopTheWiki(t *testing.T) {
 		t.Fatalf("what the write keeps of the misses is the valid ones: %q", got)
 	}
 	empty := emptyView()
-	if _, err := b.RecordMiss("saffron lanterns", "", empty); err != nil {
+	if _, err := b.RecordMiss("saffron lanterns", "", "", empty); err != nil {
 		t.Fatalf("the record of a miss succeeds: %v", err)
 	}
 	if got := diskQueries(missesOnDisk(t, b)); !slices.Equal(got, []string{"older words", "newer words", "saffron lanterns"}) {
@@ -503,7 +503,7 @@ func TestInternalSearchesLeaveNoMiss(t *testing.T) {
 	if _, err := b.Recall("saffron lanterns kestrel harbor"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.OpenMisses(time.Time{}, 8); err != nil {
+	if _, err := b.OpenMisses(time.Time{}, 8, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := missesOnDisk(t, b); len(got) != 0 {
@@ -522,11 +522,11 @@ func TestNoteMissResultTiesTheMissesOfTheNamedWordsOnly(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
 	base := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 	for i, query := range []string{"saffron lanterns", "kestrel harbor", "juniper meadow"} {
-		if _, err := b.recordMissAt(query, "", emptyView(), base.Add(time.Duration(i)*time.Minute)); err != nil {
+		if _, err := b.recordMissAt(query, "", "", emptyView(), base.Add(time.Duration(i)*time.Minute)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := b.NoteMissResult([]string{"  saffron \t lanterns ", "juniper meadow", "words that were never missed"}, resultA); err != nil {
+	if err := b.NoteMissResult([]string{"  saffron \t lanterns ", "juniper meadow", "words that were never missed"}, resultA, ""); err != nil {
 		t.Fatal(err)
 	}
 	got := map[string]string{}
@@ -536,7 +536,7 @@ func TestNoteMissResultTiesTheMissesOfTheNamedWordsOnly(t *testing.T) {
 	if want := (map[string]string{"saffron lanterns": resultA, "kestrel harbor": "", "juniper meadow": resultA}); !maps.Equal(got, want) {
 		t.Fatalf("the named words are tied, whatever their spacing, and the others are not: %v, want %v", got, want)
 	}
-	if err := b.NoteMissResult([]string{"juniper meadow", "kestrel harbor"}, resultB); err != nil {
+	if err := b.NoteMissResult([]string{"juniper meadow", "kestrel harbor"}, resultB, ""); err != nil {
 		t.Fatal(err)
 	}
 	got = map[string]string{}
@@ -551,7 +551,7 @@ func TestNoteMissResultTiesTheMissesOfTheNamedWordsOnly(t *testing.T) {
 		t.Fatalf("tying a result does not touch the time of the miss: %v", times["juniper meadow"])
 	}
 	for _, bad := range []string{"", "not-an-id", "0123456789ABCDEF", "0123456789abcde", "0123456789abcdef0"} {
-		if err := b.NoteMissResult([]string{"saffron lanterns"}, bad); err == nil {
+		if err := b.NoteMissResult([]string{"saffron lanterns"}, bad, ""); err == nil {
 			t.Fatalf("%q is not the 16-digit id of a source and is refused", bad)
 		}
 	}
@@ -564,7 +564,7 @@ func TestNoteMissResultTiesTheMissesOfTheNamedWordsOnly(t *testing.T) {
 // them already tied to the same result, keeps its bytes (the file is written with spaces by hand, so a rewrite would show).
 func TestNoteMissResultWritesNothingWhenNothingChanges(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
-	if err := b.NoteMissResult([]string{"saffron lanterns"}, resultA); err != nil {
+	if err := b.NoteMissResult([]string{"saffron lanterns"}, resultA, ""); err != nil {
 		t.Fatalf("a project with no journal: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(b.Root, "records", "wiki-searches")); !os.IsNotExist(err) {
@@ -578,7 +578,7 @@ func TestNoteMissResultWritesNothingWhenNothingChanges(t *testing.T) {
 		if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := b.NoteMissResult([]string{"saffron lanterns"}, resultA); err != nil {
+		if err := b.NoteMissResult([]string{"saffron lanterns"}, resultA, ""); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
 		if after, err := os.ReadFile(path); err != nil || string(after) != file {
@@ -630,7 +630,7 @@ func TestRecordMissKeepsTheResultAndReturnsTheEarlierMiss(t *testing.T) {
 	base := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 	record := func(query string, minutes int) *Miss {
 		t.Helper()
-		earlier, err := b.recordMissAt(query, "", emptyView(), base.Add(time.Duration(minutes)*time.Minute))
+		earlier, err := b.recordMissAt(query, "", "", emptyView(), base.Add(time.Duration(minutes)*time.Minute))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -642,7 +642,7 @@ func TestRecordMissKeepsTheResultAndReturnsTheEarlierMiss(t *testing.T) {
 	if earlier := record("  saffron  lanterns", 1); earlier != nil {
 		t.Fatalf("an earlier miss with no result is not returned: %+v", earlier)
 	}
-	if err := b.NoteMissResult([]string{"saffron lanterns"}, resultA); err != nil {
+	if err := b.NoteMissResult([]string{"saffron lanterns"}, resultA, ""); err != nil {
 		t.Fatal(err)
 	}
 	// the same words again, in another spacing: the earlier miss comes back as it was, and the one kept has the new time and the result
@@ -662,7 +662,7 @@ func TestRecordMissKeepsTheResultAndReturnsTheEarlierMiss(t *testing.T) {
 		t.Fatalf("other words have no result: %+v", earlier)
 	}
 	// a later work replaces the result
-	if err := b.NoteMissResult([]string{"saffron lanterns"}, resultB); err != nil {
+	if err := b.NoteMissResult([]string{"saffron lanterns"}, resultB, ""); err != nil {
 		t.Fatal(err)
 	}
 	if earlier := record("saffron lanterns", 5); earlier == nil || earlier.Result != resultB {
@@ -671,10 +671,10 @@ func TestRecordMissKeepsTheResultAndReturnsTheEarlierMiss(t *testing.T) {
 	// a search that is not recorded returns nothing, whatever the words were tied to: a continuation, and a search that found one
 	found := View{Lessons: []Page{}, Search: &SearchResult{Total: 1, Candidates: []SearchCandidate{{}}}}
 	before, _ := os.ReadFile(journalPath(t, b))
-	if earlier, err := b.RecordMiss("saffron lanterns", "bmV4dA", emptyView()); earlier != nil || err != nil {
+	if earlier, err := b.RecordMiss("saffron lanterns", "bmV4dA", "", emptyView()); earlier != nil || err != nil {
 		t.Fatalf("a continuation of a search is not a miss: %+v %v", earlier, err)
 	}
-	if earlier, err := b.RecordMiss("saffron lanterns", "", found); earlier != nil || err != nil {
+	if earlier, err := b.RecordMiss("saffron lanterns", "", "", found); earlier != nil || err != nil {
 		t.Fatalf("a search that found a candidate is not a miss: %+v %v", earlier, err)
 	}
 	if after, _ := os.ReadFile(journalPath(t, b)); string(after) != string(before) {
@@ -686,10 +686,10 @@ func TestRecordMissKeepsTheResultAndReturnsTheEarlierMiss(t *testing.T) {
 // removes it with its result, and the search that finds a candidate returns no earlier miss.
 func TestMissWithAResultClosesWhenAnArticleAnswersTheWords(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
-	if _, err := b.recordMissAt("quartz exports", "", emptyView(), time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)); err != nil {
+	if _, err := b.recordMissAt("quartz exports", "", "", emptyView(), time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.NoteMissResult([]string{"quartz exports"}, resultA); err != nil {
+	if err := b.NoteMissResult([]string{"quartz exports"}, resultA, ""); err != nil {
 		t.Fatal(err)
 	}
 	addQuartzArticle(t, b)
@@ -697,7 +697,7 @@ func TestMissWithAResultClosesWhenAnArticleAnswersTheWords(t *testing.T) {
 	if err != nil || len(view.Lessons) == 0 {
 		t.Fatalf("the article is found: %v", err)
 	}
-	if earlier, err := b.RecordMiss("quartz exports", "", view); earlier != nil || err != nil {
+	if earlier, err := b.RecordMiss("quartz exports", "", "", view); earlier != nil || err != nil {
 		t.Fatalf("a search that found the article returns no earlier miss: %+v %v", earlier, err)
 	}
 	if _, err := b.RecordLookup("quartz exports", view.Lessons); err != nil {
