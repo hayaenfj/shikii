@@ -24,6 +24,8 @@ func TestTheSameWordsInAnotherCaseOrCompositionAreOneMiss(t *testing.T) {
 				t.Fatalf("a first miss has no earlier one: %+v %v", earlier, err)
 			}
 			// the record of a work names the words as the journal holds them; a caller that names them in another case ties them too
+			// when its result speaks of them (the text is found whatever the case and composition of the words)
+			resultA := savedResult(t, b, "Checked "+c.first+" by hand.")
 			if err := b.NoteMissResult([]string{strings.ToUpper(c.again)}, resultA, ""); err != nil {
 				t.Fatal(err)
 			}

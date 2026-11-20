@@ -205,6 +205,14 @@ func isIdentifierTerm(term string) bool {
 	return letter
 }
 
+// wordsFind reports whether a word search of the wiki for query would find a page that holds text: the ranking of a wiki query
+// (not the automatic delivery) over that one page, so the answer is the one the search gives, in its case, composition, order and
+// share of the words. It is how a missed search is tied only to the result that speaks of its words (NoteMissResult).
+func wordsFind(query, text string) bool {
+	found, _ := rankPages([]Page{{Lesson: text}}, query, false)
+	return len(found) > 0
+}
+
 type searchDocument struct {
 	page   Page
 	fields []map[string]bool

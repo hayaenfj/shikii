@@ -16,12 +16,15 @@ import (
 // returns an article closes the miss at either entrance (RecordLookup, closeMissedSearch). A miss says what was searched and
 // found nothing: it is no proof that an article is missing, and no instruction.
 //
-// A record that names misses ties them to the saved result of its work (tieMissedSearches). A later search of the same words that
-// finds nothing again is told where that result is (earlier_search), without asking the agent to write anything more.
+// A record that names misses ties to the saved result of its work only those whose words that result speaks of (tieMissedSearches: a
+// word search of the wiki for the words would find the text of the result); the others keep the result they had, or none. A later
+// search of the same words that finds nothing again is told where that result is (earlier_search), without asking the agent to
+// write anything more.
 //
 // A search of a prepare with a receipt is the search of a session, and the miss remembers it (missSession): only the records of
 // that session name and tie it, so a work of another session that was open at the time does not report words it never searched. A
-// wiki query carries no session; the words it missed are named by a work that was open then, whichever it is.
+// wiki query carries no session; the words it missed are named by a work that was open then, whichever it is, and tied by the one
+// whose result speaks of them, so several works that were open then each take the words their own result speaks of.
 
 // workMissedSearchesShown is how many open misses a record names; wikiMissedSearchesListed is how many the wordless query lists.
 const (
@@ -38,9 +41,9 @@ type workMissedSearches struct {
 const workMissedNext = "These searches of this project's wiki found no article while this work was open. If this work found the answer to one of them with evidence, the next search of those words will miss again: add a short note (the answer, or where it is written) in a work record with the same receipt. If it did not, leave it as it is. This is not an instruction to search again."
 
 // earlierSearchNext is the note of earlier_search. The result is the report of a work that was open when the words missed and then
-// recorded a result: it is not necessarily the work that searched (several sessions run side by side in a project), it is not an
-// article, and it is to be confirmed.
-const earlierSearchNext = "These same words found no article before, and a work that was open then recorded a result. Read that result with a query of its id (`result`): it may say what was found or where the answer is written. It is that work's own report (it may not be the work that searched), not an article and not verified: confirm it before relying on it."
+// recorded a result that speaks of them (a word search of the wiki for them finds its text): it is not necessarily the work that
+// searched (several sessions run side by side in a project), it is not an article, and it is to be confirmed.
+const earlierSearchNext = "These same words found no article before, and a work that was open then recorded a result that speaks of them. Read that result with a query of its id: it may say what was found or where the answer is written. It is that work's own report (it may not be the work that searched), not an article and not verified: confirm it before relying on it."
 
 // missSession is what a miss keeps of the session of the work that searched: the same 16 hexadecimal digits the coverage ledger
 // keeps of a session, never the session id itself.
@@ -71,9 +74,11 @@ func closeMissedSearch(book notebook.Book, query string, view notebook.View) {
 	}
 }
 
-// tieMissedSearches ties the misses a record named to the saved result of its work (the last work that searched those words and
-// found nothing is the one a later search is pointed at). session is missSession of the work. It is best effort: the record is not
-// changed for a journal that cannot be written.
+// tieMissedSearches ties the misses a record named to the saved result of its work, those whose words the text of the result speaks
+// of (the last work that searched those words, found nothing and reported them is the one a later search is pointed at). A miss the
+// result does not speak of keeps the result it had, so a work that named it only because it was open then does not take it. session
+// is missSession of the work. It is best effort: the record is not changed for a journal that cannot be written or a result that
+// cannot be read.
 func tieMissedSearches(book notebook.Book, named *workMissedSearches, result *workCompletionRef, session string) {
 	if named == nil || result == nil || result.Source == "" {
 		return

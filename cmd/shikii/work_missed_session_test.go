@@ -21,11 +21,11 @@ func TestARecordNamesAndTiesOnlyTheMissesOfItsOwnSession(t *testing.T) {
 			f.prepare("import retries", searcher["receipt"].(string))
 			var savedSearcher, savedBystander map[string]any
 			if searcherFirst {
-				savedSearcher = f.record(searcher, goodResult())
-				savedBystander = f.record(bystander, goodResult())
+				savedSearcher = f.record(searcher, goodResultAbout("import retries"))
+				savedBystander = f.record(bystander, goodResultAbout("import retries"))
 			} else {
-				savedBystander = f.record(bystander, goodResult())
-				savedSearcher = f.record(searcher, goodResult())
+				savedBystander = f.record(bystander, goodResultAbout("import retries"))
+				savedSearcher = f.record(searcher, goodResultAbout("import retries"))
 			}
 			if named, ok := savedBystander["missed_searches"]; ok {
 				t.Fatalf("the work that did not search is not told the words of another session: %v", named)
@@ -51,7 +51,7 @@ func TestAMissWithoutASessionIsNamedByAnOpenWorkUntilASessionMissesTheWords(t *t
 	first := f.prepare("export audit", "")
 	second := f.prepare("export audit", "")
 	f.wiki("import retries")
-	savedFirst := f.record(first, goodResult())
+	savedFirst := f.record(first, goodResultAbout("import retries"))
 	if got := missedQueriesOf(t, savedFirst); !slices.Equal(got, []string{"import retries"}) {
 		t.Fatalf("a miss of a wiki query is named by a work that was open then: %q", got)
 	}
@@ -61,13 +61,13 @@ func TestAMissWithoutASessionIsNamedByAnOpenWorkUntilASessionMissesTheWords(t *t
 	if earlier := earlierSearchOf(t, f.prepare("import retries", second["receipt"].(string))); earlier["result"] != resultID(t, savedFirst) {
 		t.Fatalf("the search of the second work is told the first result: %v", earlier)
 	}
-	if named, ok := f.record(third, goodResult())["missed_searches"]; ok {
+	if named, ok := f.record(third, goodResultAbout("import retries"))["missed_searches"]; ok {
 		t.Fatalf("a third session is not told the words the second session missed: %v", named)
 	}
 	if _, result, _ := f.journalMiss("import retries"); result != resultID(t, savedFirst) {
 		t.Fatalf("the record of a session that did not search leaves the tie as it was: %q", result)
 	}
-	savedSecond := f.record(second, goodResult())
+	savedSecond := f.record(second, goodResultAbout("import retries"))
 	if got := missedQueriesOf(t, savedSecond); !slices.Equal(got, []string{"import retries"}) {
 		t.Fatalf("the session that missed the words last is told them: %q", got)
 	}

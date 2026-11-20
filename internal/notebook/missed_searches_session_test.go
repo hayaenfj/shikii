@@ -60,6 +60,8 @@ func TestAMissKeepsTheSessionOfTheSearchThatMissedLastAndOnlyThatSessionTiesIt(t
 	check("each miss keeps the session of its search", map[string]string{"saffron lanterns": missSessionOne, "juniper meadow": ""}, map[string]string{"saffron lanterns": "", "juniper meadow": ""})
 
 	words := []string{"saffron lanterns", "juniper meadow"}
+	resultA := savedResult(t, b, "Checked the saffron lanterns and the juniper meadow by hand.")
+	resultB := savedResult(t, b, "Lit the saffron lanterns and mown the juniper meadow.")
 	if err := b.NoteMissResult(words, resultA, missSessionTwo); err != nil {
 		t.Fatal(err)
 	}

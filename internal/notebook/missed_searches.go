@@ -3,6 +3,7 @@ package notebook
 import (
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -236,18 +237,33 @@ func (b Book) CloseMiss(query string) error {
 	})
 }
 
-// NoteMissResult ties the misses of the given words to a saved result: the id of the result of the work that had them open. A
-// result tied before is replaced (the last work that searched those words and found nothing is the one reported). session is the
-// session of that work: a miss that another session made (mineOrUnknown) is left as it is, also when that session missed the words
-// after the record read them. It writes nothing when the journal does not exist or holds none of the words, and it refuses a result
-// that is not a 16-digit id, which the reader would drop.
+// NoteMissResult ties the misses of the given words to a saved result: the id of the result of the work that had them open, when the
+// text of that result speaks of the words (wordsFind: a word search of the wiki for them would find it; the text is what the author
+// wrote, the string values of the result and not its field names: authoredText). A named miss whose words the
+// text does not speak of is left as it is, tied to the result it had or to none, so a later search is pointed only at a result that
+// says something of its words. A result tied before is replaced by a later one that speaks of the words (the last work that searched
+// those words and found nothing and reported them is the one reported). session is the session of that work: a miss that another
+// session made (mineOrUnknown) is left as it is, also when that session missed the words after the record read them.
+//
+// The source of the result is read once, before the journal is locked; a result that cannot be read (it is missing, changed or not an
+// observation) ties nothing and is returned as an error, and the journal is not touched. It writes nothing when the journal does not
+// exist or holds none of the words, and it refuses a result that is not a 16-digit id, which the reader would drop.
 func (b Book) NoteMissResult(queries []string, result, session string) error {
 	if !idPattern.MatchString(result) {
 		return errors.New("a missed search is tied to the 16-digit id of a saved result")
 	}
-	words := make([]string, len(queries))
-	for i, q := range queries {
-		words[i] = missKey(q)
+	text, err := b.resultText(result)
+	if err != nil {
+		return err
+	}
+	words := make([]string, 0, len(queries))
+	for _, q := range queries {
+		if wordsFind(q, text) {
+			words = append(words, missKey(q))
+		}
+	}
+	if len(words) == 0 {
+		return nil
 	}
 	return b.updateJournal(false, func(j *searchJournal) bool {
 		changed := false
@@ -258,6 +274,51 @@ func (b Book) NoteMissResult(queries []string, result, session string) error {
 		}
 		return changed
 	})
+}
+
+// resultText is the text of the saved result with the given id, as its author wrote it (authoredText) from the content of the
+// observation that holds it. It reads the source as ReadSources does, so a source that is missing, changed since it was cited or not of
+// this project is an error, and so is a source that is no observation (a conversation is not the report of a work).
+func (b Book) resultText(id string) (string, error) {
+	material, err := b.ReadSources([]string{id})
+	if err != nil {
+		return "", err
+	}
+	observations, _ := material["observations"].([]Observation)
+	if len(observations) != 1 {
+		return "", errors.New("a saved result is one observation")
+	}
+	return authoredText(observations[0].Content), nil
+}
+
+// authoredText is the words of a saved result that its author wrote. The result of a work is JSON, and its field names are the
+// program's, not the author's: a search of "checked" must not find every result there is. When the content is a JSON value, the text is
+// the string values in it, one to a line, taken through the objects (in the order of their names) and the arrays; the names, numbers,
+// booleans and null are structure, not text. It knows no field by name, so a field added later is covered. Content that is not JSON
+// is the text as it is.
+func authoredText(content string) string {
+	var value any
+	if json.Unmarshal([]byte(content), &value) != nil {
+		return content
+	}
+	return strings.Join(stringValues(value, nil), "\n")
+}
+
+// stringValues appends to lines the string values in value (a decoded JSON value), objects in the order of their names.
+func stringValues(value any, lines []string) []string {
+	switch v := value.(type) {
+	case string:
+		lines = append(lines, v)
+	case []any:
+		for _, item := range v {
+			lines = stringValues(item, lines)
+		}
+	case map[string]any:
+		for _, name := range slices.Sorted(maps.Keys(v)) {
+			lines = stringValues(v[name], lines)
+		}
+	}
+	return lines
 }
 
 // readJournalIfAny reads the search journal of the book; a book that has none has an empty one.

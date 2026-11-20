@@ -65,6 +65,14 @@ func goodResult() *workCompletion {
 	return &workCompletion{Changed: "Audited the export.", Checked: "Read the export code.", Evidence: []string{"new1"}}
 }
 
+// goodResultAbout is goodResult whose report also says that it searched the wiki for the words: a result is tied to the misses of the
+// words its text speaks of (notebook.Book.NoteMissResult), so a test that follows a tie records a result of this kind.
+func goodResultAbout(words ...string) *workCompletion {
+	c := goodResult()
+	c.Checked += " Searched the wiki for " + strings.Join(words, " and ") + "."
+	return c
+}
+
 func (f missedFlow) journalPath() string {
 	f.t.Helper()
 	paths, err := filepath.Glob(filepath.Join(f.b.Root, "records", "wiki-searches", "*", ".searches.json"))
@@ -399,7 +407,7 @@ func TestRecordTiesTheMissesItNamesToTheSavedResultOfItsWork(t *testing.T) {
 	for _, query := range []string{"alpha bravo", "charlie delta", "echo foxtrot", "golf hotel"} {
 		f.wiki(query)
 	}
-	saved := f.record(prepared, goodResult())
+	saved := f.record(prepared, goodResultAbout("topic before the work", "alpha bravo", "charlie delta", "echo foxtrot", "golf hotel"))
 	if got := missedQueriesOf(t, saved); !slices.Equal(got, []string{"golf hotel", "echo foxtrot", "charlie delta"}) {
 		t.Fatalf("the record names the three newest misses: %q", got)
 	}
@@ -423,7 +431,7 @@ func TestRecordTiesTheMissesItNamesToTheSavedResultOfItsWork(t *testing.T) {
 // earlier work is, by wiki query and by a prepare that carries a receipt; the note names a result a query of its id reads.
 func TestTheSameWordsMissingAgainAreToldWhereTheEarlierResultIs(t *testing.T) {
 	f := newMissedFlow(t)
-	id := resultID(t, f.recordAMissedSearch("saffron lanterns", goodResult()))
+	id := resultID(t, f.recordAMissedSearch("saffron lanterns", goodResultAbout("saffron lanterns")))
 	receipt := f.prepare("export audit", "")["receipt"].(string) // another session
 	at, _, _ := f.journalMiss("saffron lanterns")
 	earlier := earlierSearchOf(t, f.wiki("  saffron   lanterns "))
@@ -470,8 +478,8 @@ func TestEarlierSearchNoteDoesNotSayTheWorkThatSearched(t *testing.T) {
 	f := newMissedFlow(t)
 	f.prepare("export audit", "")
 	other := f.prepare("export audit", "")
-	f.wiki("saffron lanterns")                            // a wiki query: no one knows which of the two open works asked
-	idOther := resultID(t, f.record(other, goodResult())) // the work that records first while the words miss is the one they are tied to
+	f.wiki("saffron lanterns")                                                   // a wiki query: no one knows which of the two open works asked
+	idOther := resultID(t, f.record(other, goodResultAbout("saffron lanterns"))) // the work that records first while the words miss is the one they are tied to
 	earlier := earlierSearchOf(t, f.wiki("saffron lanterns"))
 	next, _ := earlier["next_action"].(string)
 	if earlier["result"] != idOther {
@@ -487,7 +495,7 @@ func TestEarlierSearchNoteDoesNotSayTheWorkThatSearched(t *testing.T) {
 // returns what that work recorded (the words of its own result, not a word search that finds nothing).
 func TestEarlierSearchIDIsReadByAQueryOfItsText(t *testing.T) {
 	f := newMissedFlow(t)
-	f.recordAMissedSearch("saffron lanterns", goodResult())
+	f.recordAMissedSearch("saffron lanterns", goodResultAbout("saffron lanterns"))
 	id, _ := earlierSearchOf(t, f.wiki("saffron lanterns"))["result"].(string)
 	if id == "" {
 		t.Fatal("the same words missing again name the id of the earlier result")
@@ -577,7 +585,7 @@ func TestNoEarlierSearchForAQueryThatIsNotAWordSearch(t *testing.T) {
 // same words and found nothing replaces it with its own result.
 func TestEarlierSearchSurvivesFurtherMissesAndTheLaterWorkReplacesIt(t *testing.T) {
 	f := newMissedFlow(t)
-	idA := resultID(t, f.recordAMissedSearch("saffron lanterns", goodResult()))
+	idA := resultID(t, f.recordAMissedSearch("saffron lanterns", goodResultAbout("saffron lanterns")))
 	for round := 2; round <= 3; round++ {
 		if earlier := earlierSearchOf(t, f.wiki("saffron lanterns")); earlier["result"] != idA {
 			t.Fatalf("miss %d of the words is told the result of the first work: %v", round, earlier)
@@ -586,7 +594,7 @@ func TestEarlierSearchSurvivesFurtherMissesAndTheLaterWorkReplacesIt(t *testing.
 			t.Fatalf("the miss keeps its result after miss %d: %q", round, result)
 		}
 	}
-	later := &workCompletion{Changed: "Audited the export totals.", Checked: "Read the totals code.", Evidence: []string{"new1"}}
+	later := &workCompletion{Changed: "Audited the export totals.", Checked: "Read the totals code. Searched the wiki for saffron lanterns.", Evidence: []string{"new1"}}
 	prepared := f.prepare("export audit", "")
 	if earlier := earlierSearchOf(t, f.wiki("saffron lanterns")); earlier["result"] != idA {
 		t.Fatalf("the later work is told the result of the first: %v", earlier)
@@ -607,7 +615,7 @@ func TestEarlierSearchSurvivesFurtherMissesAndTheLaterWorkReplacesIt(t *testing.
 // wiki query removes the miss with its result.
 func TestAnArticleThatAnswersTheWordsEndsTheEarlierSearch(t *testing.T) {
 	f := newMissedFlow(t)
-	f.recordAMissedSearch("saffron lanterns", goodResult())
+	f.recordAMissedSearch("saffron lanterns", goodResultAbout("saffron lanterns"))
 	receipt := f.prepare("export audit", "")["receipt"].(string)
 	loopPage(t, f.b, f.source, map[string]any{"title": "Saffron lanterns notes", "lesson": "Light saffron lanterns after the audit.", "applies_to": "saffron lanterns"})
 	prepared := f.prepare("saffron lanterns", receipt)
@@ -637,7 +645,7 @@ func TestRecordStaysCompleteWhenTyingTheMissesFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
-	saved := f.record(prepared, goodResult())
+	saved := f.record(prepared, goodResultAbout("saffron lanterns"))
 	if saved["complete"] != true || !slices.Equal(missedQueriesOf(t, saved), []string{"saffron lanterns"}) {
 		t.Fatalf("the record is complete and names the miss although tying it failed: %v", saved)
 	}
@@ -652,7 +660,7 @@ func TestRecordThatIsNotCompleteTiesNothing(t *testing.T) {
 	f := newMissedFlow(t)
 	prepared := f.prepare("export audit", "")
 	f.wiki("charlie delta")
-	bad := goodResult()
+	bad := goodResultAbout("charlie delta")
 	bad.Evidence = []string{"new2"}
 	value, err := runWork(f.b.Root, f.b.Scope, "record", workRequest{Receipt: prepared["receipt"].(string), Result: bad})
 	if err != nil {

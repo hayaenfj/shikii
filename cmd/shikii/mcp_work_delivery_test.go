@@ -196,7 +196,7 @@ func TestMCPEarlierSearchPointsToAResultThatAQueryOfItsIDReads(t *testing.T) {
 	if miss := f.query("saffron lanterns"); miss.Structured["earlier_search"] != nil || len(miss.Structured["lessons"].([]any)) != 0 {
 		t.Fatalf("the first search finds nothing and has no earlier work to point at: %.300s", miss.Text)
 	}
-	saved := f.record(first, map[string]any{"changed": "Audited the export.", "checked": "Read the export code.", "evidence": []any{"new1"}})
+	saved := f.record(first, map[string]any{"changed": "Audited the export.", "checked": "Read the export code. Searched the wiki for saffron lanterns.", "evidence": []any{"new1"}})
 	saved.holds(t, "missed_searches", "saffron lanterns")
 	id := resultID(t, saved.Structured)
 	f.prepare() // another session

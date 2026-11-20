@@ -526,6 +526,8 @@ func TestNoteMissResultTiesTheMissesOfTheNamedWordsOnly(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	resultA := savedResult(t, b, "Checked the saffron lanterns and the juniper meadow by hand.")
+	resultB := savedResult(t, b, "Mown the juniper meadow and walked the kestrel harbor.")
 	if err := b.NoteMissResult([]string{"  saffron \t lanterns ", "juniper meadow", "words that were never missed"}, resultA, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -564,6 +566,7 @@ func TestNoteMissResultTiesTheMissesOfTheNamedWordsOnly(t *testing.T) {
 // them already tied to the same result, keeps its bytes (the file is written with spaces by hand, so a rewrite would show).
 func TestNoteMissResultWritesNothingWhenNothingChanges(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
+	resultA := savedResult(t, b, "Checked the saffron lanterns by hand.")
 	if err := b.NoteMissResult([]string{"saffron lanterns"}, resultA, ""); err != nil {
 		t.Fatalf("a project with no journal: %v", err)
 	}
@@ -636,6 +639,8 @@ func TestRecordMissKeepsTheResultAndReturnsTheEarlierMiss(t *testing.T) {
 		}
 		return earlier
 	}
+	resultA := savedResult(t, b, "Checked the saffron lanterns by hand.")
+	resultB := savedResult(t, b, "Lit the saffron lanterns again.")
 	if earlier := record("saffron lanterns", 0); earlier != nil {
 		t.Fatalf("a first miss has no earlier one: %+v", earlier)
 	}
@@ -689,6 +694,7 @@ func TestMissWithAResultClosesWhenAnArticleAnswersTheWords(t *testing.T) {
 	if _, err := b.recordMissAt("quartz exports", "", "", emptyView(), time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
+	resultA := savedResult(t, b, "Checked the quartz exports by hand.")
 	if err := b.NoteMissResult([]string{"quartz exports"}, resultA, ""); err != nil {
 		t.Fatal(err)
 	}
