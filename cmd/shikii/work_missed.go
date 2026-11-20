@@ -12,7 +12,7 @@ import (
 // word search remember them (noteMissedSearch): an explicit `wiki query` with words, and a prepare that carries a receipt and a
 // word query (extendWork). The query of a standalone preparation is the topic of a task, not a question the agent asked the wiki:
 // in a young wiki nearly every preparation would leave a miss, so it is not recorded. A record that carries a result names the
-// misses made since its work was prepared, and the wordless query lists the ones still open. A search of the same words that
+// newest three of the open misses made since its work was prepared, and the wordless query lists the ones still open. A search of the same words that
 // returns an article closes the miss at either entrance (RecordLookup, closeMissedSearch). A miss says what was searched and
 // found nothing: it is no proof that an article is missing, and no instruction.
 //
@@ -20,10 +20,11 @@ import (
 // (found_alone, noteFoundAlone): a search of several words needs two of them in one article, so alternatives put in one query find
 // nothing together. It records nothing and carries no article.
 //
-// A record that names misses ties to the saved result of its work only those whose words that result speaks of (tieMissedSearches: a
-// word search of the wiki for the words would find the text of the result); the others keep the result they had, or none. A later
-// search of the same words that finds nothing again is told where that result is (earlier_search), without asking the agent to
-// write anything more.
+// A record ties to the saved result of its work the open misses made since its work was prepared (all that one call of OpenMisses
+// examines, up to 16, not only the three the reply names) whose words that result speaks of (tieMissedSearches: a word search of
+// the wiki for the words would find the text of the result); the others keep the result they had, or none. A later search of the
+// same words that finds nothing again is told where that result is (earlier_search), without asking the agent to write anything
+// more.
 //
 // A search of a prepare with a receipt is the search of a session, and the miss remembers it (missSession): only the records of
 // that session name and tie it, so a work of another session that was open at the time does not report words it never searched. A

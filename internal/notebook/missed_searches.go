@@ -253,7 +253,7 @@ func (b Book) CloseMiss(query string) error {
 
 // NoteMissResult ties the misses of the given words to a saved result: the id of the result of the work that had them open, when the
 // text of that result speaks of the words (wordsFind: a word search of the wiki for them would find it; the text is what the author
-// wrote, in the fields a person writes and not in those the program chose: authoredText). A named miss whose words the
+// wrote, in the fields a person writes and not in those the program chose: authoredText). A miss of the given words that the
 // text does not speak of is left as it is, tied to the result it had or to none, so a later search is pointed only at a result that
 // says something of its words. A result tied before is replaced by a later one that speaks of the words (the last work that searched
 // those words and found nothing and reported them is the one reported). session is the session of that work: a miss that another
@@ -367,8 +367,8 @@ func (m Miss) mineOrUnknown(session string) bool {
 // the misses before since are.
 //
 // A call examines at most openMissExamineMax misses: the newest ones that are at or after since and of an allowed form (the others
-// are skipped and not counted, and so is a miss of words that a newer miss of the same words names already). A miss older than those is not examined in that call, whether it is open or not, so a journal full
-// of answered misses costs a bounded number of searches. The searches of one call share one reading of the wiki (wordSearcher: the
+// are skipped and not counted, and so is a miss of words that a newer miss of the same words lists already). A miss older than those
+// is not examined in that call, whether it is open or not, so a journal full of answered misses costs a bounded number of searches. The searches of one call share one reading of the wiki (wordSearcher: the
 // articles are read, their sources checked and their texts split once for all the words of the misses it examines, not once for each
 // of them), and each answers as a wiki query of its words does.
 func (b Book) OpenMisses(since time.Time, limit int, session string) ([]Miss, error) {
