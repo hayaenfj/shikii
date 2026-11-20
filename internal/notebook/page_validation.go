@@ -81,6 +81,8 @@ type View struct {
 	Search       *SearchResult     `json:"search,omitempty"`
 	NextCursor   string            `json:"next_cursor,omitempty"`
 	Lookup       *Lookup           `json:"lookup,omitempty"`
+	// MissedSearches is filled by the wordless query of the CLI and MCP only: the word searches that still find no candidate (OpenMisses).
+	MissedSearches []Miss `json:"missed_searches,omitempty"`
 }
 
 type Result struct {

@@ -27,13 +27,19 @@ type workCoverageRow struct {
 	Reason   string `json:"reason,omitempty"`
 }
 
-// workCoverageReply is what a record says of the coverage rows of its result.
+// workCoverageReply is what a record says of the coverage rows of its result. A result that names what it left (remaining) but has no
+// coverage rows gets next_action alone: the project's ledger takes only coverage rows, and remaining is never shown to later work.
 type workCoverageReply struct {
-	Rows int      `json:"rows"`
-	Open []string `json:"open"`
+	Rows       int      `json:"rows"`
+	Open       []string `json:"open"`
+	NextAction string   `json:"next_action,omitempty"`
 }
 
 const workCoverageNext = "These areas were left unexamined by earlier work. This is a note on what is still open, not an instruction. If this work examines one, record the same area in result.coverage as reported, as clear with evidence (one of result.evidence), or as excluded with a reason; that closes it. Leave unrelated rows alone. The saved result named by source holds the reason an area was left open."
+
+// workCoverageRemainingNext is told to a result that wrote what was left in remaining and sent no coverage row. Agents write the
+// left-over there, and no later preparation reads it; this is the moment the way to a row can be taught.
+const workCoverageRemainingNext = "result.remaining is kept with this result but is not shown to later work. If an area was left unexamined or needs follow-up, send this result again with coverage:[{\"area\":\"<short name of what was not examined>\",\"outcome\":\"open\"}] added; later preparations of this project then list the area until a result closes it. Not needed when nothing was left unexamined."
 
 // validateWorkCoverage refuses a coverage list the ledger could not keep, before anything of the result is saved. Each refusal says
 // what is wrong and what to send instead.
@@ -128,13 +134,18 @@ func savedCoverage(book notebook.Book, source, signature string) ([]workCoverage
 
 // recordWorkCoverage writes the coverage rows of a result that is ready into the project's ledger, and tells the reply what the
 // result holds. It runs for a full record and for the repair of a result by ref, and writes nothing again for a record sent again. A
-// ledger that cannot be written is an error of the record (kind coverage): the same record sent again writes it.
+// ledger that cannot be written is an error of the record (kind coverage): the same record sent again writes it. A full result that
+// is ready, has a remaining that is not blank and no coverage row writes nothing and gets the reply that says how a row is sent.
 func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCompletion, result *workResult, add func(workItem)) {
-	if c == nil || c.Ref == "" && len(c.Coverage) == 0 {
+	if c == nil || c.Ref == "" && len(c.Coverage) == 0 && strings.TrimSpace(c.Remaining) == "" {
 		return
 	}
 	source, signature, ready := readyCoverageResult(w, c)
 	if !ready {
+		return
+	}
+	if c.Ref == "" && len(c.Coverage) == 0 {
+		result.Coverage = &workCoverageReply{Open: []string{}, NextAction: workCoverageRemainingNext}
 		return
 	}
 	rows, err := savedCoverage(book, source, signature)

@@ -82,7 +82,14 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 			return nil, err
 		}
 		view.Lookup, err = b.RecordLookup(req.Query, view.Lessons)
-		return view, err
+		if err != nil {
+			return view, err
+		}
+		noteMissedSearch(b, req.Query, req.Cursor, view)
+		if req.Query == "" && req.Cursor == "" { // the maintenance listing carries the searches that still find nothing
+			view.MissedSearches = listedMissedSearches(b)
+		}
+		return view, nil
 	case "diagnose":
 		return diagnoseKnowledge(b, req.ID, req.CaseID)
 	case "compare":

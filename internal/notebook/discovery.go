@@ -52,6 +52,7 @@ type searchJournal struct {
 	Discoveries      []recordedDiscovery `json:"discoveries"`
 	Outcomes         []ProcedureOutcome  `json:"outcomes,omitempty"`
 	Readings         []ReadingSample     `json:"readings,omitempty"`
+	Misses           []Miss              `json:"misses,omitempty"` // word searches that found no candidate, oldest first (missed_searches.go)
 }
 
 func readSearchJournal(dir string) (searchJournal, error) {
@@ -72,7 +73,7 @@ func readSearchJournal(dir string) (searchJournal, error) {
 	if err != nil || len(data) > 1<<20 {
 		return j, errors.New("cannot read the bounded search journal")
 	}
-	if json.Unmarshal(data, &j) != nil || len(j.Lookups) > 64 || len(j.Discoveries) > 128 || len(j.Outcomes) > 128 || len(j.Readings) > 128 {
+	if json.Unmarshal(data, &j) != nil || len(j.Lookups) > 64 || len(j.Discoveries) > 128 || len(j.Outcomes) > 128 || len(j.Readings) > 128 || len(j.Misses) > missedSearchMax {
 		return j, errors.New("cannot read the wiki search records")
 	}
 	for _, l := range j.Lookups {
@@ -111,6 +112,11 @@ func readSearchJournal(dir string) (searchJournal, error) {
 			return j, errors.New("invalid saved reading execution")
 		}
 	}
+	for _, m := range j.Misses {
+		if m.Query == "" || len(m.Query) > missQueryMax || !utf8.ValidString(m.Query) || m.At.IsZero() {
+			return j, errors.New("invalid saved missed search")
+		}
+	}
 	return j, nil
 }
 
@@ -122,6 +128,11 @@ func saveSearchJournal(dir string, j searchJournal) error {
 		}
 		if len(data) <= 1<<20 {
 			return writeFile(filepath.Join(dir, ".searches.json"), data)
+		}
+		// A missed search is the cheapest record to lose: the oldest go first, before any other collection is trimmed.
+		if len(j.Misses) > 0 {
+			j.Misses = j.Misses[1:]
+			continue
 		}
 		// JSON escaping can expand otherwise valid text. Trim older records from
 		// the larger collection, keeping the latest lookup and discovery intact.
@@ -183,6 +194,8 @@ func (b Book) RecordLookup(query string, pages []Page) (*Lookup, error) {
 	if len(j.Lookups) > 64 {
 		j.Lookups = j.Lookups[len(j.Lookups)-64:]
 	}
+	// The same words returned an article: a miss of them is closed, inside the lock of this write.
+	j.Misses = withoutMiss(j.Misses, normalizeMissQuery(query))
 	if err = saveSearchJournal(dir, j); err != nil {
 		return nil, err
 	}

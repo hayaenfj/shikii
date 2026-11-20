@@ -37,6 +37,12 @@ checklist to read in full on every request.
    the returned `procedure_reviews` ref. Do not send their old
    maintenance ref with the edit.
 
+A complete record that carries a result can reply with `missed_searches`: words
+searched in this project's wiki since the work was prepared that found no
+article. It is a note, not an instruction. If this work found the answer with
+evidence, add it as a note in a work record with the same receipt; otherwise
+leave it as it is.
+
 Hook IDs can record only the hook's initial preparation in that project and turn.
 An explicit replacement prepare can reassign local references, so it requires its
 new receipt. A receipt remains supported in all paths, including hosts without
@@ -81,7 +87,8 @@ each `{area,outcome,evidence?,reason?}`, one row per area): outcome `reported` (
 add coverage. The project keeps the open rows, and a later prepare lists them in `coverage` as a note on what earlier work
 left unexamined, not an instruction: a result that records the same area as reported, clear or excluded closes it, and
 unrelated rows stay. The record's reply says `coverage:{rows,open}`; if the ledger cannot be written, `errors` names it
-(kind `coverage`) and the same record sent again writes it.
+(kind `coverage`) and the same record sent again writes it. `result.remaining` is not shown to later work: a result that
+has it and no coverage row gets `coverage.next_action` in its reply, which asks for the same result again with an `open` row.
 
 For a prepared memory whose lesson the work followed, without evidence that the lesson changed the work, record
 `result:"unknown"` with `correction_result:"followed"` and the decision (that entry needs no evidence; a delivered correction's

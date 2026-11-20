@@ -44,6 +44,9 @@ func finishWorkRecordReply(book notebook.Book, w *workState, req workRequest, re
 		}
 		result.NextAction += lessonsToAssessNext
 	}
+	if req.Result != nil && result.Complete {
+		result.MissedSearches = recordedMissedSearches(book, w.At)
+	}
 	limitSavedReviewArticles(req, result)
 }
 

@@ -222,7 +222,8 @@ type workResult struct {
 	Reflection       any                       `json:"reflection,omitempty"`
 	ProcedureReviews []workProcedureReview     `json:"procedure_reviews,omitempty"`
 	LessonsToAssess  *workLessonsToAssess      `json:"lessons_to_assess,omitempty"` // lessons delivered during this request and not assessed yet
-	Coverage         *workCoverageReply        `json:"coverage,omitempty"`          // the coverage rows of the recorded result, when it has any
+	Coverage         *workCoverageReply        `json:"coverage,omitempty"`          // the coverage rows of the recorded result, or how to send one when it left something in remaining
+	MissedSearches   *workMissedSearches       `json:"missed_searches,omitempty"`   // searches of the wiki that found nothing since the work was prepared (work_missed.go)
 }
 
 type workProcedureReview struct {

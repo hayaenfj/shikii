@@ -11,11 +11,14 @@ original sources. Reuse the current preparation and record the result once.
 
 Follow the requested topic or article scope. With no scope specified, start with
 the current preparation's articles and maintenance candidates; search relevant
-topics when those provide no suitable starting point. Work in small batches of
-up to two articles, reading linked articles as needed. A batch is not evidence
-that the whole wiki has been inspected. Keep the reviewed scope and remaining
-candidates in the existing work record; continue when a broader scope was asked
-for, without asking the person to choose routine edits.
+topics when those provide no suitable starting point. The wordless `wiki query`
+(the maintenance listing) can carry `missed_searches`: words searched in this
+wiki that still find no article. Treat each as a possible gap, not as a missing
+article; add one only when sources you have read support an answer. Work in
+small batches of up to two articles, reading linked articles as needed. A batch
+is not evidence that the whole wiki has been inspected. Keep the reviewed scope
+and remaining candidates in the existing work record; continue when a broader
+scope was asked for, without asking the person to choose routine edits.
 
 Read the current complete article, including its title, retrieval summary
 (`lesson`), applicability and structured metadata, and the original sources for

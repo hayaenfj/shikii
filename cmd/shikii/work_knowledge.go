@@ -284,6 +284,7 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 			return nil, e
 		}
 		w.candidateCursor = after
+		noteMissedSearch(book, query, req.Cursor, view)
 		for _, p := range view.Lessons {
 			if e = add(p); e != nil {
 				return nil, e
