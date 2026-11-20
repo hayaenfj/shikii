@@ -92,6 +92,8 @@ type workCompletion struct {
 	Checked    string   `json:"checked,omitempty"`
 	Evidence   []string `json:"evidence,omitempty"`
 	Remaining  string   `json:"remaining,omitempty"`
+	// Coverage lists what the work examined and what it did not (the coverage ledger, work_coverage.go). It is saved with the result.
+	Coverage []workCoverageRow `json:"coverage,omitempty"`
 }
 type workCompletionRef struct {
 	ReviewGeneration uint64   `json:"review_generation,omitempty"`
@@ -220,6 +222,7 @@ type workResult struct {
 	Reflection       any                       `json:"reflection,omitempty"`
 	ProcedureReviews []workProcedureReview     `json:"procedure_reviews,omitempty"`
 	LessonsToAssess  *workLessonsToAssess      `json:"lessons_to_assess,omitempty"` // lessons delivered during this request and not assessed yet
+	Coverage         *workCoverageReply        `json:"coverage,omitempty"`          // the coverage rows of the recorded result, when it has any
 }
 
 type workProcedureReview struct {
@@ -659,6 +662,9 @@ func prepareWork(root, scope string, req workRequest) (out any, err error) {
 		reply["how_to_record"] = compactHowToRecord(w)
 	} else if w.HookPrepared {
 		reply["how_to_record"] = strings.Replace(compactWorkHowTo, "with this receipt", "with the hook's session_id/turn_id (or this receipt)", 1)
+	}
+	if coverage := preparedCoverage(root, scope); coverage != nil {
+		reply["coverage"] = coverage
 	}
 	read, err = limitWorkPreparation(book, w, reply, quoted, req.MaxBytes, req.responseSize)
 	if err != nil {

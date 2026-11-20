@@ -1,0 +1,218 @@
+package store
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+const (
+	coverageScope = "/synthetic/project"
+	coverageA     = "00000000000000a1"
+	coverageB     = "00000000000000b2"
+	coverageC     = "00000000000000c3"
+)
+
+func openAreas(t *testing.T, s Store) []string {
+	t.Helper()
+	rows, err := s.OpenCoverage(coverageScope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	areas := []string{}
+	for _, r := range rows {
+		areas = append(areas, r.Area)
+	}
+	return areas
+}
+
+func ledgerLines(t *testing.T, s Store) int {
+	t.Helper()
+	data, err := os.ReadFile(s.coveragePath(coverageScope))
+	if os.IsNotExist(err) {
+		return 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Count(string(data), "\n")
+}
+
+// An area is open while its latest line is an open one; a result that closes it as reported, clear or excluded takes it off the
+// open list, and the other open areas stay. The open list is newest first.
+func TestCoverageLedgerClosesAnOpenAreaAndKeepsTheOthers(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	if err := s.RecordCoverage(coverageScope, coverageA, []CoverageRow{{Area: "export filters", Outcome: CoverageOpen, Reason: "ran out of time"}, {Area: "export totals", Outcome: CoverageOpen}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := openAreas(t, s); strings.Join(got, "|") != "export totals|export filters" {
+		t.Fatalf("both areas are open, the newest first: %q", got)
+	}
+	for _, closing := range []string{CoverageClear, CoverageReported, CoverageExcluded} {
+		s := Store{Dir: t.TempDir()}
+		must := func(source string, rows ...CoverageRow) {
+			t.Helper()
+			if err := s.RecordCoverage(coverageScope, source, rows); err != nil {
+				t.Fatal(err)
+			}
+		}
+		must(coverageA, CoverageRow{Area: "export filters", Outcome: CoverageOpen}, CoverageRow{Area: "export totals", Outcome: CoverageOpen})
+		must(coverageB, CoverageRow{Area: "  export   filters ", Outcome: closing, Reason: "why"}) // the same area once white space is normalized
+		if got := openAreas(t, s); strings.Join(got, "|") != "export totals" {
+			t.Fatalf("%s closes its area and only that one: %q", closing, got)
+		}
+		must(coverageC, CoverageRow{Area: "export filters", Outcome: CoverageOpen}) // a later result may open it again
+		if got := openAreas(t, s); strings.Join(got, "|") != "export filters|export totals" {
+			t.Fatalf("a later open row reopens the area, as the newest: %q", got)
+		}
+	}
+}
+
+// A closing row is written only for an area the ledger holds open: a clear row for an area that was never open stays in the
+// result's own saved source and adds nothing to the ledger.
+func TestCoverageLedgerDoesNotWriteAClosingRowForAnAreaThatWasNeverOpen(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	if err := s.RecordCoverage(coverageScope, coverageA, []CoverageRow{{Area: "never opened", Outcome: CoverageClear}, {Area: "also never opened", Outcome: CoverageExcluded, Reason: "out of scope"}, {Area: "and this", Outcome: CoverageReported}}); err != nil {
+		t.Fatal(err)
+	}
+	if n := ledgerLines(t, s); n != 0 {
+		t.Fatalf("rows for areas that were never open were written: %d lines", n)
+	}
+	if got := openAreas(t, s); len(got) != 0 {
+		t.Fatalf("nothing is open: %q", got)
+	}
+}
+
+// The same record sent again adds no line, and an old result sent again cannot reopen an area a later result closed.
+func TestCoverageLedgerSentAgainAddsNothing(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	rows := []CoverageRow{{Area: "export filters", Outcome: CoverageOpen}}
+	for i := range 3 {
+		if err := s.RecordCoverage(coverageScope, coverageA, rows); err != nil {
+			t.Fatal(err)
+		}
+		if n := ledgerLines(t, s); n != 1 {
+			t.Fatalf("send %d: the ledger has %d lines, want 1", i+1, n)
+		}
+	}
+	if err := s.RecordCoverage(coverageScope, coverageB, []CoverageRow{{Area: "export filters", Outcome: CoverageClear}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordCoverage(coverageScope, coverageB, []CoverageRow{{Area: "export filters", Outcome: CoverageClear}}); err != nil {
+		t.Fatal(err)
+	}
+	if n := ledgerLines(t, s); n != 2 {
+		t.Fatalf("the closing record sent again added a line: %d lines, want 2", n)
+	}
+	if err := s.RecordCoverage(coverageScope, coverageA, rows); err != nil { // the first result, sent again after the area was closed
+		t.Fatal(err)
+	}
+	if got := openAreas(t, s); len(got) != 0 {
+		t.Fatalf("an old result sent again reopened an area a later result closed: %q", got)
+	}
+	if n := ledgerLines(t, s); n != 2 {
+		t.Fatalf("the old result sent again added a line: %d lines, want 2", n)
+	}
+}
+
+// The reader keeps only what the writer would write (an allow-list): a line with an outcome it does not know, an area that is
+// empty, not normalized or too long, a source that is no id, a line that is no JSON, and a line over its limit are dropped, and the
+// valid lines around them are read.
+func TestCoverageLedgerReaderDropsWhatItDoesNotKnow(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	if err := s.RecordCoverage(coverageScope, coverageA, []CoverageRow{{Area: "before the junk", Outcome: CoverageOpen}}); err != nil {
+		t.Fatal(err)
+	}
+	line := func(area, outcome, source string) string {
+		return `{"at":"2026-11-20T00:00:00Z","area":"` + area + `","outcome":"` + outcome + `","source":"` + source + `"}` + "\n"
+	}
+	junk := line("unknown outcome", "done", coverageB) +
+		line("closed by a word it does not know", "open", coverageB) + line("closed by a word it does not know", "resolved", coverageB) +
+		line("", "open", coverageB) +
+		line(" not  normalized", "open", coverageB) +
+		line(strings.Repeat("a", CoverageAreaMax+1), "open", coverageB) +
+		line("source is no id", "open", "xyz") +
+		`{"at":"2026-11-20T00:00:00Z","area":"no source","outcome":"open"}` + "\n" +
+		`{"at":"0001-01-01T00:00:00Z","area":"no time","outcome":"open","source":"` + coverageB + `"}` + "\n" +
+		"this is not json\n" +
+		`{"at":"2026-11-20T00:00:00Z","area":"long reason","outcome":"open","reason":"` + strings.Repeat("r", CoverageReasonMax+1) + `","source":"` + coverageB + `"}` + "\n" +
+		`{"at":"2026-11-20T00:00:00Z","area":"valid fields, line over its limit","outcome":"open","source":"` + coverageB + `","pad":"` + strings.Repeat("p", coverageLineMax) + `"}` + "\n" +
+		`{"at":"2026-11-20T00:00:00Z","area":"cut before its newline","outc`
+	f, err := os.OpenFile(s.coveragePath(coverageScope), os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(junk); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	got := openAreas(t, s)
+	if strings.Join(got, "|") != "closed by a word it does not know|before the junk" {
+		t.Fatalf("the reader keeps the valid lines and drops the others (an unknown outcome closes nothing): %q", got)
+	}
+	// the writer still appends after a tail without a newline, and reads what it wrote
+	if err := s.RecordCoverage(coverageScope, coverageC, []CoverageRow{{Area: "after the junk", Outcome: CoverageOpen}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := openAreas(t, s); got[0] != "after the junk" || len(got) != 3 {
+		t.Fatalf("a row written after the junk is read: %q", got)
+	}
+}
+
+// A row the ledger cannot keep refuses the whole call before any line is written, and says what a row needs.
+func TestCoverageLedgerRefusesAnInvalidRowWithoutWritingTheOthers(t *testing.T) {
+	for name, bad := range map[string]CoverageRow{
+		"unknown outcome": {Area: "x", Outcome: "done"},
+		"blank area":      {Area: "  \t ", Outcome: CoverageOpen},
+		"control":         {Area: "a\nb", Outcome: CoverageOpen},
+		"long area":       {Area: strings.Repeat("a", CoverageAreaMax+1), Outcome: CoverageOpen},
+		"long reason":     {Area: "x", Outcome: CoverageOpen, Reason: strings.Repeat("r", CoverageReasonMax+1)},
+	} {
+		s := Store{Dir: t.TempDir()}
+		err := s.RecordCoverage(coverageScope, coverageA, []CoverageRow{{Area: "valid", Outcome: CoverageOpen}, bad})
+		if err == nil || !strings.Contains(err.Error(), "needs an area") {
+			t.Fatalf("%s: the call is refused with what a row needs: %v", name, err)
+		}
+		if n := ledgerLines(t, s); n != 0 {
+			t.Fatalf("%s: a refused call wrote %d lines", name, n)
+		}
+	}
+	if err := (Store{Dir: t.TempDir()}).RecordCoverage(coverageScope, "not-an-id", []CoverageRow{{Area: "x", Outcome: CoverageOpen}}); err == nil {
+		t.Fatal("a source that is no id is accepted")
+	}
+}
+
+// The ledger is the project's: the file is named by the store name of the scope, in records/coverage.
+func TestCoverageLedgerLivesInRecordsCoverage(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	if err := s.RecordCoverage(coverageScope, coverageA, []CoverageRow{{Area: "x", Outcome: CoverageOpen}}); err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(s.Dir, "records", "coverage", StoreName(s.Dir, coverageScope)+".jsonl"); s.coveragePath(coverageScope) != want {
+		t.Fatalf("path %s, want %s", s.coveragePath(coverageScope), want)
+	}
+	if n := ledgerLines(t, s); n != 1 {
+		t.Fatalf("%d lines", n)
+	}
+}
+
+// Only the last 4MB of the ledger is read, and a line the tail starts inside is not taken: here the tail begins exactly where a
+// valid row begins (after other bytes of its line), and that row, whose line is cut, is not one of the open areas.
+func TestCoverageLedgerReadsItsTailWithoutTheLineItStartsIn(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	row := func(area string) string {
+		return `{"at":"2026-11-20T00:00:00Z","area":"` + area + `","outcome":"open","source":"` + coverageB + `"}` + "\n"
+	}
+	cut, last := row("cut by the tail"), row("inside the tail")
+	filler := strings.Repeat("x", feedbackReadMax-len(cut)-len(last)-1) + "\n" // one line over the limit of a line
+	if err := os.MkdirAll(filepath.Dir(s.coveragePath(coverageScope)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(s.coveragePath(coverageScope), []byte(row("before the tail")+"junk"+cut+filler+last), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := openAreas(t, s); strings.Join(got, "|") != "inside the tail" {
+		t.Fatalf("the ledger is read from its last 4MB, from the first whole line in it: %q", got)
+	}
+}

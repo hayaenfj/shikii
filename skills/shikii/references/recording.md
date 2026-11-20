@@ -74,6 +74,15 @@ summarize its implication without repeating the complete result. No new knowledg
 means no wiki draft. Important corrections, failures and new procedures still
 need source-backed notes; short messages do not make them optional.
 
+For an audit or a check, where "no finding" must not read as "no problem", add `coverage` to `result` (up to 16 rows,
+each `{area,outcome,evidence?,reason?}`, one row per area): outcome `reported` (a problem was found and reported), `clear`
+(examined, none found; `evidence` names one of `result.evidence`, never `current`), `excluded` (left out on purpose;
+`reason` says why) or `open` (not examined). `sufficient:true` cannot go with an open row, and a `result:{ref}` repair cannot
+add coverage. The project keeps the open rows, and a later prepare lists them in `coverage` as a note on what earlier work
+left unexamined, not an instruction: a result that records the same area as reported, clear or excluded closes it, and
+unrelated rows stay. The record's reply says `coverage:{rows,open}`; if the ledger cannot be written, `errors` names it
+(kind `coverage`) and the same record sent again writes it.
+
 For a prepared memory whose lesson the work followed, without evidence that the lesson changed the work, record
 `result:"unknown"` with `correction_result:"followed"` and the decision (that entry needs no evidence; a delivered correction's
 does); `unused` means no decision followed the lesson.

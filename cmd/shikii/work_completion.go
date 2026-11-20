@@ -18,6 +18,9 @@ func validateWorkCompletion(c *workCompletion) error {
 		if !sourceIDText(c.Ref) || len(c.Evidence) > 4 || c.Changed != "" || c.Checked != "" || c.Remaining != "" || c.Sufficient != nil {
 			return errors.New("result recovery needs only ref and actual evidence refs")
 		}
+		if len(c.Coverage) > 0 {
+			return errors.New("result recovery needs only ref and actual evidence refs: the coverage was saved with the original result and a repair cannot add it; leave coverage out")
+		}
 		return nil
 	}
 	if !assignmentText(c.Changed, 12000, true) || !assignmentText(c.Checked, 12000, false) || !assignmentText(c.Remaining, 4000, false) || len(c.Evidence) > 4 {
@@ -26,7 +29,7 @@ func validateWorkCompletion(c *workCompletion) error {
 	if c.Sufficient != nil && len(c.Evidence) == 0 {
 		return errors.New("result.sufficient needs captured check evidence; omit it when quality is unknown")
 	}
-	return nil
+	return validateWorkCoverage(c)
 }
 
 // evidenceUse is what cites the evidence: what may be cited is the same for all, and the refusal names what each takes.
@@ -222,7 +225,7 @@ func captureWorkCompletion(book notebook.Book, w *workState, c workCompletion, r
 		return item, err
 	}
 	w.Sources["result"] = id
-	w.Result = &workCompletionRef{ReviewGeneration: w.Reasoning.Generation, Source: id, Signature: signature, Unresolved: c.Remaining != "" || c.Sufficient != nil && !*c.Sufficient}
+	w.Result = &workCompletionRef{ReviewGeneration: w.Reasoning.Generation, Source: id, Signature: signature, Unresolved: c.Remaining != "" || c.Sufficient != nil && !*c.Sufficient || workCoverageOpen(c.Coverage)}
 	w.Reasoning.Result = w.Result
 	if w.Reasoning.PendingResults == nil {
 		w.Reasoning.PendingResults = map[string]*workResultRecovery{}

@@ -228,6 +228,7 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 	if resultStopped {
 		return result, nil
 	}
+	recordWorkCoverage(root, book, w, req.Result, &result, add)
 	// Queue feedback from the immutable result before unrelated indexing can fail.
 	// Recovery of an earlier report must never prevent capture of this input.
 	if w.Result != nil && w.Result.Ready {
