@@ -168,6 +168,7 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		}
 	}
 	halt := func() bool { return persistence.halt(add) }
+	defer persistence.flush(add) // runs before the defer above, which finishes the reply
 
 	local := map[string]string{}
 	for i, o := range req.Observations {
@@ -228,7 +229,7 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 	if resultStopped {
 		return result, nil
 	}
-	recordWorkCoverage(root, book, w, req.Result, token.Session, &result, add)
+	recordWorkCoverage(root, book, w, req.Result, token.Session, &result, add, persistence.markUnsaved)
 	// Queue feedback from the immutable result before unrelated indexing can fail.
 	// Recovery of an earlier report must never prevent capture of this input.
 	if w.Result != nil && w.Result.Ready {

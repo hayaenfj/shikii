@@ -45,10 +45,10 @@ work record with the same receipt. Otherwise leave it as it is. It is not an
 instruction to search again.
 
 When the same words miss again, the reply of the query or of a prepare with a
-receipt can carry `earlier_search`: an earlier work searched them, found no
-article, and recorded a result whose id is `result`. A query of that id reads it
-(`wiki query <id>`). It is that work's own report, not an article: confirm it
-before relying on it.
+receipt can carry `earlier_search`: these words found no article before, and a
+work that was open then recorded a result whose id is `result` (it may not be the
+work that searched). A query of that id reads it (`wiki query <id>`). It is that
+work's own report, not an article: confirm it before relying on it.
 
 Hook IDs can record only the hook's initial preparation in that project and turn.
 An explicit replacement prepare can reassign local references, so it requires its
@@ -93,10 +93,11 @@ each `{area,outcome,evidence?,reason?}`, one row per area): outcome `reported` (
 `reason` says why) or `open` (not examined). `sufficient:true` cannot go with an open row, and a `result:{ref}` repair cannot
 add coverage. The project keeps the open rows, and a later prepare lists them in `coverage` as a note on what earlier work
 left unexamined, not an instruction: a result that records the same area as reported, clear or excluded closes it, and
-unrelated rows stay. The record's reply says `coverage:{rows,open,handed_over?}`; if the ledger cannot be written, `errors`
-names it (kind `coverage`) and the same record sent again writes it. The `result.remaining` of a result with no coverage row is
-kept as an open area too: the next work's prepare lists it once, as `from:"remaining"`, and it closes when that work records a
-result; write it in that result's `remaining` if it still matters.
+unrelated rows stay. The record's reply says `coverage:{rows,open,handed_over?}` (`rows` counts the rows sent, `open` names the areas this result
+opened, `handed_over` names the `from:"remaining"` areas it took over and closed); if the ledger cannot be written, `errors`
+names it (kind `coverage`) and the same record sent again writes it. The `result.remaining` of a result with no open coverage row is
+kept as an open area too (a result with an open row of its own does not make it a second one): the next work's prepare lists it
+as `from:"remaining"`, and it closes when that work records a result (until then a later prepare lists it again); write it in that result's `remaining` if it still matters.
 
 For a prepared memory whose lesson the work followed, without evidence that the lesson changed the work, record
 `result:"unknown"` with `correction_result:"followed"` and the decision (that entry needs no evidence; a delivered correction's

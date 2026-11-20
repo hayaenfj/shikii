@@ -11,7 +11,8 @@ import (
 // word search remember them (noteMissedSearch): an explicit `wiki query` with words, and a prepare that carries a receipt and a
 // word query (extendWork). The query of a standalone preparation is the topic of a task, not a question the agent asked the wiki:
 // in a young wiki nearly every preparation would leave a miss, so it is not recorded. A record that carries a result names the
-// misses made since its work was prepared, and the wordless query lists the ones still open. A miss says what was searched and
+// misses made since its work was prepared, and the wordless query lists the ones still open. A search of the same words that
+// returns an article closes the miss at either entrance (RecordLookup, closeMissedSearch). A miss says what was searched and
 // found nothing: it is no proof that an article is missing, and no instruction.
 //
 // A record that names misses ties them to the saved result of its work (tieMissedSearches). A later search of the same words that
@@ -31,8 +32,10 @@ type workMissedSearches struct {
 
 const workMissedNext = "These searches of this project's wiki found no article while this work was open. If this work found the answer to one of them with evidence, the next search of those words will miss again: add a short note (the answer, or where it is written) in a work record with the same receipt. If it did not, leave it as it is. This is not an instruction to search again."
 
-// earlierSearchNext is the note of earlier_search. The result is a report of that work, not an article: it is to be confirmed.
-const earlierSearchNext = "An earlier work searched these same words, found no article, and recorded a result. Read that result with a query of its id (`result`): it may say what was found or where the answer is written. It is that work's own report, not an article and not verified: confirm it before relying on it."
+// earlierSearchNext is the note of earlier_search. The result is the report of a work that was open when the words missed and then
+// recorded a result: it is not necessarily the work that searched (several sessions run side by side in a project), it is not an
+// article, and it is to be confirmed.
+const earlierSearchNext = "These same words found no article before, and a work that was open then recorded a result. Read that result with a query of its id (`result`): it may say what was found or where the answer is written. It is that work's own report (it may not be the work that searched), not an article and not verified: confirm it before relying on it."
 
 // noteMissedSearch keeps the words of a public word search that found no candidate, and returns earlier_search when an earlier work
 // searched the same words, found none and recorded a result (nil otherwise). It is best effort: a journal that cannot be written
@@ -46,6 +49,14 @@ func noteMissedSearch(book notebook.Book, query, cursor string, view notebook.Vi
 		return nil
 	}
 	return &notebook.EarlierSearch{Query: earlier.Query, At: earlier.At, Result: earlier.Result, NextAction: earlierSearchNext}
+}
+
+// closeMissedSearch drops the miss of the words of a search of a prepare that carries a receipt when the search returned a
+// candidate: the wiki query closes it where it records the lookup (RecordLookup), and this entrance records none. It is best effort.
+func closeMissedSearch(book notebook.Book, query string, view notebook.View) {
+	if len(view.Lessons) > 0 || view.Search != nil && view.Search.Total > 0 {
+		_ = book.CloseMiss(query)
+	}
 }
 
 // tieMissedSearches ties the misses a record named to the saved result of its work (the last work that searched those words and

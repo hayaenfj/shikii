@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -68,6 +69,7 @@ func TestWorkCoverageRefusesWhatTheLedgerCannotKeep(t *testing.T) {
 		{"blank area", coverageResult(coverageRow(" \t ", "open")), "area must be 1-160 bytes"},
 		{"area with a line break", coverageResult(coverageRow("export\nfilters", "open")), "area must be 1-160 bytes"},
 		{"area over 160 bytes", coverageResult(coverageRow(strings.Repeat("a", 161), "open")), "area must be 1-160 bytes"},
+		{"area over 160 bytes as sent, short once its white space is normalized", coverageResult(coverageRow("a"+strings.Repeat(" ", 200)+"b", "open")), "area must be 1-160 bytes"},
 		{"area that is not UTF-8", coverageResult(coverageRow("export \xff filters", "open")), "area must be 1-160 bytes"},
 		{"recovery by ref with coverage", workCompletion{Ref: "0123456789abcdef", Coverage: []workCoverageRow{coverageRow("export filters", "open")}}, "a repair cannot add it; leave coverage out"},
 		// the same checks accept what the ledger keeps
@@ -522,18 +524,66 @@ func TestWorkCoverageRemainingAreaIsNormalizedAndCutWithinTheLimit(t *testing.T)
 	}
 }
 
-// A result with coverage rows does not open an area from its remaining: the agent uses the ledger itself.
-func TestWorkCoverageResultWithRowsOpensNothingFromItsRemaining(t *testing.T) {
-	f := newCoverageFlow(t)
-	saved := f.record(f.prepare(), withRemaining(coverageResult(coverageRow("export filters", "clear", "new1")), "The import path was not read."))
-	if reply := coverageReplyOf(t, saved); reply["rows"] != float64(1) || len(reply["open"].([]any)) != 0 || len(f.ledger()) != 0 {
-		t.Fatalf("a clear row and a remaining open nothing: %v %v", saved["coverage"], f.ledger())
+// What a result with coverage rows does with its remaining: a result that wrote an open row itself is using the ledger for what it
+// left, so its remaining is not made a second row; a result whose rows are reported, clear or excluded (and open nothing) leaves
+// its remaining in the ledger as an open row of origin remaining, like a result with no row at all. The clear row of such a result
+// closes the area it names as before.
+func TestWorkCoverageRemainingOpensAnAreaUnlessTheResultWroteAnOpenRow(t *testing.T) {
+	const left = "The import path was not read."
+	for _, c := range []struct {
+		name string
+		rows []workCoverageRow
+	}{
+		{"clear row", []workCoverageRow{coverageRow("export filters", "clear", "new1")}},
+		{"reported row", []workCoverageRow{coverageRow("export filters", "reported")}},
+		{"excluded row", []workCoverageRow{coverageRow("export filters", "excluded", "", "out of scope")}},
+		{"all three kinds", []workCoverageRow{coverageRow("export filters", "clear", "new1"), coverageRow("export totals", "reported"), coverageRow("export dates", "excluded", "", "out of scope")}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newCoverageFlow(t)
+			first := f.prepare()
+			saved := f.record(first, withRemaining(coverageResult(c.rows...), left))
+			reply := coverageReplyOf(t, saved)
+			open, _ := reply["open"].([]any)
+			lines := f.ledger()
+			if saved["complete"] != true || reply["rows"] != float64(len(c.rows)) || len(open) != 1 || open[0] != left || handedOverOf(saved) != nil {
+				t.Fatalf("the reply names the rows it sent and the area made from its remaining: %v", saved["coverage"])
+			}
+			if len(lines) != 1 || lines[0]["area"] != left || lines[0]["outcome"] != "open" || lines[0]["origin"] != "remaining" || lines[0]["source"] != f.state(first).Result.Source {
+				t.Fatalf("the ledger holds one open row of origin remaining and none for the rows that closed nothing: %v", lines)
+			}
+			next := f.prepare()
+			if row := listedRow(next, left); row == nil || row["from"] != "remaining" || row["source"] != f.state(first).Result.Source || !slices.Equal(openAreasOf(t, next), []string{left}) {
+				t.Fatalf("the next preparation lists the area as from remaining, and no other: %v", next["coverage"])
+			}
+		})
 	}
-	saved = f.record(f.prepare(), withRemaining(coverageResult(coverageRow("export totals", "open")), "The import path was not read."))
+	// the clear row of such a result closes the area it names, as it does without a remaining
+	f := newCoverageFlow(t)
+	f.record(f.prepare(), coverageResult(coverageRow("export filters", "open")))
+	saved := f.record(f.prepare(), withRemaining(coverageResult(coverageRow("export filters", "clear", "new1")), left))
+	if reply := coverageReplyOf(t, saved); reply["rows"] != float64(1) || !slices.Equal(reply["open"].([]any), []any{left}) {
+		t.Fatalf("the reply names the clear row and the area of the remaining: %v", saved["coverage"])
+	}
+	if lines := f.ledger(); len(lines) != 3 || lines[1]["area"] != "export filters" || lines[1]["outcome"] != "clear" || lines[2]["area"] != left || lines[2]["origin"] != "remaining" {
+		t.Fatalf("the clear row closes its area (once) and the remaining opens its own: %v", lines)
+	}
+	if got := openAreasOf(t, f.prepare()); !slices.Equal(got, []string{left}) {
+		t.Fatalf("only the area of the remaining is open: %q", got)
+	}
+	// a result that wrote an open row itself does not make its remaining a row: only the row of the agent is in the ledger
+	g := newCoverageFlow(t)
+	saved = g.record(g.prepare(), withRemaining(coverageResult(coverageRow("export totals", "open")), left))
 	reply := coverageReplyOf(t, saved)
-	lines := f.ledger()
+	lines := g.ledger()
 	if open, _ := reply["open"].([]any); reply["rows"] != float64(1) || len(open) != 1 || open[0] != "export totals" || len(lines) != 1 || lines[0]["area"] != "export totals" || lines[0]["origin"] != nil {
 		t.Fatalf("only the row of the agent is in the ledger, with no origin: %v %v", saved["coverage"], lines)
+	}
+	// a result with an open row and a clear row is the same: it wrote an open row
+	h := newCoverageFlow(t)
+	saved = h.record(h.prepare(), withRemaining(coverageResult(coverageRow("export filters", "clear", "new1"), coverageRow("export totals", "open")), left))
+	if lines := h.ledger(); len(lines) != 1 || lines[0]["area"] != "export totals" || len(coverageReplyOf(t, saved)["open"].([]any)) != 1 {
+		t.Fatalf("a result with an open row among others does not make its remaining a row: %v %v", saved["coverage"], lines)
 	}
 }
 
@@ -657,6 +707,291 @@ func TestWorkCoverageAnOldResultSentAgainDoesNotCloseALaterResultsArea(t *testin
 	saved := f.record(prepared, first) // the first result again, after the second opened its area and closed the first
 	if saved["complete"] != true || len(f.ledger()) != before || !slices.Equal(openAreasOf(t, f.prepare()), []string{"beta left"}) {
 		t.Fatalf("the first result sent again changes nothing: %v %v", saved["coverage"], f.ledger())
+	}
+}
+
+// An old result that wrote no row to the ledger (it left nothing, or sent only rows for areas that were never open) is sent again
+// after a later result of the session opened an area: it takes nothing over either. The ledger holds no line of it, so the work
+// state is what remembers that its coverage was handled.
+func TestWorkCoverageAnOldResultThatWroteNothingSentAgainDoesNotCloseALaterResultsArea(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		first workCompletion
+	}{
+		{"no remaining and no coverage", coverageResult()},
+		{"a clear row for an area that was never open", coverageResult(coverageRow("export totals", "clear", "new1"))},
+		{"a remaining that says nothing was left", withRemaining(coverageResult(), "none")},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newCoverageFlow(t)
+			prepared := f.prepare()
+			f.record(prepared, c.first)
+			firstSource := f.state(prepared).Result.Source
+			if len(f.ledger()) != 0 {
+				t.Fatalf("the first result wrote no line: %v", f.ledger())
+			}
+			f.record(prepared, withRemaining(coverageResult(), "beta left"))
+			if got, want := f.state(prepared).CoverageHandled, []string{f.state(prepared).Result.Source, firstSource}; !slices.Equal(got, want) {
+				t.Fatalf("the work remembers both results whose coverage it handled, the newest first: %q, want %q", got, want)
+			}
+			before := len(f.ledger())
+			saved := f.record(prepared, c.first)
+			if open := openAreasOf(t, f.prepare()); saved["complete"] != true || len(f.ledger()) != before || !slices.Equal(open, []string{"beta left"}) || handedOverOf(saved) != nil {
+				t.Fatalf("the first result sent again changed the ledger: %d -> %d lines, open %q, reply %v", before, len(f.ledger()), open, saved["coverage"])
+			}
+		})
+	}
+}
+
+// A work state that never handled the coverage of a result has no field for it, so a state saved before the field existed and a
+// state of a work that handled nothing read and write alike; once a result is recorded the state names its source.
+func TestWorkStateCoverageHandledIsOmittedWhenEmpty(t *testing.T) {
+	if data, err := json.Marshal(workState{}); err != nil || strings.Contains(string(data), "coverage_handled") {
+		t.Fatalf("an empty work state has no coverage_handled: %s %v", data, err)
+	}
+	f := newCoverageFlow(t)
+	prepared := f.prepare()
+	if f.state(prepared).CoverageHandled != nil {
+		t.Fatalf("a prepared work has handled nothing: %q", f.state(prepared).CoverageHandled)
+	}
+	f.record(prepared, workCompletion{Changed: "Read the export.", Evidence: []string{"new1"}})
+	if got := f.state(prepared).CoverageHandled; !slices.Equal(got, []string{f.state(prepared).Result.Source}) {
+		t.Fatalf("a recorded result is remembered once saved: %q", got)
+	}
+}
+
+// A work remembers the sources of at most 16 results, the newest first, and a source it remembers already is not added again.
+func TestWorkCoverageHandledKeepsTheSixteenNewestSources(t *testing.T) {
+	w := &workState{}
+	sources := []string{}
+	for i := range 20 {
+		source := strings.Repeat(string(rune('a'+i)), 16)
+		if !w.rememberCoverageHandled(source) || w.rememberCoverageHandled(source) {
+			t.Fatalf("a new source is added once: %q", w.CoverageHandled)
+		}
+		sources = append([]string{source}, sources...)
+	}
+	if !slices.Equal(w.CoverageHandled, sources[:16]) {
+		t.Fatalf("the work remembers the 16 newest sources: %q, want %q", w.CoverageHandled, sources[:16])
+	}
+	if w.rememberCoverageHandled(sources[15]) || w.rememberCoverageHandled(sources[0]) || !slices.Equal(w.CoverageHandled, sources[:16]) {
+		t.Fatalf("a source that is remembered is not added again: %q", w.CoverageHandled)
+	}
+}
+
+// recordWorkCoverage tells the record that the state holds an unsaved source once it remembers the source of a result, and only
+// then: a source that is remembered already is not told again.
+func TestWorkCoverageMarksTheStateUnsavedOnceTheSourceIsRemembered(t *testing.T) {
+	f := newCoverageFlow(t)
+	prepared := f.prepare()
+	f.record(prepared, withRemaining(coverageResult(), "alpha left"))
+	w := f.state(prepared)
+	source, session := w.Result.Source, f.session(prepared)
+	w.CoverageHandled = nil
+	marks, reply := 0, workResult{}
+	add := func(item workItem) { t.Fatalf("nothing is refused: %v", item) }
+	unsaved := func() { marks++ }
+	recordWorkCoverage(f.b.Root, f.b, w, &workCompletion{Ref: source}, session, &reply, add, unsaved)
+	if marks != 1 || !slices.Equal(w.CoverageHandled, []string{source}) {
+		t.Fatalf("the source is remembered and the record is told once: %d, %q", marks, w.CoverageHandled)
+	}
+	recordWorkCoverage(f.b.Root, f.b, w, &workCompletion{Ref: source}, session, &reply, add, unsaved)
+	if marks != 1 {
+		t.Fatalf("a source that is remembered is not told again: %d", marks)
+	}
+}
+
+// What the record has not saved when it ends is saved at its end (flush): the later saves of a record are not on every path. The
+// repair by ref of an older result, while the receipt holds a later one, has no save after its coverage. The work still remembers the
+// older result, so that the older result recorded in full afterwards (it becomes the result of the receipt again) takes nothing over:
+// the area the later result left stays open, and the older remaining opens beside it.
+func TestWorkCoverageHandledIsSavedWhenNoLaterSaveFollows(t *testing.T) {
+	f := newCoverageFlow(t)
+	prepared := f.prepare()
+	older := workCompletion{Changed: "Older audit.", Remaining: "alpha left", Evidence: []string{"new1"}}
+	olderSource := f.waits(prepared, older)
+	f.record(prepared, withRemaining(workCompletion{Changed: "Newer audit.", Evidence: []string{"new1"}}, "beta left"))
+	newerSource := f.state(prepared).Result.Source
+	f.repairs(prepared, olderSource)
+	if got := f.state(prepared).CoverageHandled; !slices.Equal(got, []string{olderSource, newerSource}) {
+		t.Fatalf("the saved state remembers the repaired older result and the later one: %q, want [%s %s]", got, olderSource, newerSource)
+	}
+	again := f.record(prepared, older)
+	if open := openAreasOf(t, f.prepare()); again["complete"] != true || !slices.Equal(open, []string{"alpha left", "beta left"}) || handedOverOf(again) != nil {
+		t.Fatalf("the older result recorded in full takes nothing over: open %q, reply %v, ledger %v", open, again["coverage"], f.ledger())
+	}
+}
+
+// flush saves the state only when something of it is unsaved, and says so when that save fails; a record that was interrupted said
+// so already. A save that succeeds clears what was unsaved.
+func TestWorkRecordPersistenceFlushSavesOnlyWhatIsUnsaved(t *testing.T) {
+	f := newCoverageFlow(t)
+	prepared := f.prepare()
+	token, err := workDecode(prepared["receipt"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := openWorkSessions(f.b.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, name, err := loadWorkState(dir, f.b.Scope, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &workRecordPersistence{dir: dir, name: name, scope: f.b.Scope, token: token, w: w, checkpoint: &workSessionCheckpoint{}}
+	refused := []workItem{}
+	add := func(item workItem) { refused = append(refused, item) }
+	p.markUnsaved()
+	if err := p.save(); err != nil || p.unsaved {
+		t.Fatalf("a save that succeeds clears what was unsaved: %v %v", err, p.unsaved)
+	}
+	dir.Close() // from here on a save fails
+	p.flush(add)
+	if len(refused) != 0 {
+		t.Fatalf("nothing is unsaved, so nothing is saved or reported: %v", refused)
+	}
+	p.markUnsaved()
+	p.interrupted = errors.New("synthetic interruption")
+	p.flush(add)
+	if len(refused) != 0 {
+		t.Fatalf("an interrupted record said so already: %v", refused)
+	}
+	p.interrupted = nil
+	p.flush(add)
+	if len(refused) != 1 || refused[0].Kind != "coverage" || refused[0].Ref != "coverage" || !strings.Contains(refused[0].Error, "the work state could not be saved") || !strings.Contains(refused[0].Error, "send the same record again") {
+		t.Fatalf("a state that cannot be saved is an error of the record: %v", refused)
+	}
+}
+
+// waits sends a result that waits for its evidence (new1 names no observation) and returns the id it was saved under.
+func (f coverageFlow) waits(prepared map[string]any, c workCompletion) string {
+	f.t.Helper()
+	value, err := runWork(f.b.Root, f.b.Scope, "record", workRequest{Receipt: prepared["receipt"].(string), Result: &c})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	if waiting := loopObject(f.t, value); waiting["complete"] == true || waiting["coverage"] != nil {
+		f.t.Fatalf("the result waits for its evidence and says nothing of coverage: %v", waiting)
+	}
+	return f.state(prepared).Result.Source
+}
+
+// repairs sends the repair by ref of a result that waits, with an observation for its evidence.
+func (f coverageFlow) repairs(prepared map[string]any, id string) map[string]any {
+	f.t.Helper()
+	value, err := runWork(f.b.Root, f.b.Scope, "record", workRequest{Receipt: prepared["receipt"].(string), Result: &workCompletion{Ref: id, Evidence: []string{"new1"}}, Observations: []workObservation{{Kind: "test", Title: "Export check", Content: "The synthetic export kept its totals."}}})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	repaired := loopObject(f.t, value)
+	if repaired["complete"] != true {
+		f.t.Fatalf("the repair completes the result: %v", repaired)
+	}
+	return repaired
+}
+
+// A result that waited for its evidence is repaired by ref after a later result of the same receipt was recorded: what the later
+// result left is what is left now, so the repaired older result writes its coverage rows and nothing else. Its remaining does not
+// become the open area, it does not close the later result's area, and it takes nothing over.
+func TestWorkCoverageTheRepairOfAnOlderResultDoesNotReplaceWhatALaterOneLeft(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		older workCompletion
+		want  []string // the open areas afterwards, newest first
+		lines int
+	}{
+		{"remaining only", workCompletion{Changed: "Older audit.", Remaining: "alpha left", Evidence: []string{"new1"}}, []string{"beta left"}, 1},
+		{"a clear row for an area that was never open and a remaining", workCompletion{Changed: "Older audit.", Remaining: "alpha left", Evidence: []string{"new1"}, Coverage: []workCoverageRow{coverageRow("export totals", "clear", "new1")}}, []string{"beta left"}, 1},
+		{"an open row and a remaining: the row is written, the remaining is not", workCompletion{Changed: "Older audit.", Remaining: "alpha left", Evidence: []string{"new1"}, Coverage: []workCoverageRow{coverageRow("export filters", "open")}}, []string{"export filters", "beta left"}, 2},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newCoverageFlow(t)
+			prepared := f.prepare()
+			older := f.waits(prepared, c.older)
+			newer := f.record(prepared, withRemaining(workCompletion{Changed: "Newer audit.", Evidence: []string{"new1"}}, "beta left"))
+			if !slices.Equal(openAreasOf(t, f.prepare()), []string{"beta left"}) {
+				t.Fatalf("the later result is complete and its remaining is open: %v", newer)
+			}
+			repaired := f.repairs(prepared, older)
+			if open := openAreasOf(t, f.prepare()); !slices.Equal(open, c.want) || len(f.ledger()) != c.lines || handedOverOf(repaired) != nil {
+				t.Fatalf("the repair of the older result changed what the later one left: open %q (want %q), %d lines (want %d), reply %v, ledger %v", open, c.want, len(f.ledger()), c.lines, repaired["coverage"], f.ledger())
+			}
+			for _, line := range f.ledger() {
+				if line["area"] == "alpha left" || line["source"] == older && line["origin"] != nil {
+					t.Fatalf("the remaining of the repaired older result is in the ledger: %v", line)
+				}
+			}
+		})
+	}
+}
+
+// A ledger that could not be written leaves the coverage of the result unhandled: the same record sent again writes its remaining as
+// an open row and takes over the area its work was handed, once.
+func TestWorkCoverageALedgerThatCouldNotBeWrittenIsHandledByTheSameRecordSentAgain(t *testing.T) {
+	f := newCoverageFlow(t)
+	const handed, left = "The import path was not read.", "The totals were not read."
+	f.record(f.prepare(), withRemaining(coverageResult(), handed))
+	second := f.prepare()
+	folder, aside := filepath.Join(f.b.Root, "records", "coverage"), filepath.Join(f.b.Root, "records", "coverage-aside")
+	if err := os.Rename(folder, aside); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(folder, []byte("a file where the folder of the ledger goes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result := withRemaining(workCompletion{Changed: "Read the import path.", Evidence: []string{"new1"}}, left)
+	failed := f.record(second, result)
+	errs, _ := failed["errors"].([]any)
+	if failed["complete"] == true || len(errs) != 1 || errs[0].(map[string]any)["kind"] != "coverage" {
+		t.Fatalf("the record names the ledger it could not write: %v", failed)
+	}
+	if got := f.state(second).CoverageHandled; len(got) != 0 {
+		t.Fatalf("a result whose ledger could not be written is not remembered as handled: %q", got)
+	}
+	if err := os.Remove(folder); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(aside, folder); err != nil {
+		t.Fatal(err)
+	}
+	again := f.record(second, result)
+	reply := coverageReplyOf(t, again)
+	if again["complete"] != true || !slices.Equal(handedOverOf(again), []any{handed}) || !slices.Equal(reply["open"].([]any), []any{left}) {
+		t.Fatalf("the same record sent again opens its remaining and takes the area over: %v", again)
+	}
+	if got := openAreasOf(t, f.prepare()); !slices.Equal(got, []string{left}) {
+		t.Fatalf("the handed area is closed and the remaining is open: %q (%v)", got, f.ledger())
+	}
+	if got := f.state(second).CoverageHandled; !slices.Equal(got, []string{f.state(second).Result.Source}) {
+		t.Fatalf("the result is remembered once its ledger was written: %q", got)
+	}
+}
+
+// The agent's own open row is not turned into a row that closes by itself: a later work that repeats the area in its remaining
+// (the white space of it is not counted) leaves the row as it is, and a work that is handed it and records a result closes nothing.
+func TestWorkCoverageARemainingThatRepeatsAnAgentsOpenAreaDoesNotTurnItIntoARemainingRow(t *testing.T) {
+	for _, remaining := range []string{"export filters", " export   filters\n"} {
+		t.Run(strings.TrimSpace(remaining), func(t *testing.T) {
+			f := newCoverageFlow(t)
+			f.record(f.prepare(), coverageResult(coverageRow("export filters", "open")))
+			second := f.prepare()
+			if row := listedRow(second, "export filters"); row == nil || row["from"] != nil {
+				t.Fatalf("the agent's row is listed without from: %v", second["coverage"])
+			}
+			saved := f.record(second, withRemaining(workCompletion{Changed: "Read the export.", Evidence: []string{"new1"}}, remaining))
+			if open, _ := coverageReplyOf(t, saved)["open"].([]any); len(open) != 1 || open[0] != "export filters" || len(f.ledger()) != 1 {
+				t.Fatalf("the reply names the area and the ledger has no second row for it: %v %v", saved["coverage"], f.ledger())
+			}
+			third := f.prepare()
+			if row := listedRow(third, "export filters"); row == nil || row["from"] != nil || row["source"] != f.ledger()[0]["source"] {
+				t.Fatalf("the preparation lists the row of the agent, with no from: %v", third["coverage"])
+			}
+			f.record(third, workCompletion{Changed: "Read something else.", Evidence: []string{"new1"}})
+			if got := openAreasOf(t, f.prepare()); !slices.Equal(got, []string{"export filters"}) || len(f.ledger()) != 1 {
+				t.Fatalf("the agent's row is still open and nothing was written: %q %v", got, f.ledger())
+			}
+		})
 	}
 }
 

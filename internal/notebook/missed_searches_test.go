@@ -131,6 +131,15 @@ func TestRecordMissAllowsOnlyWordSearchesOfTheListedForm(t *testing.T) {
 		{"lesson id after white space", "  lesson:0123456789abcdef", "", emptyView(), nil},
 		{"source id", "0123456789abcdef", "", emptyView(), nil},
 		{"source id after white space", " 0123456789abcdef\n", "", emptyView(), nil},
+		{"source id in upper case", "ABCDEF0123456789", "", emptyView(), nil},
+		{"source id in mixed case", "0123456789AbCdEf", "", emptyView(), nil},
+		{"two source ids", "0123456789abcdef 0123456789abcdee", "", emptyView(), nil},
+		{"source ids in both cases, spaced out", " 0123456789ABCDEF \n 0123456789abcdef\tfedcba9876543210 ", "", emptyView(), nil},
+		{"16 characters that are not hexadecimal", "0123456789abcdeg", "", emptyView(), []string{"0123456789abcdeg"}},
+		{"15 hexadecimal digits", "0123456789abcde", "", emptyView(), []string{"0123456789abcde"}},
+		{"17 hexadecimal digits", "0123456789abcdef0", "", emptyView(), []string{"0123456789abcdef0"}},
+		{"a source id and a word", "0123456789abcdef saffron", "", emptyView(), []string{"0123456789abcdef saffron"}},
+		{"a word and two source ids", "saffron 0123456789abcdef 0123456789abcdee", "", emptyView(), []string{"saffron 0123456789abcdef 0123456789abcdee"}},
 		{"continuation of a search", "saffron lanterns", "bmV4dA", emptyView(), nil},
 		{"search that found a candidate", "saffron lanterns", "", found, nil},
 		{"search that returned an article", "saffron lanterns", "", returned, nil},
@@ -333,7 +342,7 @@ func TestOpenMissesShareTheReadingOfTheArticles(t *testing.T) {
 // A line of the journal that is not a search of words (a hand-written one) is not listed as open, whatever the page says of it.
 func TestOpenMissesSkipWhatIsNotASearchOfWords(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
-	file := `{"misses":[{"query":"lesson:0123456789abcdef","at":"2026-11-01T09:00:00Z"},{"query":"0123456789abcdef","at":"2026-11-01T09:01:00Z"},{"query":"saffron lanterns","at":"2026-11-01T09:02:00Z"}]}`
+	file := `{"misses":[{"query":"lesson:0123456789abcdef","at":"2026-11-01T09:00:00Z"},{"query":"0123456789abcdef","at":"2026-11-01T09:01:00Z"},{"query":"0123456789abcdef 0123456789ABCDEF","at":"2026-11-01T09:01:30Z"},{"query":"saffron lanterns","at":"2026-11-01T09:02:00Z"}]}`
 	if err := os.WriteFile(journalPath(t, b), []byte(file), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -696,5 +705,36 @@ func TestMissWithAResultClosesWhenAnArticleAnswersTheWords(t *testing.T) {
 	}
 	if got := missesOnDisk(t, b); len(got) != 0 {
 		t.Fatalf("the miss and its result are gone once an article answers the words: %+v", got)
+	}
+}
+
+// CloseMiss drops the miss of the same words (the spacing does not matter) and no other. It writes nothing when the project has no
+// journal, when the journal holds no miss of the words, and for a query that is not a search of words.
+func TestCloseMissDropsTheMissOfTheSameWordsOnly(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}
+	if err := b.CloseMiss("saffron lanterns"); err != nil {
+		t.Fatalf("a project with no journal: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(b.Root, "records", "wiki-searches")); !os.IsNotExist(err) {
+		t.Fatalf("closing created the folder of the search journal: %v", err)
+	}
+	path := journalPath(t, b)
+	const file = `{ "lookups": [], "misses": [ {"query":"other words","at":"2026-11-01T09:00:00Z"}, {"query":"saffron lanterns","at":"2026-11-01T09:01:00Z","result":"` + resultA + `"}, {"query":"lesson:0123456789abcdef","at":"2026-11-01T09:02:00Z"}, {"query":"0123456789abcdef","at":"2026-11-01T09:03:00Z"} ] }`
+	if err := os.WriteFile(path, []byte(file), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{"saffron", "juniper meadow", "", " \n", "lesson:0123456789abcdef", "0123456789abcdef", strings.Repeat("x", 201)} {
+		if err := b.CloseMiss(query); err != nil {
+			t.Fatalf("%q: %v", query, err)
+		}
+		if after, err := os.ReadFile(path); err != nil || string(after) != file {
+			t.Fatalf("%q: the journal was rewritten: %s (%v)", query, after, err)
+		}
+	}
+	if err := b.CloseMiss("  saffron \t lanterns\n"); err != nil {
+		t.Fatal(err)
+	}
+	if got := diskQueries(missesOnDisk(t, b)); !slices.Equal(got, []string{"other words", "lesson:0123456789abcdef", "0123456789abcdef"}) {
+		t.Fatalf("only the miss of the same words is dropped, with the result it was tied to: %q", got)
 	}
 }

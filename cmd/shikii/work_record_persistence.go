@@ -13,6 +13,7 @@ type workRecordPersistence struct {
 	checkpoint  *workSessionCheckpoint
 	commitMu    sync.Mutex
 	interrupted error
+	unsaved     bool // the state holds what no save has written yet: a later save writes it, and flush saves it when none follows
 }
 
 func (p *workRecordPersistence) save() error {
@@ -24,8 +25,31 @@ func (p *workRecordPersistence) save() error {
 	e := saveWorkState(p.dir, p.name, p.scope, p.token.Turn, p.w, false, p.checkpoint)
 	if e != nil {
 		p.interrupted = e
+	} else {
+		p.unsaved = false
 	}
 	return e
+}
+
+// markUnsaved says that the state holds something that has to reach the saved state before the record ends.
+func (p *workRecordPersistence) markUnsaved() {
+	p.commitMu.Lock()
+	defer p.commitMu.Unlock()
+	p.unsaved = true
+}
+
+// flush saves the state when something of it is still unsaved (the record had no later save). A record that was interrupted already
+// said so, and the state it could not save is not reported twice.
+func (p *workRecordPersistence) flush(add func(workItem)) {
+	p.commitMu.Lock()
+	pending, interrupted := p.unsaved, p.interrupted != nil
+	p.commitMu.Unlock()
+	if !pending || interrupted {
+		return
+	}
+	if e := p.save(); e != nil {
+		add(workItem{Kind: "coverage", Ref: "coverage", Error: "the work state could not be saved after the coverage of the result was handled: " + e.Error() + "; send the same record again"})
+	}
 }
 func (p *workRecordPersistence) commit(action func() error) error {
 	p.commitMu.Lock()

@@ -35,7 +35,9 @@ func TestWorkCheckpointReducesReplacementWrites(t *testing.T) {
 	if err != nil || r["complete"] != true {
 		t.Fatal(r, err)
 	}
-	if replacements > 7 {
+	// 7 replacements before the work state remembered the results whose coverage it handled (CoverageHandled): that mark is one
+	// more change of the durable state, written by the first save after the coverage, and it adds no durability boundary (syncs below)
+	if replacements > 8 {
 		t.Fatalf("unchanged checkpoints must reuse the durable file; replacements=%d syncs=%d", replacements, syncs)
 	}
 	if syncs != 9 {

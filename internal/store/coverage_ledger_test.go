@@ -349,3 +349,32 @@ func TestCoverageLedgerHandoverOfAResultAlreadyRecordedChangesNothing(t *testing
 		t.Fatalf("the later result's area is still open and no line was added: %q (%d lines)", got, ledgerLines(t, s))
 	}
 }
+
+// A row made from remaining is not written over an open row the agent wrote for the same area: the agent's row stays the latest
+// line of the area, so it is not a row that a handover takes over, and only a later result that records the area closes it. A row
+// made from remaining over an area that is closed, or over another remaining row, is written as before.
+func TestCoverageLedgerRemainingDoesNotReplaceAnAgentsOpenRow(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	h := CoverageHandover{Session: sessionX, Shown: []string{"export filters"}}
+	record(t, s, coverageA, []CoverageRow{{Area: "export filters", Outcome: CoverageOpen}}, CoverageHandover{})
+	record(t, s, coverageB, []CoverageRow{remainingRow("export filters", sessionX), remainingRow("export totals", sessionX)}, h)
+	rows, err := s.OpenCoverage(coverageScope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].Area != "export totals" || rows[0].Origin != CoverageFromRemaining || rows[1].Area != "export filters" || rows[1].Origin != "" || rows[1].Source != coverageA || ledgerLines(t, s) != 2 {
+		t.Fatalf("the agent's row is still the latest line of its area and the other remaining is written: %+v (%d lines)", rows, ledgerLines(t, s))
+	}
+	if handed := record(t, s, coverageC, nil, h); strings.Join(handed, "|") != "export totals" {
+		t.Fatalf("only the row made from remaining is taken over: %q", handed)
+	}
+	if got := openAreas(t, s); strings.Join(got, "|") != "export filters" {
+		t.Fatalf("the agent's row stays open: %q", got)
+	}
+	// a result that records the area itself closes it, and a remaining may open it again afterwards
+	record(t, s, coverageD, []CoverageRow{{Area: "export filters", Outcome: CoverageClear}}, CoverageHandover{})
+	record(t, s, "00000000000000e5", []CoverageRow{remainingRow("export filters", sessionX)}, CoverageHandover{})
+	if rows, _ := s.OpenCoverage(coverageScope); len(rows) != 1 || rows[0].Origin != CoverageFromRemaining {
+		t.Fatalf("a closed area is opened again by a remaining: %+v", rows)
+	}
+}

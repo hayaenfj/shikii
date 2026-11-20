@@ -167,7 +167,8 @@ func (s Store) OpenCoverage(scope string) ([]CoverageRow, error) {
 // whose outcome is open, and a row that closes an area the ledger holds open (reported, clear or excluded); a closing row for an area
 // that is not open is not written (the result's own saved source holds it). A row is not written again when the ledger already has a
 // line of the same area from the same source, so the same record sent again adds nothing, and an old result sent again cannot reopen
-// an area a later result closed.
+// an area a later result closed. A row made from remaining is not written over an open row the agent wrote (no origin) for the same
+// area: that row closes only when a later result records the area itself, and it would otherwise become a row that closes by itself.
 //
 // The result also closes the open rows made from remaining that it takes over (CoverageHandover), as excluded rows that name its
 // source. It does not close the area of a row it writes itself (the same left-over said again stays one open area, now from this
@@ -222,6 +223,9 @@ func (s Store) RecordCoverage(scope, source string, rows []CoverageRow, handover
 			prior, seen := latest[area]
 			if row.Outcome != CoverageOpen && (!seen || prior.Outcome != CoverageOpen) {
 				continue // nothing open to close
+			}
+			if row.Outcome == CoverageOpen && row.Origin == CoverageFromRemaining && seen && prior.Outcome == CoverageOpen && prior.Origin == "" {
+				continue // the agent's own open row stays as it is: a remaining must not turn it into a row that closes by itself
 			}
 			if err := add(row); err != nil {
 				return err

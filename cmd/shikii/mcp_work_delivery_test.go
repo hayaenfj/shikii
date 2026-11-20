@@ -246,6 +246,27 @@ func TestMCPCoverageHandoverFromRemainingToTheNextWork(t *testing.T) {
 	}
 }
 
+// A result that sends coverage rows and no open one hands its remaining over, over MCP only: the record names the area in
+// coverage.open next to rows, the next preparation lists it as from remaining, and the clear row did not become an open area.
+func TestMCPCoverageRowsDoNotKeepTheRemainingFromTheNextWork(t *testing.T) {
+	f := newMCPWikiFlow(t)
+	const area = "The import path was not read."
+	first := f.record(f.prepare(), map[string]any{"changed": "Audited the export.", "checked": "Read the export code.", "evidence": []any{"new1"}, "remaining": area,
+		"coverage": []any{map[string]any{"area": "export filters", "outcome": "clear", "evidence": "new1"}}})
+	first.holds(t, "coverage", area)
+	reply, _ := first.Structured["coverage"].(map[string]any)
+	opened, _ := reply["open"].([]any)
+	if first.Structured["complete"] != true || reply["rows"] != float64(1) || len(opened) != 1 || opened[0] != area {
+		t.Fatalf("the record names its row and the area it opened from its remaining: %.300s", first.Text)
+	}
+	second := f.prepare()
+	second.holds(t, "coverage", area, `"from":"remaining"`)
+	rows, _ := second.Structured["coverage"].(map[string]any)["rows"].([]any)
+	if len(rows) != 1 || rows[0].(map[string]any)["area"] != area || rows[0].(map[string]any)["from"] != "remaining" || strings.Contains(second.Text, "export filters") {
+		t.Fatalf("another session's preparation lists the area of the remaining, from remaining, and only it: %.300s", second.Text)
+	}
+}
+
 // The reply of a record is not reshaped by the MCP layer: a work that missed words and left an area unexamined gets both
 // missed_searches and coverage in the structured result and in the text the agent reads.
 func TestMCPRecordReplyKeepsMissedSearchesAndCoverage(t *testing.T) {

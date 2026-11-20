@@ -18,10 +18,18 @@ import (
 // until a later result closes the same area. A row is the agent's report of what it looked at: it never says that the area is
 // free of problems, and it is no permission.
 //
-// Agents write what they left in result.remaining and rarely send coverage rows. A result with no coverage row therefore leaves its
-// remaining (unless it says that nothing is left) in the ledger as an open row of origin remaining; a preparation lists it with
-// from:remaining; and the work that was handed it closes it by recording a result, as does the next result of the session that wrote it.
+// Agents write what they left in result.remaining and rarely send coverage rows. A result with no open coverage row (none at all, or
+// only reported, clear and excluded rows) therefore leaves its remaining (unless it says that nothing is left) in the ledger as an
+// open row of origin remaining; a preparation lists it with from:remaining; and the work that was handed it closes it by recording a
+// result, as does the next result of the session that wrote it. A result that wrote an open row itself uses the ledger for what it
+// left, and its remaining is not made a row (the same left-over would be listed twice).
+//
+// Only the result a receipt holds now (workState.Result) opens its remaining and takes rows over, and only once (CoverageHandled):
+// an older result that is sent again, or repaired by ref after a later one was recorded, must not change what the later one left.
 const workCoverageMax = 16
+
+// workCoverageHandledMax is how many sources of handled results a work remembers.
+const workCoverageHandledMax = 16
 
 // How many open rows a preparation names. The others are counted.
 const workCoverageShown = 5
@@ -167,12 +175,14 @@ func workRemainingArea(remaining string) (string, bool) {
 
 // recordWorkCoverage writes what the project's ledger keeps of a result that is ready, and tells the reply what the result opened
 // and handed over. It runs for a full record and for the repair of a result by ref, from the saved result: the coverage rows are
-// written, and a result with no coverage row writes its remaining as an open row of origin remaining (workRemainingArea). Every
-// ready result also closes the open rows of remaining that it takes over (store.CoverageHandover): the rows of its own session and
-// the rows its preparation listed. A record sent again writes nothing again. A ledger that cannot be written is an error of the
-// record (kind coverage): the same record sent again writes it. A result with nothing to write, whose ledger cannot be read, is not
-// failed for it.
-func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCompletion, session string, result *workResult, add func(workItem)) {
+// written; and a result that has no open coverage row writes its remaining as an open row of origin remaining (workRemainingArea).
+// The result the receipt holds now also closes the open rows of remaining that it takes over (store.CoverageHandover): the rows of
+// its own session and the rows its preparation listed. Both are done for that result only, and once: a result that was repaired by
+// ref while the receipt holds another one writes its coverage rows and nothing else, and a result whose source the work remembers
+// (CoverageHandled) takes nothing over when it is sent again. The source is saved with the work state by the next save of the
+// record, or at its end when none follows (unsaved). A record sent again writes nothing again. A ledger that cannot be written is an error of the record (kind coverage): the same record sent again
+// writes it, and the source is not remembered. A result with nothing to write, whose ledger cannot be read, is not failed for it.
+func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCompletion, session string, result *workResult, add func(workItem), unsaved func()) {
 	if c == nil {
 		return
 	}
@@ -191,6 +201,7 @@ func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCo
 			return
 		}
 	}
+	current := w.Result != nil && w.Result.Source == source
 	rows := saved.Coverage
 	ledger := make([]store.CoverageRow, len(rows))
 	open := []string{}
@@ -201,25 +212,49 @@ func recordWorkCoverage(root string, book notebook.Book, w *workState, c *workCo
 			open = append(open, area)
 		}
 	}
-	handover := store.CoverageHandover{Session: store.CoverageSession(session), Shown: w.CoverageShown}
-	if area, left := workRemainingArea(saved.Remaining); len(rows) == 0 && left {
-		ledger = append(ledger, store.CoverageRow{Area: area, Outcome: store.CoverageOpen, Origin: store.CoverageFromRemaining, Session: handover.Session})
+	var handover store.CoverageHandover
+	takesOver := current && !slices.Contains(w.CoverageHandled, source)
+	if takesOver {
+		handover = store.CoverageHandover{Session: store.CoverageSession(session), Shown: w.CoverageShown}
+	}
+	if area, left := workRemainingArea(saved.Remaining); current && left && !workCoverageOpen(rows) {
+		ledger = append(ledger, store.CoverageRow{Area: area, Outcome: store.CoverageOpen, Origin: store.CoverageFromRemaining, Session: store.CoverageSession(session)})
 		open = append(open, area)
 	}
 	st := store.Store{Dir: root}
-	if len(ledger) == 0 {
-		if held, err := st.OpenCoverage(book.Scope); err != nil || !slices.ContainsFunc(held, func(r store.CoverageRow) bool { return r.Origin == store.CoverageFromRemaining }) {
-			return // nothing to write and no row of remaining that this result could take over
+	var handed []string
+	// a result with no row to write needs the ledger only to take rows of remaining over
+	if len(ledger) > 0 || takesOver && ledgerHoldsRemaining(st, book.Scope) {
+		var err error
+		if handed, err = st.RecordCoverage(book.Scope, source, ledger, handover); err != nil {
+			fail(err)
+			return
 		}
-	}
-	handed, err := st.RecordCoverage(book.Scope, source, ledger, handover)
-	if err != nil {
-		fail(err)
-		return
 	}
 	if len(rows) > 0 || len(open) > 0 || len(handed) > 0 {
 		result.Coverage = &workCoverageReply{Rows: len(rows), Open: open, HandedOver: handed}
 	}
+	if w.rememberCoverageHandled(source) {
+		unsaved() // saved by the next save of the record, or by its end (workRecordPersistence.flush)
+	}
+}
+
+// rememberCoverageHandled adds the source of a result whose coverage was handled (newest first, at most workCoverageHandledMax of
+// them). It reports false when the work remembers the source already.
+func (w *workState) rememberCoverageHandled(source string) bool {
+	if slices.Contains(w.CoverageHandled, source) {
+		return false
+	}
+	w.CoverageHandled = append([]string{source}, w.CoverageHandled...)
+	w.CoverageHandled = w.CoverageHandled[:min(len(w.CoverageHandled), workCoverageHandledMax)]
+	return true
+}
+
+// ledgerHoldsRemaining reports whether the project's ledger holds an open row made from remaining, which a result could take over.
+// A ledger that cannot be read holds none for this purpose: a result with nothing to write is not failed for it.
+func ledgerHoldsRemaining(st store.Store, scope string) bool {
+	held, err := st.OpenCoverage(scope)
+	return err == nil && slices.ContainsFunc(held, func(r store.CoverageRow) bool { return r.Origin == store.CoverageFromRemaining })
 }
 
 // preparedCoverage is the open rows of the project's ledger for a preparation, or nil when none is open, and the areas of the rows it

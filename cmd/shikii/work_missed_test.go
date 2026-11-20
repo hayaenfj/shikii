@@ -435,10 +435,10 @@ func TestTheSameWordsMissingAgainAreToldWhereTheEarlierResultIs(t *testing.T) {
 		t.Fatalf("the note is about 350 bytes at most: %d", len(next))
 	}
 	for _, part := range []string{
-		"An earlier work searched these same words, found no article, and recorded a result",
+		"These same words found no article before, and a work that was open then recorded a result",
 		"Read that result with a query of its id",
 		"what was found or where the answer is written",
-		"that work's own report, not an article and not verified",
+		"that work's own report (it may not be the work that searched), not an article and not verified",
 		"confirm it before relying on it",
 	} {
 		if !strings.Contains(next, part) {
@@ -459,6 +459,24 @@ func TestTheSameWordsMissingAgainAreToldWhereTheEarlierResultIs(t *testing.T) {
 	listing, _ := f.wiki("")["missed_searches"].([]any)
 	if len(listing) != 1 || listing[0].(map[string]any)["result"] != id {
 		t.Fatalf("the listing of open misses carries the result: %v", listing)
+	}
+}
+
+// The note does not say that the work whose result it names searched the words: it names the work that was open when the words
+// missed and then recorded a result, which several sessions of one project running side by side make a different work.
+func TestEarlierSearchNoteDoesNotSayTheWorkThatSearched(t *testing.T) {
+	f := newMissedFlow(t)
+	first := f.prepare("export audit", "")
+	other := f.prepare("export audit", "")
+	f.prepare("saffron lanterns", first["receipt"].(string)) // only the first work searches the words
+	idOther := resultID(t, f.record(other, goodResult()))    // the work that never searched records first, and the words are tied to its result
+	earlier := earlierSearchOf(t, f.wiki("saffron lanterns"))
+	next, _ := earlier["next_action"].(string)
+	if earlier["result"] != idOther {
+		t.Fatalf("the words are tied to the result of the work that recorded while they missed: %v (want %s)", earlier, idOther)
+	}
+	if strings.Contains(next, "An earlier work searched") || strings.Contains(next, "earlier work searched") || !strings.Contains(next, "it may not be the work that searched") {
+		t.Fatalf("the note must not say that the work of that result searched the words: %q", next)
 	}
 }
 
@@ -643,5 +661,77 @@ func TestRecordThatIsNotCompleteTiesNothing(t *testing.T) {
 	}
 	if _, result, found := f.journalMiss("charlie delta"); !found || result != "" {
 		t.Fatalf("a record that is not complete ties nothing: %q %v", result, found)
+	}
+}
+
+// The search of a prepare that carries a receipt closes the miss of the same words when it returns an article, as the lookup of a
+// wiki query does: the journal does not keep a gap the wiki has answered since, so a later search that finds nothing again is not
+// pointed at the result of an old miss.
+func TestPrepareWithAReceiptClosesTheMissOfWordsThatNowFindAnArticle(t *testing.T) {
+	f := newMissedFlow(t)
+	receipt := f.prepare("export audit", "")["receipt"].(string)
+	f.wiki("import retries")
+	f.wiki("saffron lanterns")
+	if got := f.journalMisses(); !slices.Equal(got, []string{"import retries", "saffron lanterns"}) {
+		t.Fatalf("both searches missed: %q", got)
+	}
+	loopPage(t, f.b, f.source, map[string]any{"title": "Import retries", "lesson": "Retry a failed import three times.", "applies_to": "import retries"})
+	prepared := f.prepare("  import   retries ", receipt)
+	if knowledge, _ := prepared["knowledge"].([]any); len(knowledge) == 0 {
+		t.Fatalf("the search of the prepare returns the article: %v", prepared["knowledge_context"])
+	}
+	if got := f.journalMisses(); !slices.Equal(got, []string{"saffron lanterns"}) {
+		t.Fatalf("the miss of the answered words is closed, and the other one stays: %q", got)
+	}
+	// a search that found nothing again keeps its miss, with the result it was tied to
+	f.prepare("saffron lanterns", receipt)
+	if got := f.journalMisses(); !slices.Equal(got, []string{"saffron lanterns"}) {
+		t.Fatalf("a search without a candidate closes nothing: %q", got)
+	}
+}
+
+// A prepare whose search returns an article and whose words have no miss does not write the journal: the file is not touched.
+func TestPrepareWithAReceiptLeavesTheJournalAloneWhenNoMissIsClosed(t *testing.T) {
+	f := newMissedFlow(t)
+	receipt := f.prepare("export audit", "")["receipt"].(string)
+	f.wiki("saffron lanterns")
+	path := f.journalPath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	past := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	if err := os.Chtimes(path, past, past); err != nil {
+		t.Fatal(err)
+	}
+	prepared := f.prepare("export audit", receipt) // an article is returned, and no miss has these words
+	if knowledge, _ := prepared["knowledge"].([]any); len(knowledge) == 0 {
+		t.Fatalf("the search returns the article: %v", prepared["knowledge_context"])
+	}
+	info, err := os.Stat(path)
+	after, readErr := os.ReadFile(path)
+	if err != nil || readErr != nil || string(after) != string(data) || !info.ModTime().Equal(past) {
+		t.Fatalf("the journal was written although no miss was closed: %v %v %s", err, readErr, after)
+	}
+}
+
+// Ids are not words: a prepare that carries a receipt and asks for several ids, or for an id in upper case, is not a search of
+// words that found nothing, so no miss is kept. A word of 16 characters that is not hexadecimal, and ids mixed with words, are
+// searches of words and are kept.
+func TestIDsAreNotKeptAsMissedSearchesOfAPrepareWithAReceipt(t *testing.T) {
+	f := newMissedFlow(t)
+	receipt := f.prepare("export audit", "")["receipt"].(string)
+	for _, query := range []string{"0123456789abcdef 0123456789abcdee", "ABCDEF0123456789", "0123456789abcdef  0123456789ABCDEF\n"} {
+		f.prepare(query, receipt)
+	}
+	if got := f.journalMisses(); len(got) != 0 {
+		t.Fatalf("ids were kept as missed word searches: %q", got)
+	}
+	kept := []string{"0123456789abcdeg", "0123456789abcdef saffron"}
+	for _, query := range kept {
+		f.prepare(query, receipt)
+	}
+	if got := f.journalMisses(); !slices.Equal(got, kept) {
+		t.Fatalf("a word that is not an id, and an id among words, are searches of words: %q", got)
 	}
 }

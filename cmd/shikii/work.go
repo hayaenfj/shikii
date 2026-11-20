@@ -201,6 +201,7 @@ type workState struct {
 	ObservedBase    int                                   `json:"observed_base,omitempty"` // observedN taken over from an interrupted request: new ones follow
 	Reports         map[string]bool                       `json:"reports,omitempty"`       // sources this work wrote about itself (results, ending reviews): never its evidence, never handed over
 	CoverageShown   []string                              `json:"coverage_shown,omitempty"`
+	CoverageHandled []string                              `json:"coverage_handled,omitempty"` // sources of the results whose coverage was handled: newest first, at most workCoverageHandledMax (work_coverage.go)
 	citingEvidence  bool                                  // a refusal names what evidence can cite, not every source; never saved
 }
 type workToken struct {

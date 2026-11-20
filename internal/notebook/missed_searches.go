@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -12,8 +13,8 @@ import (
 
 // A missed search is a word search of the wiki that found no candidate at all. The journal keeps the words (never an answer), so a
 // later task can see which topics the wiki could not answer. It is a note on a gap, not evidence that an article is missing: a
-// miss closes by itself once the same words find a candidate (OpenMisses), and RecordLookup drops it when a lookup of the same
-// words returns an article.
+// miss closes by itself once the same words find a candidate (OpenMisses), and RecordLookup (a wiki query) or CloseMiss (the search
+// of a prepare with a receipt) drops it when a search of the same words returns an article.
 const (
 	// missedSearchMax is how many misses the journal keeps. The oldest are dropped first.
 	missedSearchMax = 64
@@ -73,6 +74,19 @@ func (l *missedList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// sourceIDWord is a word that is the id of a source in any case: 16 hexadecimal digits.
+var sourceIDWord = regexp.MustCompile(`^[0-9a-fA-F]{16}$`)
+
+// onlySourceIDs reports whether every word of the normalized query is the id of a source (one id, several ids, upper case too).
+func onlySourceIDs(q string) bool {
+	for _, word := range strings.Fields(q) {
+		if !sourceIDWord.MatchString(word) {
+			return false
+		}
+	}
+	return q != ""
+}
+
 // normalizeMissQuery is the form in which two queries count as the same search.
 func normalizeMissQuery(query string) string {
 	return strings.Join(strings.Fields(query), " ")
@@ -81,13 +95,14 @@ func normalizeMissQuery(query string) string {
 // missQuery is the allow-list of what a miss is kept for: the first page of a search (no cursor) for words, in at most
 // missQueryMax bytes of UTF-8, that are not a reference. It returns the normalized words. Whatever is not listed here is never
 // recorded, so a new kind of query is not recorded until it is added here. OpenMisses applies the same list to what it reads.
+// A query whose words are all ids of sources (one or several, in any case) is a reading of sources, not a search of words.
 func missQuery(query, cursor string) (string, bool) {
 	if cursor != "" || len(query) > missQueryMax || !utf8.ValidString(query) {
 		return "", false
 	}
 	q := normalizeMissQuery(query)
-	// "lesson:<id>" reads an article and a 16-digit hexadecimal word is the id of a source: neither is a search of words.
-	if q == "" || strings.HasPrefix(q, "lesson:") || idPattern.MatchString(q) {
+	// "lesson:<id>" reads an article and a word of 16 hexadecimal digits is the id of a source: neither is a search of words.
+	if q == "" || strings.HasPrefix(q, "lesson:") || onlySourceIDs(q) {
 		return "", false
 	}
 	return q, true
@@ -124,7 +139,7 @@ func withoutMiss(misses []Miss, query string) []Miss {
 // carries a receipt. The query of a standalone preparation is the topic of a task, not a question, and does not call it. It keeps
 // the words of a search that found no candidate (a repeated search keeps one entry with a newer time, and keeps the result the
 // earlier one was tied to). It records nothing for any other query or page, and the internal searches of the wiki (delivery,
-// placement, consultation) never call it. A search that found a candidate is not recorded here; its lookup closes the miss.
+// placement, consultation) never call it. A search that found a candidate is not recorded here; its lookup (or CloseMiss) closes the miss.
 //
 // It returns the earlier miss of the same words (as it was before this search) when that one was tied to a result, so the caller can
 // say where that result is; otherwise it returns nil.
@@ -178,6 +193,24 @@ func (b Book) updateJournal(create bool, update func(*searchJournal) bool) error
 		return nil
 	}
 	return saveSearchJournal(dir, j)
+}
+
+// CloseMiss drops the miss of the given words: a search of them returned a candidate, so the gap it noted is closed (the journal
+// would otherwise keep it, and a later search that found nothing again would be pointed at the result it was tied to). It writes
+// nothing when the journal does not exist, when it holds no miss of these words, and for a query that is not a search of words
+// (missQuery). The caller treats it as best effort.
+func (b Book) CloseMiss(query string) error {
+	q, ok := missQuery(query, "")
+	if !ok {
+		return nil
+	}
+	return b.updateJournal(false, func(j *searchJournal) bool {
+		if lastMiss(j.Misses, q) == nil {
+			return false
+		}
+		j.Misses = withoutMiss(j.Misses, q)
+		return true
+	})
 }
 
 // NoteMissResult ties the misses of the given words to a saved result: the id of the result of the work that had them open. A
