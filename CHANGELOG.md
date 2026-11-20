@@ -7,7 +7,7 @@
 ### Changes
 
 - When a search of several words finds nothing and one of the words finds an article alone, the reply now names that word. A search of several words needs at least two of them in one article, so a list of alternative words for one thing found nothing even when one of them was in an article.
-- The pointer for words that found nothing before now leads only to a work record that speaks of those words. Until now it led to the record of the task that was open when the words found nothing, so it could lead to a record that said nothing about them.
+- The pointer for words that found nothing before now leads only to a work record that speaks of those words. Until now it could lead to a record that said nothing about them.
 - Words that found nothing in a search that continues a task's preparation are now reported only in the record of the session that searched. They no longer appear in the record of another session running at the same time. Words searched with `shikii wiki query` carry no session, so they are still reported in the record of the task that was open then.
 - When the reply to a task's preparation is over its size limit, shikii now names fewer of the areas that were not examined before it drops the text of an article. An area that is not named stays open and reaches a later task.
 
