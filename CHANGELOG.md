@@ -7,9 +7,9 @@
 ### Changes
 
 - When an agent writes what is left in its work record, the next task now receives it when it starts. Until now the note stayed in the record and never reached the agent of the next session. When the task that received it records its own result, the item is closed; if it is still left, the agent writes it again in its own record.
-- An agent can now record which areas it examined. For each area it says one of four things: a problem was reported, it was examined and no problem was found, it was left out on purpose, or it was not examined. An area that was not examined is delivered at the start of every task until a later task records that it examined it.
-- When a search of the wiki by words finds nothing, shikii now remembers the words. They appear in the reply to the work record and in the wiki's maintenance list, so you can see which topics the wiki lacks. They leave the list once an article is added and the same words find it.
-- When the same words find nothing again, shikii points to the record of the earlier task that searched them. If that task found the answer somewhere else, the agent can follow it from there. What it points to is that task's own report, not a verified article.
+- An agent can now record which areas it examined. For each area it says one of four things: a problem was reported, it was examined and no problem was found, it was left out on purpose, or it was not examined. An area that was not examined is delivered when a later task starts (the five newest are named and the rest are counted). It is closed when a later task records that it examined the area or left it out on purpose.
+- When a search of the wiki by words finds nothing, shikii now remembers the words. The agent is told the words when it records its work and when it tidies the wiki, so it can see which topics the wiki may lack. Once an article is added and the same words find it, they are no longer reported.
+- When the same words find nothing again, and the task during which they found nothing recorded its result, shikii points to that record. If that task found the answer somewhere else, the agent can follow it from there. What it points to is that task's own report, not a verified article.
 
 ### Fixes
 
