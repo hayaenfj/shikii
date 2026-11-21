@@ -98,6 +98,7 @@ export const api = {
     return result;
   }),
   label: body => post('v1/label', body),
+  setModel: model => post('v1/model', { model }),
   redo: body => post('v1/redo', body),
   // The person undoes the AI's rejection of one past answer ({ trace_id }) or its stop of showing past answers ({ stop: true })
   restoreAnswers: body => post('v1/answers/restore', body),

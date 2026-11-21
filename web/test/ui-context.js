@@ -108,6 +108,32 @@ export async function checkSummary(target) {
 }
 
 
+// The project's choice of model on AI status: the current choice is pressed, pressing another posts it to v1/model and reads the
+// status again, and choosing Jev without a key says that nothing can go to Jev
+export async function checkModelChoice(target) {
+  const realFetch = globalThis.fetch; const state = data.state; const saved = { ...ui };
+  const summary = { person: {}, memory: {}, guards: {} };
+  let model = { name: 'local', endpoint: 'http://127.0.0.1:8080', choice: '', has_key: false };
+  const posts = [];
+  globalThis.fetch = async (url, opts) => {
+    if (url === 'v1/model') { const body = JSON.parse(opts.body); posts.push(body); model = { ...model, choice: body.model }; return { ok: true, json: async () => ({ choice: body.model }) }; }
+    return { ok: true, json: async () => url === 'v1/status' ? { specs: loadingSpecs(), summary, model } : { items: [] } };
+  };
+  Object.assign(ui, { page: 'ai', tab: '', done: false, pinned: '' });
+  const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); flushSync(); };
+  const app = mount(App, { target }); await settle(); await settle();
+  const pressed = () => target.querySelector('[data-model-choice] [aria-checked="true"]')?.dataset.model;
+  const before = pressed() === 'default' && !target.querySelector('[data-model-no-key]');
+  target.querySelector('[data-model="hosted"]')?.click(); await settle(); await settle(); await settle();
+  const posted = JSON.stringify(posts) === JSON.stringify([{ model: 'hosted' }]);
+  const after = pressed() === 'hosted' && !!target.querySelector('[data-model-no-key]');
+  target.querySelector('[data-model="hosted"]')?.click(); await settle();
+  const noRepeat = posts.length === 1;
+  unmount(app); globalThis.fetch = realFetch; data.state = state; Object.assign(ui, saved);
+  const ok = before && posted && after && noRepeat;
+  console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (the project\'s model on AI status: current choice pressed=' + before + ', posted to v1/model=' + posted + ', status read again with the no-key note=' + after + ', the pressed one is not posted again=' + noRepeat + ')');
+  return ok;
+}
 
 // 0.8.0: a decision a person does not answer (wiki conflict) shows no waiting marker and no answer buttons on the card, and shows a one-line notice. Keys do not press anything either.
 export async function checkMachineOnlySpec(target) {

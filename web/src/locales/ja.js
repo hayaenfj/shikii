@@ -1,5 +1,8 @@
 // 日本語の辞書。キーは en.js と同じ(npm run check が揃いを見る)。0.9.2 から内側の言葉を言い換え表(scripts/test-glossary.mjs)のやさしい言葉にした
 export default {
+  modelChoiceLabel: 'このプロジェクトで見立てを出す AI', modelChoiceDefault: '機械の設定に従う(SHIKII_MODEL)', modelChoiceHosted: 'TypeSafe の Jev', modelChoiceLocal: '手元のモデル',
+  modelNoKey: 'TYPESAFE_API_KEY が無いので、Jev には送れません。キーを置くまで AI の見立ては付きません。', modelLocalNote: 'このプロジェクトの依頼・返答・ファイルの抜粋は、APIキーがあっても機械の外へ出ません。手元のモデルが動いていなければ、次の依頼で shikii が起動します。',
+  modelSaved: 'このプロジェクトの AI を変えました(次の見立てから)', modelFailed: m => 'AI を変えられませんでした: ' + m,
   summaryModel: (name, endpoint) => '答えを出す AI(モデル): ' + (name || '不明') + (endpoint ? '（' + endpoint + '）' : ''),
   summarySpecWording: '新しい聞き方の確かめが「答える」で待っています', summarySpecAuto: 'AI がひとりで決めています(確かめた正解が十分に集まりました)', summarySpecLearning: (n, min) => '学習中 ' + n + ' / ' + min + ' 件(正解が ' + min + ' 件集まると、AI がひとりで決められるか試します)',
   summarySpecResults: n => '結果待ち ' + n, summarySpecMachine: n => 'AI だけが答える問い(あなたは答えません)。結果待ち ' + n + ' 件',

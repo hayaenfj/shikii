@@ -9,7 +9,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-2511%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2512%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.39.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -92,7 +92,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 
 ### 1. TypeSafeのAPIキーを置く（推奨）
 
-[TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart)でAPIキーを取得し、シェルとエージェントの環境変数に置きます（`export TYPESAFE_API_KEY=…`）。取得するものはなく、普通のPCで動きます。APIキーがあれば、hookも既製の問いもJevへ送り、手元のモデルは起こしません（`shikii up` も起こしません）。既製の問いのために、依頼文・エージェントの返答・wikiの教訓がTypeSafeへ送られます（手元の記録にも残ります）。APIキーを置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jevに固定するなら `SHIKII_MODEL=hosted` を置きます。プロジェクトごとにも選べます。`shikii init --model local` のプロジェクトは、APIキーがあっても依頼・返答・ファイルの抜粋を機械の外へ出しません(hook がそのプロジェクトのために手元のモデルを起こします)。`shikii init --model hosted` なら Jev です。選んだ物は `.shikii/project.json` に残り、`SHIKII_MODEL` より先に効き、`--model` を付けずに `shikii init` をやり直しても変わりません。
+[TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart)でAPIキーを取得し、シェルとエージェントの環境変数に置きます（`export TYPESAFE_API_KEY=…`）。取得するものはなく、普通のPCで動きます。APIキーがあれば、hookも既製の問いもJevへ送り、手元のモデルは起こしません（`shikii up` も起こしません）。既製の問いのために、依頼文・エージェントの返答・wikiの教訓がTypeSafeへ送られます（手元の記録にも残ります）。APIキーを置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jevに固定するなら `SHIKII_MODEL=hosted` を置きます。プロジェクトごとにも、画面(AI の状態の「このプロジェクトで見立てを出す AI」)か次のコマンドで選べます。`shikii init --model local` のプロジェクトは、APIキーがあっても依頼・返答・ファイルの抜粋を機械の外へ出しません(hook がそのプロジェクトのために手元のモデルを起こします)。`shikii init --model hosted` なら Jev です。選んだ物は `.shikii/project.json` に残り、`SHIKII_MODEL` より先に効き、`--model` を付けずに `shikii init` をやり直しても変わりません。
 
 **APIキーを置けない時はllama.cppです。** APIキーが無ければ手元のモデルを動かします。27Bのモデルなので動作中のメモリが約10GB要り、普通のPCでは重いことがあります。macOSでHomebrewなら:
 

@@ -2,7 +2,18 @@
   // The section at the bottom of AI status (0.9.1; in 0.8.0 it was the band at the top of the page): the decision model, the share of decisions waiting for a person, whether delivered lessons worked,
   // the routine before and after work, and guards. The same numbers as `shikii status`
   import { t, fmtDateTime } from '../lib/i18n.svelte.js';
+  import { api } from '../lib/api.js';
+  import { load } from '../lib/state.svelte.js';
+  import { toast } from '../lib/toast.svelte.js';
   let { summary, model = null } = $props();
+  // This project's choice of model (the same as shikii init --model): '' follows SHIKII_MODEL, 'hosted' is Jev, 'local' the local model
+  let saving = $state(false);
+  async function choose(choice) {
+    if (saving || (model?.choice || '') === choice) return;
+    saving = true;
+    try { await api.setModel(choice); toast(t('modelSaved')); load(); } catch (e) { toast(t('modelFailed')(e.message)); } finally { saving = false; }
+  }
+  const choiceButton = on => 'rounded-lg border px-3 py-1.5 text-[13px] ' + (on ? 'border-accent bg-accentbg font-semibold text-fg' : 'border-line bg-surface hover:bg-surface2');
   let m = $derived(summary.memory || {});
   let g = $derived(summary.guards || {});
   let p = $derived(summary.person || {});
@@ -37,6 +48,16 @@
   <section class="{panel} col-span-2 max-lg:col-span-1">
     <h3 class={head}>{t('summaryModelHead')}</h3>
     <p>{t('summaryModel')(model?.name || '', model?.endpoint || '')}</p>
+    <div class="my-2" role="radiogroup" aria-label={t('modelChoiceLabel')} data-model-choice>
+      <p class="text-muted">{t('modelChoiceLabel')}</p>
+      <div class="flex flex-wrap gap-2">
+        {#each ['', 'hosted', 'local'] as c (c)}
+          <button type="button" role="radio" aria-checked={(model?.choice || '') === c} data-model={c || 'default'} class={choiceButton((model?.choice || '') === c)} disabled={saving} onclick={() => choose(c)}>{t(c === 'hosted' ? 'modelChoiceHosted' : c === 'local' ? 'modelChoiceLocal' : 'modelChoiceDefault')}</button>
+        {/each}
+      </div>
+      {#if model?.choice === 'hosted' && !model?.has_key}<p class="mt-1 text-amber" data-model-no-key>{t('modelNoKey')}</p>{/if}
+      {#if model?.choice === 'local'}<p class="mt-1 text-muted">{t('modelLocalNote')}</p>{/if}
+    </div>
     <p class="text-muted">{t('summaryPersonRow')(p)}</p>
   </section>
 </div>

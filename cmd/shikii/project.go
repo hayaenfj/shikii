@@ -191,13 +191,32 @@ func finishProjectInitModel(root, scope string, version int, model string) error
 			}
 		}
 	}
+	return writeProjectActivation(root, projectActivation{Version: version, Scope: scope, Model: model})
+}
+
+// setProjectModel changes the model an initialized project chose ("hosted", "local", or "" to follow SHIKII_MODEL again). The page
+// sets it; shikii init --model sets it at initialization.
+func setProjectModel(root, model string) error {
+	if model != "" && validModel(model) == "" {
+		return errors.New(`model is "hosted", "local" or "" (follow SHIKII_MODEL)`)
+	}
+	a, ok := readProjectFile(filepath.Join(root, "project.json"))
+	if !ok {
+		return errProjectInactive
+	}
+	a.Model = model
+	return writeProjectActivation(root, a)
+}
+
+// writeProjectActivation replaces root's project.json in one rename.
+func writeProjectActivation(root string, a projectActivation) error {
 	marker := filepath.Join(root, "project.json")
 	if info, err := os.Lstat(marker); err == nil && !info.Mode().IsRegular() {
 		return errors.New("the initialization mark cannot be a link")
 	} else if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	data, _ := json.Marshal(projectActivation{Version: version, Scope: scope, Model: model})
+	data, _ := json.Marshal(a)
 	f, err := os.CreateTemp(root, ".project-init-*")
 	if err != nil {
 		return err

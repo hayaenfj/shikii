@@ -2,6 +2,9 @@
 // A value is a string or a function that takes arguments and returns a string. langName is this language's own name in the language picker.
 // From 0.9.2 the words for the AI's insides follow the glossary in scripts/test-glossary.mjs
 export default {
+  modelChoiceLabel: 'The AI this project\'s decisions use', modelChoiceDefault: 'Follow this machine (SHIKII_MODEL)', modelChoiceHosted: 'TypeSafe\'s Jev', modelChoiceLocal: 'The local model',
+  modelNoKey: 'TYPESAFE_API_KEY is not set, so nothing can go to Jev: decisions get no answer until the key is set.', modelLocalNote: 'This project\'s requests, replies and file excerpts stay on this machine even with an API key. If the local model is not running, shikii starts it at the next request.',
+  modelSaved: 'Changed this project\'s AI (from the next decision on)', modelFailed: m => 'Could not change the AI: ' + m,
   summaryModel: (name, endpoint) => 'The AI that answers (model): ' + (name || 'unknown') + (endpoint ? ' (' + endpoint + ')' : ''),
   summarySpecWording: 'a new wording waits for your check on "Answer"', summarySpecAuto: 'The AI decides on its own (enough truths were checked)', summarySpecLearning: (n, min) => 'learning ' + n + ' / ' + min + ' (with ' + min + ' truths the AI tries deciding on its own)',
   summarySpecResults: n => 'awaiting results ' + n, summarySpecMachine: n => 'answered by the AI only (you do not answer). Awaiting results ' + n,

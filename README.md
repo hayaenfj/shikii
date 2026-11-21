@@ -9,7 +9,7 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-2511%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2512%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.39.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -91,7 +91,7 @@ Everything else is the machine's job.
 
 ### 1. Put a TypeSafe API key in the environment (recommended)
 
-Get an API key from [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart) and put it in the environment of your shell and your agent (`export TYPESAFE_API_KEY=…`). Nothing is downloaded and an ordinary PC is enough. With the API key, the hooks and the built-in questions go to Jev and no local model is started (`shikii up` does not start one either). The request text, the agent's reply and wiki lessons are sent to TypeSafe for the built-in questions; they also stay in the local records. `SHIKII_MODEL=local` keeps a local model even with an API key; `SHIKII_MODEL=hosted` forces Jev. A project can choose for itself with `shikii init --model local` (its requests, replies and file excerpts stay on this machine even with a key; the hooks start the local model for it) or `shikii init --model hosted`. The choice is kept in `.shikii/project.json`, comes before `SHIKII_MODEL`, and running `shikii init` again without `--model` keeps it.
+Get an API key from [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart) and put it in the environment of your shell and your agent (`export TYPESAFE_API_KEY=…`). Nothing is downloaded and an ordinary PC is enough. With the API key, the hooks and the built-in questions go to Jev and no local model is started (`shikii up` does not start one either). The request text, the agent's reply and wiki lessons are sent to TypeSafe for the built-in questions; they also stay in the local records. `SHIKII_MODEL=local` keeps a local model even with an API key; `SHIKII_MODEL=hosted` forces Jev. A project can choose for itself on its page (AI status → "The AI this project's decisions use"), or with `shikii init --model local` (its requests, replies and file excerpts stay on this machine even with a key; the hooks start the local model for it) or `shikii init --model hosted`. The choice is kept in `.shikii/project.json`, comes before `SHIKII_MODEL`, and running `shikii init` again without `--model` keeps it.
 
 **Without an API key: llama.cpp.** shikii then runs a local model. It is a 27B model that needs about 10 GB of memory while running, which can be heavy for an ordinary PC. On macOS with Homebrew:
 

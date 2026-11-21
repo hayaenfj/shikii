@@ -5,6 +5,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -163,9 +165,10 @@ func TestInitModelArg(t *testing.T) {
 // project's choice or SHIKII_MODEL.
 func modelReads(fset *token.FileSet, files map[string]*ast.File) []string {
 	allowed := map[string]string{
-		"modelChoice":    "SHIKII_MODEL", // reads the environment variable, for modelChoiceFor only
-		"modelChoiceFor": "modelChoice",
-		"projectModel":   "Model",
+		"modelChoice":     "SHIKII_MODEL", // reads the environment variable, for modelChoiceFor only
+		"modelChoiceFor":  "modelChoice",
+		"projectModel":    "Model",
+		"setProjectModel": "Model", // writes the choice the page sets; it never decides which model answers
 	}
 	var bad []string
 	for name, f := range files {
@@ -228,5 +231,68 @@ func modelChoiceFor(store string) string { return modelChoice() }
 	want := []string{"stray.go: stray reads SHIKII_MODEL", "stray.go: stray reads modelChoice"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+// The page sets the project's choice through v1/model; the status shows it, a request from another origin is refused, and the
+// next decisions of this project follow it.
+func TestThePageSetsTheProjectsModel(t *testing.T) {
+	t.Setenv("TYPESAFE_API_KEY", "test-key")
+	t.Setenv("DECISIONS_API_KEY", "")
+	t.Setenv("SHIKII_MODEL", "")
+	store := modelStore(t, "")
+	if err := os.MkdirAll(filepath.Join(store, "decisions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := seedAgentSpecs(filepath.Join(store, "decisions")); err != nil {
+		t.Fatal(err)
+	}
+	h := newServer(serveOpts{storeDir: store})
+	post := func(body, origin string) int {
+		req := httptest.NewRequest(http.MethodPost, "/v1/model", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w.Code
+	}
+	if code := post(`{"model":"local"}`, ""); code != 200 || projectModel(store) != "local" || usesHosted(store) {
+		t.Fatalf("the page chooses local: %d %q", code, projectModel(store))
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/status", nil))
+	var st struct {
+		Model struct {
+			Name, Choice string
+			HasKey       bool `json:"has_key"`
+		}
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &st); err != nil || st.Model.Choice != "local" || st.Model.Name != "local" || !st.Model.HasKey {
+		t.Fatalf("the status shows the choice and the AI that answers: %+v %v", st.Model, err)
+	}
+	if code := post(`{"model":"hosted"}`, "https://example.com"); code != 403 || projectModel(store) != "local" {
+		t.Fatalf("another site cannot change it: %d %q", code, projectModel(store))
+	}
+	if code := post(`{"model":"jev"}`, ""); code != 400 || projectModel(store) != "local" {
+		t.Fatalf("an unknown model is refused: %d %q", code, projectModel(store))
+	}
+	if code := post(`{"model":""}`, ""); code != 200 || projectModel(store) != "" || !usesHosted(store) {
+		t.Fatalf("an empty choice follows SHIKII_MODEL again: %d %q", code, projectModel(store))
+	}
+	b, _ := os.ReadFile(filepath.Join(store, "project.json"))
+	var a projectActivation
+	if json.Unmarshal(b, &a) != nil || a.Version != projectInitVersionNow || a.Scope == "" {
+		t.Fatalf("changing the model keeps the initialization mark: %s", b)
+	}
+	if code := post(`{"model":"local"}`, ""); code != 200 {
+		t.Fatal(code)
+	}
+	if err := os.Remove(filepath.Join(store, "project.json")); err != nil {
+		t.Fatal(err)
+	}
+	if code := post(`{"model":"local"}`, ""); code != 400 {
+		t.Fatalf("a store that is not an initialized project is not made one: %d", code)
 	}
 }

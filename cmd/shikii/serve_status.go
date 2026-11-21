@@ -167,6 +167,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if usesHosted(s.o.storeDir) {
 		modelName, endpoint = "TypeSafe Jev", systemone.RedactURL(s.o.ef.hosted)
 	}
-	writeJSON(w, 200, map[string]any{"specs": out, "project_name": filepath.Base(s.o.projectScope), "auto_calibrate": s.o.autoCalibrate, "store": s.o.storeDir, "model": map[string]any{"name": modelName, "endpoint": endpoint},
+	// choice is the project's own choice ("" follows SHIKII_MODEL); the page changes it through v1/model
+	writeJSON(w, 200, map[string]any{"specs": out, "project_name": filepath.Base(s.o.projectScope), "auto_calibrate": s.o.autoCalibrate, "store": s.o.storeDir, "model": map[string]any{"name": modelName, "endpoint": endpoint, "choice": projectModel(s.o.storeDir), "has_key": hostedKey() != ""},
 		"summary": statusSummary(s.st, s.o.storeDir, s.o.projectScope, person, time.Now()), "page": page})
 }
