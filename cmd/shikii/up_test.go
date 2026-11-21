@@ -51,13 +51,13 @@ func TestProbeDecisionModel(t *testing.T) {
 // up decides first what to start: a decision model as is, a plain GGUF with readout in front. Without llama-server it says how to install it.
 func TestUpPlan(t *testing.T) {
 	p := upPlan(upOpts{hf: defaultModel, port: 8080}, "/opt/homebrew/bin/llama-server")
-	if len(p.server) == 0 || p.server[0] != "/opt/homebrew/bin/llama-server" || !contains(p.server, "-hf") || !contains(p.server, "prism-ml/Ternary-Bonsai-27B-gguf") || !contains(p.server, "--hff") || !contains(p.server, "Ternary-Bonsai-27B-Q2_g64.gguf") || !contains(p.server, "8086") || contains(p.server, "8080") || p.llamaPort != 8086 {
+	if len(p.server) == 0 || p.server[0] != "/opt/homebrew/bin/llama-server" || !contains(p.server, "-hf") || !contains(p.server, "prism-ml/Ternary-Bonsai-27B-gguf") || !contains(p.server, "--hf-file") || !contains(p.server, "Ternary-Bonsai-27B-Q2_g64.gguf") || !contains(p.server, "8086") || contains(p.server, "8080") || p.llamaPort != 8086 {
 		t.Fatalf("llama-server must start on the back port (--port + 6) with the file named explicitly (Q2_g64 is not a Hugging Face quant tag), leaving --port to shikii-readout: %v", p.server)
 	}
 	if strings.Contains(defaultModel, "Kev") {
 		t.Fatal("the default model is the plain GGUF that measured best (Ternary-Bonsai-27B), not Kev")
 	}
-	if q := upPlan(upOpts{hf: "ggml-org/OpenJev-GGUF:Q4_K_M", port: 8080}, "/opt/homebrew/bin/llama-server"); !contains(q.server, "ggml-org/OpenJev-GGUF:Q4_K_M") || contains(q.server, "--hff") {
+	if q := upPlan(upOpts{hf: "ggml-org/OpenJev-GGUF:Q4_K_M", port: 8080}, "/opt/homebrew/bin/llama-server"); !contains(q.server, "ggml-org/OpenJev-GGUF:Q4_K_M") || contains(q.server, "--hf-file") {
 		t.Fatalf("a quant tag is passed to -hf as is: %v", q.server)
 	}
 	for _, o := range []upOpts{{hf: "ggml-org/Kev-4B-GGUF:Q4_K_M", port: 8080}, {gguf: "/models/kev-4b-q4.gguf", port: 8080}} {

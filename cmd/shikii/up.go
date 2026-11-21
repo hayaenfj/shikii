@@ -26,13 +26,13 @@ import (
 
 // defaultModel is the default model (a plain chat GGUF, used at decision-model speed with upstream llama.cpp and shikii-readout.
 // Measured on 2026-10-17: prompt-intent top-1 0.968, Japanese 1.000. About 7.6 GB).
-// "Q2_g64" does not pass as a Hugging Face quantization tag, so the file name goes after ":" (expanded to -hf <repo> --hff <file>).
+// "Q2_g64" does not pass as a Hugging Face quantization tag, so the file name goes after ":" (expanded to -hf <repo> --hf-file <file>; llama-server 1.0 no longer accepts the short --hff).
 const defaultModel = "prism-ml/Ternary-Bonsai-27B-gguf:Ternary-Bonsai-27B-Q2_g64.gguf"
 
 // hfArgs turns the -hf value into llama-server arguments. "<repo>:<file>.gguf" is given by file name; anything else ("<repo>[:quant]") is passed as is.
 func hfArgs(hf string) []string {
 	if i := strings.LastIndex(hf, ":"); i > 0 && strings.HasSuffix(hf, ".gguf") {
-		return []string{"-hf", hf[:i], "--hff", hf[i+1:]}
+		return []string{"-hf", hf[:i], "--hf-file", hf[i+1:]}
 	}
 	return []string{"-hf", hf}
 }
