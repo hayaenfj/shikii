@@ -1,9 +1,9 @@
 // 日本語の辞書。キーは en.js と同じ(npm run check が揃いを見る)。0.9.2 から内側の言葉を言い換え表(scripts/test-glossary.mjs)のやさしい言葉にした
 export default {
   settingsTitle: '設定', settingsHow: 'このプロジェクトで選ぶことです。選んだ物はこのプロジェクトの .shikii/project.json に残ります。',
-  modelChoiceWins: 'ここで選んだ物は、機械の設定(SHIKII_MODEL)と APIキー(TYPESAFE_API_KEY)より先に効きます。',
+  modelChoiceWins: '「環境変数で指定された設定を優先」では、環境変数(SHIKII_MODEL と TYPESAFE_API_KEY)のとおりに決まります。Jev か手元のモデルを選ぶと、環境変数より先に効きます。',
   howToSettings: ['このプロジェクトで選ぶことを変える画面です。', '見立てを出す AI を選ぶと、次の見立てから効きます。'],
-  modelChoiceLabel: 'このプロジェクトで見立てを出す AI', modelChoiceDefault: '機械の設定に従う(SHIKII_MODEL)', modelChoiceHosted: 'TypeSafe の Jev', modelChoiceLocal: '手元のモデル',
+  modelChoiceLabel: 'このプロジェクトで見立てを出す AI', modelChoiceDefault: '環境変数で指定された設定を優先', modelChoiceHosted: 'TypeSafe の Jev', modelChoiceLocal: '手元のモデル',
   modelNoKey: 'TYPESAFE_API_KEY が無いので、Jev には送れません。キーを置くまで AI の見立ては付きません。', modelLocalNote: 'このプロジェクトの依頼・返答・ファイルの抜粋は、APIキーがあっても機械の外へ出ません。手元のモデルが動いていなければ、次の依頼で shikii が起動します。',
   modelSaved: 'このプロジェクトの AI を変えました(次の見立てから)', modelFailed: m => 'AI を変えられませんでした: ' + m,
   summaryModel: (name, endpoint) => '答えを出す AI(モデル): ' + (name || '不明') + (endpoint ? '（' + endpoint + '）' : ''),

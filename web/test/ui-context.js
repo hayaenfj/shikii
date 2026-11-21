@@ -124,7 +124,7 @@ export async function checkModelChoice(target) {
   const app = mount(App, { target }); await settle(); await settle();
   target.querySelector('#tabs [data-page="settings"]')?.click(); await settle(); await settle();
   const pressed = () => target.querySelector('[data-model-choice] [aria-checked="true"]')?.dataset.model;
-  const before = !!target.querySelector('[data-settings] [data-model-choice]') && pressed() === 'default' && !target.querySelector('[data-model-no-key]');
+  const before = !!target.querySelector('[data-settings] [data-model-choice]') && pressed() === 'default' && (target.querySelector('[data-model="default"]')?.textContent || '').trim() === '環境変数で指定された設定を優先' && !target.querySelector('[data-model-no-key]');
   target.querySelector('[data-model="hosted"]')?.click(); await settle(); await settle(); await settle();
   const posted = JSON.stringify(posts) === JSON.stringify([{ model: 'hosted' }]);
   const after = pressed() === 'hosted' && !!target.querySelector('[data-model-no-key]');

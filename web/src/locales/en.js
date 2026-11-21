@@ -3,9 +3,9 @@
 // From 0.9.2 the words for the AI's insides follow the glossary in scripts/test-glossary.mjs
 export default {
   settingsTitle: 'Settings', settingsHow: 'What you choose for this project. The choices are kept in this project\'s .shikii/project.json.',
-  modelChoiceWins: 'What you choose here comes before this machine\'s setting (SHIKII_MODEL) and the API key (TYPESAFE_API_KEY).',
+  modelChoiceWins: 'With "Prefer the setting given in environment variables", the environment variables (SHIKII_MODEL and TYPESAFE_API_KEY) decide. Choosing Jev or the local model comes before them.',
   howToSettings: ['Change what you choose for this project.', 'A choice of AI applies from the next decision on.'],
-  modelChoiceLabel: 'The AI this project\'s decisions use', modelChoiceDefault: 'Follow this machine (SHIKII_MODEL)', modelChoiceHosted: 'TypeSafe\'s Jev', modelChoiceLocal: 'The local model',
+  modelChoiceLabel: 'The AI this project\'s decisions use', modelChoiceDefault: 'Prefer the setting given in environment variables', modelChoiceHosted: 'TypeSafe\'s Jev', modelChoiceLocal: 'The local model',
   modelNoKey: 'TYPESAFE_API_KEY is not set, so nothing can go to Jev: decisions get no answer until the key is set.', modelLocalNote: 'This project\'s requests, replies and file excerpts stay on this machine even with an API key. If the local model is not running, shikii starts it at the next request.',
   modelSaved: 'Changed this project\'s AI (from the next decision on)', modelFailed: m => 'Could not change the AI: ' + m,
   summaryModel: (name, endpoint) => 'The AI that answers (model): ' + (name || 'unknown') + (endpoint ? ' (' + endpoint + ')' : ''),
