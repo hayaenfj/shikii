@@ -16,6 +16,9 @@ import (
 // that only the limit of the caller ends. A call whose arguments contain `answered` (when it is not empty) goes to the real git instead.
 // It returns the function that gives the processes of those calls that are still running (the test ends with none left: a call that ran
 // out of time is killed, not abandoned).
+// shippedHookGitTimeout is the limit a real hook gives git (hookGitTimeout before any test changes it).
+var shippedHookGitTimeout = hookGitTimeout
+
 func hangingGit(t *testing.T, answered string) (stillRunning func() []int) {
 	t.Helper()
 	real, err := exec.LookPath("git")
@@ -59,14 +62,15 @@ func hangingGit(t *testing.T, answered string) (stillRunning func() []int) {
 // each with a limit of its own (found on 2026-11-21: 15 s for a request, as long as the time the agents give the hook), and then by the
 // two questions asked alone when the place is not known (the exclude file, HEAD). The time an event spends waiting for questions that get
 // no answer is now hookGitTimeout in all, so git is started once in all: for the question about where the repository is. The limit is
-// the subject here, so it is set after hookEnv made git patient; it is short so the test is short, and what is judged is the number of
-// calls git got, not how long they took.
+// the subject here, so it is set after hookEnv made git patient. It is the limit a real hook has: the stub that writes the call down is a
+// shell started by the hook, and on a loaded machine (the other test groups of make test) a shorter limit killed it before it wrote
+// anything, so a call the hook made was not counted. What is judged is the number of calls git got, not how long they took.
 func TestAGitThatNeverAnswersIsWaitedForOnceInAnEvent(t *testing.T) {
 	const place = "rev-parse --show-toplevel --git-path objects"
 	for _, event := range []string{"user-prompt-submit", "stop", "session-start", "tool-lesson", "subagent-start"} {
 		t.Run(event, func(t *testing.T) {
 			repo, _, _ := planningFixture(t)
-			hookGitTimeout = 500 * time.Millisecond // patientGit's cleanup puts the real value back
+			hookGitTimeout = shippedHookGitTimeout // patientGit's cleanup puts the real value back
 			t.Chdir(repo)
 			forgetKeptPlaces(t)
 			stillRunning := hangingGit(t, "")
@@ -194,7 +198,7 @@ func TestWhereGitSaysThereIsNoWorkingTreeTheTwoQuestionsAreAskedAlone(t *testing
 			// the place is answered, "no", before the limit is cut (the real git is slow at times): the limit of the questions after it
 			// then starts whole
 			gitPlaceAt(context.Background(), bare)
-			hookGitTimeout = 500 * time.Millisecond
+			hookGitTimeout = shippedHookGitTimeout
 			gitHead(bare)
 			excludeProjectStore(bare)
 		})
