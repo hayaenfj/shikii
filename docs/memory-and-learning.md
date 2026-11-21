@@ -124,6 +124,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.37.4 | No change in how shikii remembers. The hooks also remember git's answers in a worktree and a submodule, so they run faster there too. |
 | 0.38.0 | What an agent writes as left in its work record, and the areas it did not examine, reach the next task. Words the wiki could not answer are remembered, and when they find nothing again, the record of the task that was open when they found nothing before is pointed to. |
 | 0.39.0 | When a search of several words finds nothing, the reply names the words that find an article alone. The pointer for words that found nothing before leads only to a work record that speaks of those words. |
+| 0.40.0 | Each project chooses whether TypeSafe's Jev or the local model answers its decisions; the choice comes before the environment variables. A tool can ask the ready-made question quote-supports. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 

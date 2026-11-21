@@ -2,6 +2,19 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.40.0 — Each project chooses whether Jev or the local model answers, and tools can ask whether a passage supports a claim
+
+### Changes
+
+- Each project can now choose which AI answers its decisions: TypeSafe's Jev, the local model, or the setting given in environment variables (the default). Choose it on the new Settings page in the page's menu, or with `shikii init --model hosted` or `--model local`. The choice is kept in the project's `.shikii/project.json` and comes before `SHIKII_MODEL` and `TYPESAFE_API_KEY`: a project that chose the local model does not send its decisions to Jev even when the key is set. The hooks, `shikii decide`, the page and `shikii up` follow the choice of the project they work for.
+- Added the ready-made question quote-supports ("does this passage support this claim?"), which a tool such as chiten asks with `shikii decide quote-supports` to learn whether the lines around a quote support the claim a report makes. `shikii init` and the hooks put its spec in the project. Which model answers follows the project's choice. Until people's answers draw a line, a passage that supports its claim is answered as unsure, not as "no".
+- When `shikii decide` is run without `--local` and the spec has no other place to send the question, it uses the local model that the hooks start.
+
+### Fixes
+
+- Fixed `shikii up` failing to start llama-server 1.0, which no longer accepts `--hff`. shikii now passes the model file with `--hf-file`.
+- When git does not answer, a hook now waits at most 3 seconds in all for git. Until now, each place in a hook waited up to its own limit in turn, so the hook before a request could take 9 seconds. The questions a hook asks git now share one limit of 3 seconds.
+
 ## 0.39.0 — When a wiki search finds nothing, shikii now shows which word to try next
 
 ### Changes
