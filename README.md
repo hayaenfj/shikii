@@ -9,7 +9,7 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-2501%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2502%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.39.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -224,7 +224,7 @@ The decision model writes no text; it returns only the probability of yes/no or 
 | Did the changed files stay within the request? (`changes-in-scope`) | At the end |
 | Was the request completed? (`done-as-asked`) | At the end |
 
-`shikii init` also puts one question in each project for tools built on shikii: does this passage of a cited file support this claim of a report? (`quote-supports`). chiten asks it about the quotes of its research reports that it found in the cited files. Its `send_to` is `local` only, because it carries an excerpt of a file in your project; add `hosted` in the project's copy to let Jev answer it. A person answers it on the page, and the Stop hook draws its line once enough answers are in.
+`shikii init` also puts one question in each project for tools built on shikii: does this passage of a cited file support this claim of a report? (`quote-supports`). chiten asks it about the quotes of its research reports that it found in the cited files. Its `send_to` is `local` only, because it carries an excerpt of a file in your project. With a TypeSafe key set, shikii does not start the local model by itself, so run `SHIKII_MODEL=local shikii up` for this question, or add `hosted` in the project's copy to let Jev answer it. A person answers it on the page, and the Stop hook draws its line once enough answers are in.
 
 These answers reach the agent as advice only once a line has been drawn. None of them ever stops the agent's tools from running.
 

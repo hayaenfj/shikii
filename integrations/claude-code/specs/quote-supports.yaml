@@ -21,13 +21,16 @@ state:
 
 policy:
   # The context is an excerpt of a file in the person's project. By default it stays on this machine (the local model through shikii-readout).
-  # A project that may send its files to TypeSafe's Jev adds hosted here.
+  # A project that may send its files to TypeSafe's Jev adds hosted here. With a key set, shikii does not start the local model by
+  # itself: run SHIKII_MODEL=local shikii up for this question.
   send_to: [local]
   pii: false
 
 thresholds:
+  # ask is low: before a line is drawn the local model put supporting passages at 0.44 to 0.53 and contradicted ones at 0.15 or below
+  # (2026-11-21), so the usual 0.55 read a supporting passage as "no". The line drawn from people's answers replaces this guess.
   act: 0.75
-  ask: 0.55
+  ask: 0.3
 
 eval:
   min_n: 50

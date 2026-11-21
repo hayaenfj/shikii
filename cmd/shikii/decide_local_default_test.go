@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -24,5 +25,40 @@ func TestDecideUsesTheHooksLocalModelWhenNoLocalIsGiven(t *testing.T) {
 	out = capture(t, func() error { return cmdDecide([]string{specPath, "--no-record", "--local", other.URL, "-i", "a=x"}) })
 	if !strings.Contains(out, "p=0.200") {
 		t.Fatalf("--local chooses the server:\n%s", out)
+	}
+}
+
+// The default only fills the case where no endpoint was permitted. With a key set, a spec that lists local before hosted still goes
+// to hosted as before, instead of stopping at a local model that is not running (decide does not fall back after a failed call).
+func TestDecideKeepsHostedWhenTheDefaultLocalModelIsNotNeeded(t *testing.T) {
+	hosted := rawAnswerModel(t, `{"type":"noul","noul":0.6}`)
+	t.Setenv("TYPESAFE_API_KEY", "test-key")
+	t.Setenv("DECISIONS_API_KEY", "")
+	t.Setenv("SHIKII_MODEL", "")
+	dir := t.TempDir()
+	specPath := writeNoulSpec(t, dir)
+	b, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(specPath, []byte(strings.Replace(string(b), "send_to: [local]", "send_to: [local, hosted]", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := hookLocalURL
+	hookLocalURL = "http://127.0.0.1:1" // nothing listens here
+	t.Cleanup(func() { hookLocalURL = old })
+	out := capture(t, func() error { return cmdDecide([]string{specPath, "--no-record", "--hosted", hosted.URL, "-i", "a=x"}) })
+	if !strings.Contains(out, "endpoint=hosted") || !strings.Contains(out, "p=0.600") {
+		t.Fatalf("with a key, [local, hosted] goes to hosted when no --local is given:\n%s", out)
+	}
+	// a spec that allows only local still reaches the default local model with a key set
+	local := rawAnswerModel(t, `{"type":"noul","noul":0.3}`)
+	hookLocalURL = local.URL
+	if err := os.WriteFile(specPath, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out = capture(t, func() error { return cmdDecide([]string{specPath, "--no-record", "--hosted", hosted.URL, "-i", "a=x"}) })
+	if !strings.Contains(out, "endpoint=local") || !strings.Contains(out, "p=0.300") {
+		t.Fatalf("a local-only spec reaches the default local model even with a key:\n%s", out)
 	}
 }

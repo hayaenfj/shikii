@@ -10,7 +10,7 @@ Both are kept in the same project, but **the conversation's hypotheses and the A
 
 ## 1. Initialize a project once
 
-`shikii --init` (`shikii init` does the same) prepares the project's `.shikii/`, the seven ready-made questions (4 for the hooks, 2 for the wiki, 1 for delivering lessons), the wiki, the MCP settings, the conventions and the entry to the page. The completion mark `.shikii/project.json` is written last. Hooks run only where initialization succeeded, and running it again keeps the existing settings, records and truths.
+`shikii --init` (`shikii init` does the same) prepares the project's `.shikii/`, the eight ready-made questions (4 for the hooks, 2 for the wiki, 1 for delivering lessons, 1 for tools such as chiten), the wiki, the MCP settings, the conventions and the entry to the page. The completion mark `.shikii/project.json` is written last. Hooks run only where initialization succeeded, and running it again keeps the existing settings, records and truths.
 
 Inside Git, the unit is the project root at its real path; outside Git, it is the folder you ran it in. Subfolders of the same repository and paths through a symlink use the same store, and another project with the same name is never mixed in. The shared `~/.shikii/agent` holds the types, tools and the index of projects.
 

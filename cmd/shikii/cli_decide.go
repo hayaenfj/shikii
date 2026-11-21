@@ -29,14 +29,18 @@ func cmdDecide(args []string) error {
 	if err != nil {
 		return err
 	}
-	if ef.local == "" {
-		// a tool that asks without --local (chiten) gets the local model the hooks use, the one shikii up starts, so the choice
-		// between hosted and local stays shikii's and the spec's send_to
+	sess := decide.Session{Tainted: ef.tainted}
+	eps := ef.endpoints()
+	if ef.local == "" && decide.PickEndpoint(sp, sess, eps) == nil {
+		// a tool that asks without --local (chiten) gets the local model the hooks use, the one shikii up starts, but only when no
+		// other endpoint is permitted: decide does not fall back after a failed call, so a spec that lists local before hosted keeps
+		// going to hosted when a key is set, as it did before this default
 		ef.local = hookLocalURL
+		eps = ef.endpoints()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	d, err := decide.Decide(ctx, sp, inputs, decide.Session{Tainted: ef.tainted}, ef.endpoints())
+	d, err := decide.Decide(ctx, sp, inputs, sess, eps)
 	if err != nil {
 		return err
 	}

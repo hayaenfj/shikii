@@ -10,6 +10,7 @@ import (
 	"time"
 
 	shikii "github.com/hayaenfj/shikii"
+	"github.com/hayaenfj/shikii/internal/spec"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -83,6 +84,11 @@ func TestQuoteSupportsIsSeededAndStaysLocal(t *testing.T) {
 	if !slices.Equal(sp.Policy.SendTo, []string{"local"}) {
 		t.Fatalf("an excerpt of the person's files is not sent to hosted by default: %v", sp.Policy.SendTo)
 	}
+	// before a line is drawn, the local model put passages that do support a claim at 0.44 to 0.53 and contradicted ones at 0.15 or
+	// below (2026-11-21). Under the usual ask of 0.55 a supporting passage read as "does not support"; below 0.44 it stays unsure.
+	if sp.Thresholds.Ask >= 0.44 || sp.Thresholds.Ask <= 0.15 {
+		t.Fatalf("ask sits between the contradicted and the supporting passages of an uncalibrated model: %v", sp.Thresholds.Ask)
+	}
 	for _, in := range []string{"claim", "quote", "context"} {
 		if !slices.Contains(sp.State.Required, in) {
 			t.Fatalf("%s is a required input: %v", in, sp.State.Required)
@@ -119,6 +125,16 @@ func TestTheStopHookDrawsTheLineForTheToolQuestions(t *testing.T) {
 	for _, id := range toolSpecs {
 		if !slices.Contains(asked, id+".yaml") {
 			t.Fatalf("the Stop hook draws the line for %s once its truths reach min_n (it tried: %v)", id, asked)
+		}
+		// once drawn, the line notice names the question by its title, like the other ready-made questions
+		path := hookSpecPath(agent, id)
+		sp := mustLoad(t, path)
+		sp.Calibration = []spec.Calibration{{Model: "test-model", SpecHash: sp.Hash(), Method: "platt", N: 2}}
+		if err := sp.Save(); err != nil {
+			t.Fatal(err)
+		}
+		if line := lineSummary(agent); !strings.Contains(line, questionTitle(sp, "en")) {
+			t.Fatalf("the line notice names %s by its title %q: %q", id, questionTitle(sp, "en"), line)
 		}
 	}
 }
