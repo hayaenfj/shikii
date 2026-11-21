@@ -4,7 +4,7 @@
   import { t } from '../lib/i18n.svelte.js';
   import { setShowHelp } from '../lib/state.svelte.js';
   let { page = 'answer' } = $props();
-  let steps = $derived(t(page === 'wiki' ? 'howToKnowledge' : page === 'ai' ? 'howToAI' : 'howTo'));
+  let steps = $derived(t(page === 'wiki' ? 'howToKnowledge' : page === 'ai' ? 'howToAI' : page === 'settings' ? 'howToSettings' : 'howTo'));
 </script>
 
 <details class="howto mb-5 rounded-xl border border-line bg-surface px-4 text-[13px] text-muted max-md:mb-[22px] [&[open]>summary]:border-b [&[open]>summary]:border-line">

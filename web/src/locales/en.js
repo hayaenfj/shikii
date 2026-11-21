@@ -2,6 +2,9 @@
 // A value is a string or a function that takes arguments and returns a string. langName is this language's own name in the language picker.
 // From 0.9.2 the words for the AI's insides follow the glossary in scripts/test-glossary.mjs
 export default {
+  settingsTitle: 'Settings', settingsHow: 'What you choose for this project. The choices are kept in this project\'s .shikii/project.json.',
+  modelChoiceWins: 'What you choose here comes before this machine\'s setting (SHIKII_MODEL) and the API key (TYPESAFE_API_KEY).',
+  howToSettings: ['Change what you choose for this project.', 'A choice of AI applies from the next decision on.'],
   modelChoiceLabel: 'The AI this project\'s decisions use', modelChoiceDefault: 'Follow this machine (SHIKII_MODEL)', modelChoiceHosted: 'TypeSafe\'s Jev', modelChoiceLocal: 'The local model',
   modelNoKey: 'TYPESAFE_API_KEY is not set, so nothing can go to Jev: decisions get no answer until the key is set.', modelLocalNote: 'This project\'s requests, replies and file excerpts stay on this machine even with an API key. If the local model is not running, shikii starts it at the next request.',
   modelSaved: 'Changed this project\'s AI (from the next decision on)', modelFailed: m => 'Could not change the AI: ' + m,
@@ -99,7 +102,7 @@ export default {
   // 0.9.1: the box of rules in Knowledge
   rulesTitle: 'Always keep', ruleNew: 'new', rulesEmpty: 'None yet.',
   // 0.9.1: three pages (answer, knowledge, the AI)
-  pagesNav: 'Pages', pageAnswer: 'Answer', pageKnowledge: 'Knowledge', pageAI: 'The AI',
+  pagesNav: 'Pages', pageAnswer: 'Answer', pageKnowledge: 'Knowledge', pageAI: 'The AI', pageSettings: 'Settings',
   answerTitle: 'Answer', answerLeft: n => n + ' left', answerHow: 'What waits for your answer: where the AI was not sure, and some shown now and then to check. Read the conversation and press what was actually true. The AI learns from your answers.',
   wordingAgentAdopted: 'The AI checked that this wording asks the same thing and switched to it. It matches more of the truths so far. If the meaning changed, undo it.',
   wordingAgentUnsure: d => 'The AI could not decide whether the meaning is the same. Its reading of the difference: ' + d,

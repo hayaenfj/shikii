@@ -9,7 +9,7 @@ import { read, write } from './prefs.js';
 
 // With ?spec=<id>&trace=<trace_id> in the URL, start with that decision first on the Answer screen (comes from the hook's "answer later → URL")
 const params = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
-const pages = ['answer', 'wiki', 'ai'];
+const pages = ['answer', 'wiki', 'ai', 'settings'];
 const savedPage = read('shikii.page');
 export const ui = $state({
   showHelp: read('shikii.help') !== 'hidden',

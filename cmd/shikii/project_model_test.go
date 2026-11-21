@@ -296,3 +296,20 @@ func TestThePageSetsTheProjectsModel(t *testing.T) {
 		t.Fatalf("a store that is not an initialized project is not made one: %d", code)
 	}
 }
+
+// shikii up run by hand follows the project of the current folder: one that chose local starts the model even with a key.
+func TestUpByHandFollowsTheProjectOfTheCurrentFolder(t *testing.T) {
+	t.Setenv("TYPESAFE_API_KEY", "test-key")
+	t.Setenv("DECISIONS_API_KEY", "")
+	t.Setenv("SHIKII_MODEL", "")
+	t.Setenv("HOME", t.TempDir())
+	local := modelStore(t, "local")
+	t.Chdir(filepath.Dir(local))
+	if msg := upBlocked(""); msg != "" {
+		t.Fatalf("in a project that chose local, shikii up starts the model even with a key: %s", msg)
+	}
+	t.Chdir(filepath.Dir(modelStore(t, "")))
+	if msg := upBlocked(""); msg == "" {
+		t.Fatalf("in a project that chose nothing, the key keeps the local model from starting")
+	}
+}

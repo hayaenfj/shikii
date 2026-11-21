@@ -1,6 +1,6 @@
 <script>
   // The whole page (0.9.1): the header (project, the switch between the 3 screens, ?, language), the how-to guide, the open screen, and the toast. The look is Tailwind classes (colors are tokens in app.css)
-  // There are only 3 screens: "Answer" (decisions a person answers, in one list), "Knowledge" and "AI status". The per-question menu on the left and the summary band at the top, used up to 0.8, were dropped
+  // There are 4 screens: "Answer" (decisions a person answers, in one list), "Knowledge", "AI status" and "Settings" (this project's choices). The per-question menu on the left and the summary band at the top, used up to 0.8, were dropped
   // Reloads every 15 seconds (not while the page is hidden). Keys (Answer screen only): 1 to 9 choose the card's answer, Enter means the same as the AI, → skips
   import { onMount, untrack } from 'svelte';
   import { i18n, t } from './lib/i18n.svelte.js';
@@ -8,6 +8,7 @@
   import HowTo from './components/HowTo.svelte';
   import Answer from './components/Answer.svelte';
   import AiView from './components/AiView.svelte';
+  import Settings from './components/Settings.svelte';
   import Knowledge from './components/Knowledge.svelte';
   import Toast from './components/Toast.svelte';
   import LangPicker from './components/LangPicker.svelte';
@@ -54,6 +55,7 @@
       <button type="button" data-page="answer" aria-current={page === 'answer' ? 'page' : undefined} class={pageBtn(page === 'answer')} onclick={() => setPage('answer')}>{t('pageAnswer')}{#if waits}<span class="badge rounded-md bg-amber px-[7px] py-px text-[12px] text-bg tabular-nums">{waits}</span>{/if}</button>
       <button type="button" data-page="wiki" aria-current={page === 'wiki' ? 'page' : undefined} class={pageBtn(page === 'wiki')} onclick={() => setPage('wiki')}>{t('pageKnowledge')}</button>
       <button type="button" data-page="ai" aria-current={page === 'ai' ? 'page' : undefined} class={pageBtn(page === 'ai')} onclick={() => setPage('ai')}>{t('pageAI')}</button>
+      <button type="button" data-page="settings" aria-current={page === 'settings' ? 'page' : undefined} class={pageBtn(page === 'settings')} onclick={() => setPage('settings')}>{t('pageSettings')}</button>
     </nav>
   {/if}
   <div class="ml-auto flex items-center gap-2 max-sm:gap-[5px]">
@@ -78,6 +80,8 @@
         {:else if !data.loadError}<div class="empty-state" role="status">{t('loading')}</div>{/if}
       {:else if page === 'ai'}
         <AiView {st} />
+      {:else if page === 'settings'}
+        <Settings {st} />
       {:else}
         <Answer {st} />
       {/if}

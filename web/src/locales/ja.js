@@ -1,5 +1,8 @@
 // 日本語の辞書。キーは en.js と同じ(npm run check が揃いを見る)。0.9.2 から内側の言葉を言い換え表(scripts/test-glossary.mjs)のやさしい言葉にした
 export default {
+  settingsTitle: '設定', settingsHow: 'このプロジェクトで選ぶことです。選んだ物はこのプロジェクトの .shikii/project.json に残ります。',
+  modelChoiceWins: 'ここで選んだ物は、機械の設定(SHIKII_MODEL)と APIキー(TYPESAFE_API_KEY)より先に効きます。',
+  howToSettings: ['このプロジェクトで選ぶことを変える画面です。', '見立てを出す AI を選ぶと、次の見立てから効きます。'],
   modelChoiceLabel: 'このプロジェクトで見立てを出す AI', modelChoiceDefault: '機械の設定に従う(SHIKII_MODEL)', modelChoiceHosted: 'TypeSafe の Jev', modelChoiceLocal: '手元のモデル',
   modelNoKey: 'TYPESAFE_API_KEY が無いので、Jev には送れません。キーを置くまで AI の見立ては付きません。', modelLocalNote: 'このプロジェクトの依頼・返答・ファイルの抜粋は、APIキーがあっても機械の外へ出ません。手元のモデルが動いていなければ、次の依頼で shikii が起動します。',
   modelSaved: 'このプロジェクトの AI を変えました(次の見立てから)', modelFailed: m => 'AI を変えられませんでした: ' + m,
@@ -97,7 +100,7 @@ export default {
   // 0.9.1: 知識のいつものルールの欄
   rulesTitle: 'いつも守ること', ruleNew: '新', rulesEmpty: 'まだありません。',
   // 0.9.1: 画面は 3 つ(答える・知識・AI の様子)
-  pagesNav: '画面', pageAnswer: '答える', pageKnowledge: '知識', pageAI: 'AI の様子',
+  pagesNav: '画面', pageAnswer: '答える', pageKnowledge: '知識', pageAI: 'AI の様子', pageSettings: '設定',
   answerTitle: '答える', answerLeft: n => '残り ' + n + ' 件', answerHow: 'あなたの答えを待っている所です(AI が自信を持てなかった物と、確かめのため時々出す物)。会話を読んで、本当はどうだったかを押してください。あなたの答えから AI が覚えます。',
   wordingAgentAdopted: 'AI が「意味は同じ」と確かめて、この言い方に変えました。今までの正解に今より合います。意味が違っていたら元に戻せます。',
   wordingAgentUnsure: d => 'AI は意味が同じか決めきれませんでした。違いの見立て: ' + d,

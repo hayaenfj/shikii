@@ -134,6 +134,15 @@ func upBlockedByHosted(store string) string {
 	return "TYPESAFE_API_KEY is set, so decisions go to TypeSafe's Jev and the local model (llama-server) is not started. To use the local model, set SHIKII_MODEL=local (or shikii init --model local in a project) and then run shikii up"
 }
 
+// upBlocked is upBlockedByHosted for shikii up's --store: without it, the project of the current folder (outside a project, the
+// machine's setting alone), so shikii up run by hand in a project that chose local starts the model even with a key.
+func upBlocked(store string) string {
+	if store == "" {
+		store, _, _ = currentProjectStore()
+	}
+	return upBlockedByHosted(store)
+}
+
 func cmdUp(args []string) error {
 	fs := flag.NewFlagSet("up", flag.ContinueOnError)
 	var o upOpts
@@ -142,11 +151,11 @@ func cmdUp(args []string) error {
 	fs.StringVar(&o.alias, "alias", "", "name for a GGUF (becomes the calibration key)")
 	fs.IntVar(&o.port, "port", 8080, "the port shikii looks at (shikii-readout). llama-server runs behind it on the port 6 above")
 	fs.IntVar(&o.ctx, "ctx", 4096, "context length (for a GGUF)")
-	store := fs.String("store", "", "the project store the model is started for: one that chose local (shikii init --model local) starts it even with a key")
+	store := fs.String("store", "", "the project store the model is started for: one that chose local (shikii init --model local) starts it even with a key (default: the project of the current folder)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if msg := upBlockedByHosted(*store); msg != "" {
+	if msg := upBlocked(*store); msg != "" {
 		return errors.New(msg)
 	}
 	llama, _ := exec.LookPath("llama-server")
