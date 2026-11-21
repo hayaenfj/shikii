@@ -38,10 +38,62 @@ type placeAnswer struct {
 // moved folder, the project, the working tree, the guards) and once each for the object folder and the exclude file, and every ask is
 // a process, and the request's own hook asked for HEAD in one more. The answers do not change inside an event (the agent does not
 // commit while a hook runs), so the first one is kept. Only an answer git gave is kept: a call that
-// timed out or could not start is asked again by whoever needs it, with its own time limit.
+// timed out or could not start is asked again by whoever needs it, with what is left of the time the event may wait for git (waited): an
+// event whose questions got no answer for hookGitTimeout in all asks no more. Without this a git that never answered made each step of
+// the event wait out a limit of its own, one after the other, past the time the agent gives a hook. Every question that can be asked
+// again after one that got no answer goes through ask: the place of the repository, and the two questions asked alone when git says
+// there is no working tree (the exclude file in excludeProjectStore, HEAD in gitHead).
 type placeMemo struct {
-	mu sync.Mutex
-	at map[string]placeAnswer
+	mu     sync.Mutex
+	at     map[string]placeAnswer
+	waited time.Duration // the time spent on questions that got no answer; the time a question took that was answered is not in it
+}
+
+// timeLeft is the time a question to git may still take in this event: hookGitTimeout less what the questions with no answer waited. ok
+// is false when less than a tenth of hookGitTimeout is left: git cannot be started and heard from in that, and the few moments that
+// remain after a caller's own limit ran out are not a reason to start it again.
+func (m *placeMemo) timeLeft() (left time.Duration, ok bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	left = hookGitTimeout - m.waited
+	return left, left > hookGitTimeout/10
+}
+
+// spend adds the time a question waited without an answer to what the event has spent.
+func (m *placeMemo) spend(waited time.Duration) {
+	m.mu.Lock()
+	m.waited += waited
+	m.mu.Unlock()
+}
+
+// ask runs one question to git for this event: run is given the caller's limit cut to the time the event has left, and says whether git
+// answered. An answer (also a "no": an exit code of git) costs the event nothing, so a later question about another folder is not refused
+// because the event has been running for long; a question that ran out of time or could not start adds what it waited to the time the
+// event has spent. ask returns false, with git not started, when too little time is left. A nil memo is no event (the CLI, the MCP
+// server): run is given the caller's own limit and nothing is counted.
+func (m *placeMemo) ask(ctx context.Context, run func(context.Context) (answered bool)) bool {
+	if m == nil {
+		run(ctx)
+		return true
+	}
+	left, ok := m.timeLeft()
+	if !ok {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(ctx, left)
+	defer cancel()
+	started := time.Now()
+	if !run(ctx) {
+		m.spend(time.Since(started))
+	}
+	return true
+}
+
+// gitAnswered says whether a finished git command is an answer: it ran and exited (with any code), as opposed to a timeout, a limit that
+// was over, or a git that did not start.
+func gitAnswered(ctx context.Context, err error) bool {
+	var exit *exec.ExitError
+	return err == nil || errors.As(err, &exit) && ctx.Err() == nil
 }
 
 // placeCacheTTL is how long a hook event may rely on the place a hook before it got from git (kept between events).
@@ -93,6 +145,35 @@ func gitPlaceAt(ctx context.Context, dir string) (gitPlace, bool) {
 	}
 	// git answers a relative path from the folder it runs in, which is the real folder whichever path reached it (a link to a subfolder)
 	base := physicalFolder(dir)
+	var place gitPlace
+	found, answered := false, false
+	if !memo.ask(ctx, func(ctx context.Context) bool {
+		place, found, answered = askPlace(ctx, dir, base)
+		return answered
+	}) {
+		return gitPlace{}, false // no time left for another question without an answer: not asked, and nothing is kept
+	}
+	// what the files say is trusted (kept for the next events, and HEAD read from them) only where it is what git said just now
+	trusted := false
+	if found && seen && sameFolder(walk.at, place.top) {
+		// (the snapshot is the one taken before git was asked: a write while git answered makes the next use differ, and git is asked again)
+		if layoutAgrees(before.layout, place) {
+			place.gitDir, place.commonDir = before.layout.gitDir, before.layout.commonDir
+			trusted = true
+		}
+	}
+	if memo != nil && answered {
+		memo.keep(dir, place, found)
+	}
+	if trusted {
+		keepPlace(walk, place, before)
+	}
+	return place, found
+}
+
+// askPlace asks git where the repository is, once, from the folder dir (base is its real path). answered is true when git answered, also
+// with "no": not a timeout and not a git that did not start.
+func askPlace(ctx context.Context, dir, base string) (place gitPlace, found, answered bool) {
 	// --verify -q HEAD goes last: with a commit the answer is a fourth line and git exits 0; before the first commit git prints the
 	// three lines before it, says nothing and exits 1; outside a working tree it prints nothing and exits 128.
 	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel", "--git-path", "objects", "--git-path", "info/exclude", "--verify", "-q", "HEAD")
@@ -104,8 +185,6 @@ func gitPlaceAt(ctx context.Context, dir string) (gitPlace, bool) {
 	var exit *exec.ExitError
 	ran := errors.As(err, &exit) && ctx.Err() == nil // git ran and exited with a code; not a timeout or a git that did not start
 	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
-	var place gitPlace
-	found := false
 	switch {
 	case err == nil && len(lines) == 4: // a commit
 		place, found = gitPlace{top: strings.TrimSpace(lines[0]), objects: atFolder(base, strings.TrimSpace(lines[1])), exclude: atFolder(base, strings.TrimSpace(lines[2])), head: strings.TrimSpace(lines[3]), headKnown: true}, true
@@ -115,22 +194,7 @@ func gitPlaceAt(ctx context.Context, dir string) (gitPlace, bool) {
 		// git answered, but not in the lines expected: a folder name with a line end in it. Asked one by one, as before they were put together.
 		place, found = placeApart(ctx, dir, base)
 	}
-	// what the files say is trusted (kept for the next events, and HEAD read from them) only where it is what git said just now
-	trusted := false
-	if found && seen && sameFolder(walk.at, place.top) {
-		// (the snapshot is the one taken before git was asked: a write while git answered makes the next use differ, and git is asked again)
-		if layoutAgrees(before.layout, place) {
-			place.gitDir, place.commonDir = before.layout.gitDir, before.layout.commonDir
-			trusted = true
-		}
-	}
-	if memo != nil && (found || ran && exit.ExitCode() != 1) {
-		memo.keep(dir, place, found)
-	}
-	if trusted {
-		keepPlace(walk, place, before)
-	}
-	return place, found
+	return place, found, found || ran && exit.ExitCode() != 1
 }
 
 // keep remembers an answer for the rest of the event (nil: outside one, nothing is kept), under dir and, as it is the same repository,

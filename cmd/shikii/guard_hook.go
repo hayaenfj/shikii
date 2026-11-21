@@ -24,15 +24,37 @@ import (
 // when the HEAD saved at the request is no longer an ancestor of the current HEAD, commit-body stops nothing and its record is "unverified", not a pass.
 
 func gitRun(ctx context.Context, dir string, args ...string) (string, bool) {
+	out, ok, _ := gitRunAnswered(ctx, dir, args...)
+	return out, ok
+}
+
+// gitRunAnswered is gitRun that also says whether git answered: it ran and exited with a code (also an error), as opposed to a timeout or a
+// git that did not start.
+func gitRunAnswered(ctx context.Context, dir string, args ...string) (out string, ok, answered bool) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
-	var out bytes.Buffer
-	cmd.Stdout = &out
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
 	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {
+		return "", false, gitAnswered(ctx, err)
+	}
+	return buf.String(), true, true
+}
+
+// gitRunInEvent is gitRun for a question that is asked again after the place of the repository got no answer: it takes part in the time the
+// hook event may wait for git (placeMemo.ask), and is not started when none is left.
+func gitRunInEvent(ctx context.Context, dir string, args ...string) (string, bool) {
+	var out string
+	var ok bool
+	if !eventPlaces.ask(ctx, func(ctx context.Context) bool {
+		var answered bool
+		out, ok, answered = gitRunAnswered(ctx, dir, args...)
+		return answered
+	}) {
 		return "", false
 	}
-	return out.String(), true
+	return out, ok
 }
 
 // gitHead returns HEAD at the time of the request ("" for an empty repo or outside git).
@@ -59,7 +81,7 @@ func gitHead(cwd string) string {
 	if outsideGit(cwd) {
 		return "" // nothing above cwd is, or can be, a repository: git would say there is no HEAD
 	}
-	out, ok := gitRun(ctx, cwd, "rev-parse", "HEAD")
+	out, ok := gitRunInEvent(ctx, cwd, "rev-parse", "HEAD")
 	if !ok {
 		return ""
 	}

@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 	"unicode"
 )
 
@@ -107,7 +106,7 @@ func projectNames(scope string) []string {
 	if outsideGit(scope) {
 		return names // nothing above is, or can be, a repository: no origin to ask for and no process to start
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), hookGitTimeout)
 	defer cancel()
 	if remote, ok := gitRun(ctx, scope, "remote", "get-url", "origin"); ok {
 		repo := strings.TrimSuffix(filepath.Base(strings.TrimSpace(remote)), ".git")

@@ -94,7 +94,7 @@ func checkProjectStore(root string, create bool) error {
 
 // Keep personal conversations out of git add -A. The handling of already-tracked files does not change.
 func excludeProjectStore(scope string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), hookPlaceTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), hookGitTimeout)
 	defer cancel()
 	path := ""
 	if place, ok := gitPlaceAt(ctx, scope); ok {
@@ -104,12 +104,16 @@ func excludeProjectStore(scope string) error {
 			return nil // nothing above is, or can be, a repository: no file to write and no process to start
 		}
 		// no working tree here, but a bare repository or the inside of .git still has the file: ask for it alone
-		cmd := exec.CommandContext(ctx, "git", "rev-parse", "--git-path", "info/exclude")
-		cmd.Dir = scope
-		raw, err := cmd.Output()
-		if err != nil {
-			return nil
-		} // outside git
+		var raw []byte
+		var err error
+		if !eventPlaces.ask(ctx, func(ctx context.Context) bool {
+			cmd := exec.CommandContext(ctx, "git", "rev-parse", "--git-path", "info/exclude")
+			cmd.Dir = scope
+			raw, err = cmd.Output()
+			return gitAnswered(ctx, err)
+		}) || err != nil {
+			return nil // outside git, or no time left for a question that got no answer
+		}
 		path = atFolder(scope, strings.TrimSpace(string(raw)))
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {

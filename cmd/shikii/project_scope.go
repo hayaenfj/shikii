@@ -73,7 +73,7 @@ func projectTopAt(cwd string) string {
 	if cwd == "" {
 		return ""
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), hookPlaceTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), hookGitTimeout)
 	defer cancel()
 	scope := feedbackScope(cwd)
 	if place, ok := gitPlaceAt(ctx, cwd); ok {

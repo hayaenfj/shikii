@@ -57,17 +57,19 @@ func slowFirstPlaceGit(t *testing.T, delay time.Duration) {
 }
 
 // Found on 2026-11-21: under make test (eight groups of cmd/shikii tests at the same time) a request in a linked worktree once made two
-// of the questions about where the repository is (TestAHookEventInAWorktreeOrSubmoduleAsksGitWhereTheRepositoryIsOnce). The first one is
-// asked with a limit of its own, a second (hookPlaceTimeout), which patientGit did not stretch; a git slower than that (here 1.2 s) ran
-// out of time, was not kept, and the next step asked again. A test that counts git calls must see the same calls on a slow machine: the
-// answer is waited for, and asked once.
+// of the questions about where the repository is (TestAHookEventInAWorktreeOrSubmoduleAsksGitWhereTheRepositoryIsOnce). The first question
+// of a request had a limit of its own, one second, which patientGit did not stretch; a git slower than that ran out of time, was not
+// kept, and the next step asked again. Every question to git now has the one limit hookGitTimeout, which hookEnv stretches. This runs a
+// request with a git that takes 1.2 s to answer the first question: the answer is waited for, and the question is asked once. (The limit
+// of a real hook is not used here: on a loaded machine the slowed git could pass it, and the test would count the load.)
 func TestASlowAnswerOfGitToTheFirstQuestionIsStillAskedOnce(t *testing.T) {
 	const place = "rev-parse --show-toplevel --git-path objects --git-path info/exclude --verify -q HEAD"
+	const slow = 1200 * time.Millisecond
 	snapshot := []string{"add -A -- .", "ls-files -z --cached --ignored --exclude-standard", "ls-files --stage --full-name -- . :(exclude).shikii"}
-	repo, _, _ := planningFixture(t)
+	repo, _, _ := planningFixture(t) // hookEnv: hookGitTimeout is a minute, so only a limit of its own could cut the slow answer off
 	t.Chdir(repo)
 	forgetKeptPlaces(t)
-	slowFirstPlaceGit(t, 1200*time.Millisecond)
+	slowFirstPlaceGit(t, slow)
 	calls := gitCallLog(t)
 	runManualHook(t, "user-prompt-submit", map[string]any{"session_id": "slow-first", "cwd": repo, "prompt": planningTestRequest})
 	want := append([]string{place}, snapshot...)
