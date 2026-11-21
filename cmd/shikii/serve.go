@@ -82,7 +82,7 @@ func cmdServe(args []string) error {
 			log.Printf("shikii serve: this project's page is already up at %s/ ; not starting another", r.url())
 			return nil
 		}
-	} else if err := waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady); err != nil {
+	} else if err := waitForLocalModel(o.ef.local, usesHosted(o.storeDir), systemone.WaitReady); err != nil {
 		return err // a serve started by hand (Docker etc.) keeps the old behavior: the port does not open until the model answers
 	}
 	ln, err := listenPage(common, scope, hub, o.port)
@@ -112,7 +112,7 @@ func cmdServe(args []string) error {
 	// A model that never comes up closes the listener with its error; whichever closes it, Serve ends the same way (re-audit C-6).
 	modelErr := make(chan error, 1)
 	go func() {
-		if err := waitForLocalModel(o.ef.local, usesHosted(), systemone.WaitReady); err != nil {
+		if err := waitForLocalModel(o.ef.local, usesHosted(o.storeDir), systemone.WaitReady); err != nil {
 			modelErr <- err
 			ln.Close()
 		}

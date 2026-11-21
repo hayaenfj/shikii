@@ -15,9 +15,25 @@ import (
 type endpointFlags struct {
 	model, hosted, local string
 	tainted              bool
+	store                string        // the project's store whose model choice applies; when empty, the command's --store flag
+	fs                   *flag.FlagSet // the command's flags, for --store
+}
+
+// storeDir is the store whose project's model choice applies to these endpoints.
+func (f *endpointFlags) storeDir() string {
+	if f.store != "" {
+		return f.store
+	}
+	if f.fs != nil {
+		if fl := f.fs.Lookup("store"); fl != nil {
+			return fl.Value.String()
+		}
+	}
+	return ""
 }
 
 func (f *endpointFlags) bind(fs *flag.FlagSet) {
+	f.fs = fs
 	fs.StringVar(&f.model, "model", "jev-latest", "model name (sent in the request; in calibrate it is also the calibration key)")
 	fs.StringVar(&f.hosted, "hosted", "https://api.typesafe.ai", "hosted URL. A URL with a path is used as is (e.g. https://openrouter.ai/api/alpha/decisions). Key from DECISIONS_API_KEY or TYPESAFE_API_KEY")
 	fs.StringVar(&f.local, "local", "", "base URL of a local server (llama.cpp etc.); decide uses the hooks' local model when it is empty")
@@ -43,7 +59,17 @@ func hostedKey() string {
 	return os.Getenv("TYPESAFE_API_KEY")
 }
 
+// modelChoiceFor is the model the decisions of the project of store use: the project's own choice (shikii init --model), else
+// SHIKII_MODEL. It is the one place that decides it.
+func modelChoiceFor(store string) string {
+	if m := projectModel(store); m != "" {
+		return m
+	}
+	return modelChoice()
+}
+
 // modelChoice is SHIKII_MODEL (local / hosted). Use local to keep the local model even when a key is set. Empty means both (hosted first if there is a key).
+// Only modelChoiceFor reads it: a project's own choice comes first.
 func modelChoice() string {
 	switch v := strings.ToLower(strings.TrimSpace(os.Getenv("SHIKII_MODEL"))); v {
 	case "local", "hosted":
@@ -54,10 +80,11 @@ func modelChoice() string {
 
 func (f *endpointFlags) endpoints() []decide.Endpoint {
 	var eps []decide.Endpoint
-	if key := hostedKey(); key != "" && f.hosted != "" && modelChoice() != "local" {
+	choice := modelChoiceFor(f.storeDir())
+	if key := hostedKey(); key != "" && f.hosted != "" && choice != "local" {
 		eps = append(eps, decide.Endpoint{Kind: "hosted", Client: systemone.New(f.hosted, key, f.model)})
 	}
-	if f.local != "" && modelChoice() != "hosted" {
+	if f.local != "" && choice != "hosted" {
 		eps = append(eps, decide.Endpoint{Kind: "local", Client: systemone.New(f.local, "", f.model)})
 	}
 	return eps

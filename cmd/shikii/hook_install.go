@@ -363,14 +363,14 @@ func hookInstall(args []string, install bool) error {
 		return err
 	}
 	if install {
-		if usesHosted() {
+		if usesHosted("") {
 			fmt.Fprintf(stdout, "model: TypeSafe Jev (%s; the key is in the environment). No local model is started. SHIKII_MODEL=local selects the local model instead\n", hookHostedURL)
 		} else if modelUp() {
 			fmt.Fprintf(stdout, "local model: already answering on %s\n", hookLocalURL)
 		} else if _, err := lookPath("llama-server"); err != nil {
 			fmt.Fprintf(stdout, "local model: none on %s and no llama-server on PATH. Install llama.cpp (brew install llama.cpp); the hooks start the model by themselves after that. Until then they record nothing\n", hookLocalURL)
 		} else {
-			ensureModel(agent)
+			ensureModel(agent, "")
 			fmt.Fprintf(stdout, "local model: starting in the background (the first run downloads it; a few minutes). Log: %s\n", tilde(filepath.Join(agent, "up.log")))
 		}
 		fmt.Fprintln(stdout, "answer page: one per project, started by the first request's hook on a free port and opened in the browser (shikii page prints the URL)")

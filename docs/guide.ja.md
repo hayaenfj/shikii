@@ -309,10 +309,10 @@ spec ごとに記録とラベルの数、ラベルの出どころ(ask / outcome 
 
 ```sh
 export TYPESAFE_API_KEY=...       # APIキーは環境変数だけから読む。shikii は Keychain を読まない
-shikii doctor                     # hosted に「key present」と出れば、hook・既製の問い(quote-supports を除く)・pii: false の判定は Jev へ
+shikii doctor                     # hosted に「key present」と出れば、hook・既製の問い・pii: false の判定は Jev へ
 ```
 
-推奨は TypeSafe の Jev。APIキーがあれば hook と既製の問いは Jev へ送り、手元のモデルは起こさない(`shikii up` も断る。取得するものは無い)。APIキーを置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jev に固定するなら `SHIKII_MODEL=hosted`(CLI・MCP・`serve`・hook で同じ)。`pii: true` の判定と道具の `quote-supports`(`send_to: [local]`)はAPIキーがあっても手元にしか送らないので、APIキーを置いたまま手元のモデルで答えさせるには `SHIKII_MODEL=local shikii up` で立てる。
+推奨は TypeSafe の Jev。APIキーがあれば hook と既製の問いは Jev へ送り、手元のモデルは起こさない(`shikii up` も断る。取得するものは無い)。APIキーを置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jev に固定するなら `SHIKII_MODEL=hosted`(CLI・MCP・`serve`・hook で同じ)。プロジェクトごとには `shikii init --model local` か `shikii init --model hosted` で選ぶ。選んだ物は `.shikii/project.json` に残り、そのプロジェクトの判定では `SHIKII_MODEL` より先に効き、local を選んだプロジェクトのためには hook が手元のモデルを起こす。`pii: true` の判定はAPIキーがあっても手元にしか送らないので、APIキーを置いたまま手元のモデルで答えさせるには `SHIKII_MODEL=local shikii up` で立てる。
 
 ### APIキーを置けない時の手元のモデル(llama.cpp)
 

@@ -9,7 +9,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-2503%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2511%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.39.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -84,7 +84,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 
 | 接続先 | 準備するもの |
 |---|---|
-| Jev（TypeSafe AI） | 推奨。`TYPESAFE_API_KEY`。APIキーがあれば、既製の問い(手元に留まる `quote-supports` を除く)と、`send_to` に `hosted` を含む業務の判定がここへ送られる。[公式仕様](https://docs.typesafe.ai/introduction/quickstart) |
+| Jev（TypeSafe AI） | 推奨。`TYPESAFE_API_KEY`。APIキーがあれば、既製の問いと、`send_to` に `hosted` を含む業務の判定がここへ送られる。[公式仕様](https://docs.typesafe.ai/introduction/quickstart) |
 | llama.cpp | APIキーを置けない時。通常のチャットGGUFを同梱の `shikii-readout` 越しに（手元の標準はTernary-Bonsai-27B。`shikii up` が両方を立てる）。OpenJevのような学習済みの決定モデルはそのまま通す。Kev-4Bは使えない。[実行例](../../integrations/readout.ja.md) |
 | Ollama / LM Studio | `/v1/systemone` と決定モデル。業務の判定向け。この版では未検証 |
 
@@ -92,7 +92,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 
 ### 1. TypeSafeのAPIキーを置く（推奨）
 
-[TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart)でAPIキーを取得し、シェルとエージェントの環境変数に置きます（`export TYPESAFE_API_KEY=…`）。取得するものはなく、普通のPCで動きます。APIキーがあれば、hookも既製の問いもJevへ送り、手元のモデルは起こしません（`shikii up` も起こしません）。道具の `quote-supports` は手元に留まるので、`SHIKII_MODEL=local shikii up` が要ります。既製の問いのために、依頼文・エージェントの返答・wikiの教訓がTypeSafeへ送られます（手元の記録にも残ります）。APIキーを置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jevに固定するなら `SHIKII_MODEL=hosted` を置きます。
+[TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart)でAPIキーを取得し、シェルとエージェントの環境変数に置きます（`export TYPESAFE_API_KEY=…`）。取得するものはなく、普通のPCで動きます。APIキーがあれば、hookも既製の問いもJevへ送り、手元のモデルは起こしません（`shikii up` も起こしません）。既製の問いのために、依頼文・エージェントの返答・wikiの教訓がTypeSafeへ送られます（手元の記録にも残ります）。APIキーを置いたまま手元のモデルを使うなら `SHIKII_MODEL=local`、Jevに固定するなら `SHIKII_MODEL=hosted` を置きます。プロジェクトごとにも選べます。`shikii init --model local` のプロジェクトは、APIキーがあっても依頼・返答・ファイルの抜粋を機械の外へ出しません(hook がそのプロジェクトのために手元のモデルを起こします)。`shikii init --model hosted` なら Jev です。選んだ物は `.shikii/project.json` に残り、`SHIKII_MODEL` より先に効き、`--model` を付けずに `shikii init` をやり直しても変わりません。
 
 **APIキーを置けない時はllama.cppです。** APIキーが無ければ手元のモデルを動かします。27Bのモデルなので動作中のメモリが約10GB要り、普通のPCでは重いことがあります。macOSでHomebrewなら:
 
@@ -225,7 +225,7 @@ hookを入れると、shikiiは人の依頼1つと、それに対するエージ
 | 変えたファイルは、頼まれた範囲に収まっているか(`changes-in-scope`) | 終える時 |
 | 頼まれたことを終えたか(`done-as-asked`) | 終える時 |
 
-`shikii init` は、shikii の上に作った道具のための問いも 1 つ各プロジェクトに入れる。報告のこの主張を、引いたファイルのこの一節は支えているか(`quote-supports`)。chiten は、調査報告の引用のうち引いたファイルに在った物について、これを聞く。プロジェクトのファイルの抜粋を渡すので、`send_to` は `local` だけ。TypeSafe のAPIキーがある機械では shikii が手元のモデルを自分では起こさないので、この問いのために `SHIKII_MODEL=local shikii up` を動かすか、Jev に答えさせてよいプロジェクトはそのプロジェクトの写しに `hosted` を足す。人が画面で答え、答えが集まると Stop の hook が線を引く。
+`shikii init` は、shikii の上に作った道具のための問いも 1 つ各プロジェクトに入れる。報告のこの主張を、引いたファイルのこの一節は支えているか(`quote-supports`)。chiten は、調査報告の引用のうち引いたファイルに在った物について、これを聞く。プロジェクトのファイルの抜粋を渡し、ほかの既製の問いと同じく、プロジェクトが選んだモデル(下)へ送る。人が画面で答え、答えが集まると Stop の hook が線を引く。
 
 これらの答えが助言として届くのは、線が引けてからです。どの答えも、エージェントの道具の実行を止めることはありません。
 

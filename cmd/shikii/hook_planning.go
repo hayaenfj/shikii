@@ -349,7 +349,7 @@ func runPlanning(root, scope, operation string, req planningRequest) (any, error
 	} else {
 		ctx, cancel := context.WithTimeout(context.Background(), hookDecideTimeout)
 		defer cancel()
-		d, err = decide.Decide(ctx, sp, inputs, decide.Session{}, hookEndpoints())
+		d, err = decide.Decide(ctx, sp, inputs, decide.Session{}, hookEndpoints(root))
 		if err != nil {
 			// even if the decision model is busy or down, the organizing is saved (the ritual check does not get stuck). The decision is skipped and does not count as the person's answer (0.8.1)
 			hookLog("plan submit: " + err.Error())

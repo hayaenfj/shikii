@@ -22,15 +22,35 @@ import (
 	shikii "github.com/hayaenfj/shikii"
 )
 
-// cmdInit prepares the agent in one go (there are no options; the base layout and fixed rules decide everything):
+// initModelArg reads shikii init's only option, --model hosted|local ("" when it is not given).
+func initModelArg(args []string) (string, error) {
+	usage := errors.New("usage: shikii init [--model hosted|local] (or shikii --init)")
+	switch {
+	case len(args) == 0:
+		return "", nil
+	case len(args) == 1 && strings.HasPrefix(args[0], "--model="):
+		args = []string{"--model", strings.TrimPrefix(args[0], "--model=")}
+	case len(args) != 2 || args[0] != "--model":
+		return "", usage
+	}
+	if m := validModel(args[1]); m != "" {
+		return m, nil
+	}
+	return "", usage
+}
+
+// cmdInit prepares the agent in one go (the base layout and fixed rules decide everything but the model, below):
 //  1. .shikii/ at the project root (where it runs), with decisions/ wiki/ records/ labels/ under it (nothing else is added)
 //  2. a shikii MCP server entry in .mcp.json (read by Claude Code). If a shikii entry already exists it is left alone (kept even if a person added --proposer etc.). Other entries and keys are kept
 //  3. puts the skill (working rules) back at ~/.claude/skills/shikii (every time. Not a place to edit by hand; edit skills/shikii in the repo)
 //
+// Its one option, --model hosted|local, chooses the model this project's decisions use (kept in project.json; without it the choice
+// already made is kept, and a project that never chose follows SHIKII_MODEL).
 // Running it again gives the same result and never breaks what a person wrote.
 func cmdInit(args []string) error {
-	if len(args) > 0 {
-		return errors.New("usage: shikii init or shikii --init (no extra arguments needed)")
+	model, err := initModelArg(args)
+	if err != nil {
+		return err
 	}
 	// init prepares the folder it runs in (the top of its git working tree), also when a folder above it is already a project
 	cwd, err := os.Getwd()
@@ -126,7 +146,7 @@ func cmdInit(args []string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintln(stdout, "No HOME, so the shared Codex settings and the skill are skipped; only the project side is prepared")
-		return completeProjectInit(root, scope, version, "", false)
+		return completeProjectInit(root, scope, version, "", false, model)
 	}
 	codex := filepath.Join(home, ".codex", "config.toml")
 	// Codex reads only this shared registration and starts the server in the folder its daemon started in, so it names no store:
@@ -167,7 +187,7 @@ func cmdInit(args []string) error {
 		}
 		fmt.Fprintf(stdout, "skill: updated %s\n", filepath.Join("~", rel))
 	}
-	return completeProjectInit(root, scope, version, home, firstProject)
+	return completeProjectInit(root, scope, version, home, firstProject, model)
 }
 
 // completeProjectInit marks the project as initialized, installs the hooks for the first project on a machine and says what
@@ -178,11 +198,17 @@ func cmdInit(args []string) error {
 // already has projects and no hooks belongs to someone who uses shikii without them (MCP and the skill only; running init again
 // there is how they refresh the skill, and it leaves the hooks disabled): init leaves them out and says which command installs
 // them. home is "" where there is no HOME to look in.
-func completeProjectInit(root, scope string, version int, home string, firstProject bool) error {
-	if err := finishProjectInit(root, scope, version); err != nil {
+func completeProjectInit(root, scope string, version int, home string, firstProject bool, model string) error {
+	if err := finishProjectInitModel(root, scope, version, model); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "Ready: %s\n", scope)
+	switch projectModel(root) {
+	case "hosted":
+		fmt.Fprintln(stdout, "Model: this project's decisions use TypeSafe's Jev when TYPESAFE_API_KEY is set (shikii init --model local changes it)")
+	case "local":
+		fmt.Fprintln(stdout, "Model: this project's decisions use the local model, even when TYPESAFE_API_KEY is set (shikii init --model hosted changes it)")
+	}
 	exe := shellQuote(mcpCommand())
 	hooks := home == "" || len(agentsWithShikiiHook(home)) > 0
 	if !hooks && firstProject {

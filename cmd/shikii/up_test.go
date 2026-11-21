@@ -128,12 +128,12 @@ func TestUpDoesNotStartTheLocalModelWhileJevIsUsed(t *testing.T) {
 		t.Fatalf("with a key it must not start, and must say how to use the local one (SHIKII_MODEL=local): %v", err)
 	}
 	t.Setenv("SHIKII_MODEL", "local")
-	if msg := upBlockedByHosted(); msg != "" {
+	if msg := upBlockedByHosted(""); msg != "" {
 		t.Fatalf("with SHIKII_MODEL=local it may start: %s", msg)
 	}
 	t.Setenv("SHIKII_MODEL", "")
 	t.Setenv("TYPESAFE_API_KEY", "")
-	if msg := upBlockedByHosted(); msg != "" {
+	if msg := upBlockedByHosted(""); msg != "" {
 		t.Fatalf("without a key it may start: %s", msg)
 	}
 }

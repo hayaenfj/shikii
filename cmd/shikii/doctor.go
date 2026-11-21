@@ -46,14 +46,14 @@ func cmdDoctor(args []string) error {
 		}
 	}
 	// 2. the local model (with a key Jev is used, so a missing one is not treated as lacking)
-	if usesHosted() {
+	if usesHosted(*storeDir) {
 		fmt.Fprintf(stdout, "ok   model: TypeSafe Jev (TYPESAFE_API_KEY is set, so the local model is not started. To use it, set SHIKII_MODEL=local)\n")
 	}
 	if *local != "" {
 		pr := probe(*local)
 		shownLocal := systemone.RedactURL(*local) // never the credentials in the URL
 		switch {
-		case !pr.up && usesHosted():
+		case !pr.up && usesHosted(*storeDir):
 			fmt.Fprintf(stdout, "ok   local model at %s: not running (not needed while Jev is used)\n", shownLocal)
 		case !pr.up:
 			fmt.Fprintf(stdout, "MISSING local model at %s: unreachable → shikii up   (starts %s behind shikii-readout; or shikii up --gguf <file> for any GGUF)\n", shownLocal, defaultModel)

@@ -164,7 +164,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"].(string) < out[j]["id"].(string) })
 	modelName, endpoint := "local", systemone.RedactURL(s.o.ef.local) // the AI's state (0.8.0): which model is deciding
-	if usesHosted() {
+	if usesHosted(s.o.storeDir) {
 		modelName, endpoint = "TypeSafe Jev", systemone.RedactURL(s.o.ef.hosted)
 	}
 	writeJSON(w, 200, map[string]any{"specs": out, "project_name": filepath.Base(s.o.projectScope), "auto_calibrate": s.o.autoCalibrate, "store": s.o.storeDir, "model": map[string]any{"name": modelName, "endpoint": endpoint},

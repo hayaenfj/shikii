@@ -70,9 +70,9 @@ func TestUnlistedSpecsNamesWhatIsWrong(t *testing.T) {
 	}
 }
 
-// quote-supports is asked by a tool (chiten) about an excerpt of a file in the person's project, so it stays on this machine unless
-// the project adds hosted itself.
-func TestQuoteSupportsIsSeededAndStaysLocal(t *testing.T) {
+// quote-supports is asked by a tool (chiten) about an excerpt of a file in the person's project. It follows the project's choice of
+// model like the other ready-made questions (shikii init --model local keeps it on this machine).
+func TestQuoteSupportsIsSeededAndFollowsTheProjectsModel(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := seedAgentSpecs(dir); err != nil {
 		t.Fatal(err)
@@ -81,8 +81,8 @@ func TestQuoteSupportsIsSeededAndStaysLocal(t *testing.T) {
 	if string(sp.Type) != "noul" {
 		t.Fatalf("a yes/no question: %s", sp.Type)
 	}
-	if !slices.Equal(sp.Policy.SendTo, []string{"local"}) {
-		t.Fatalf("an excerpt of the person's files is not sent to hosted by default: %v", sp.Policy.SendTo)
+	if !slices.Equal(sp.Policy.SendTo, []string{"hosted", "local"}) {
+		t.Fatalf("it goes where the project's other ready-made questions go: %v", sp.Policy.SendTo)
 	}
 	// before a line is drawn, the local model put passages that do support a claim at 0.44 to 0.53 and contradicted ones at 0.15 or
 	// below (2026-11-21). Under the usual ask of 0.55 a supporting passage read as "does not support"; below 0.44 it stays unsure.

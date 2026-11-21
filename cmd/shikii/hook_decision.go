@@ -13,21 +13,23 @@ import (
 )
 
 // hookEndpoints are where the hook sends. The standard is TypeSafe's Jev (when there is a key), then the local model. The first one that can send, in the spec's send_to order, is used.
-// Even with a key, SHIKII_MODEL=local means local only (modelChoice).
-func hookEndpoints() []decide.Endpoint {
+// Even with a key, a project that chose local (or SHIKII_MODEL=local) means local only (modelChoiceFor). store is the project's store.
+func hookEndpoints(store string) []decide.Endpoint {
 	var eps []decide.Endpoint
-	if key := hostedKey(); key != "" && modelChoice() != "local" {
+	choice := modelChoiceFor(store)
+	if key := hostedKey(); key != "" && choice != "local" {
 		eps = append(eps, decide.Endpoint{Kind: "hosted", Client: systemone.New(hookHostedURL, key, "jev-latest")})
 	}
-	if modelChoice() != "hosted" {
+	if choice != "hosted" {
 		eps = append(eps, decide.Endpoint{Kind: "local", Client: systemone.New(hookLocalURL, "", "jev-latest")})
 	}
 	return eps
 }
 
-// usesHosted reports whether the hook uses Jev (a key is set and SHIKII_MODEL is not local).
-func usesHosted() bool {
-	return hostedKey() != "" && modelChoice() != "local"
+// usesHosted reports whether the decisions of the project of store use Jev (a key is set and neither the project nor SHIKII_MODEL
+// chose local). An empty store asks about the machine (SHIKII_MODEL alone).
+func usesHosted(store string) bool {
+	return hostedKey() != "" && modelChoiceFor(store) != "local"
 }
 
 // hookDecide decides with the project's spec, maps the band to behaviour and records it. Without a line the band never becomes act (= the shadow period).
@@ -46,7 +48,7 @@ func hookDecideWithCommit(agent, specID string, inputs map[string]string, projec
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), hookDecideTimeout)
 	defer cancel()
-	d, err := decide.Decide(ctx, sp, inputs, decide.Session{}, hookEndpoints())
+	d, err := decide.Decide(ctx, sp, inputs, decide.Session{}, hookEndpoints(agent))
 	if err != nil {
 		return nil, hookOut{}, err
 	}

@@ -20,10 +20,9 @@ state:
   required: [claim, quote, context]
 
 policy:
-  # The context is an excerpt of a file in the person's project. By default it stays on this machine (the local model through shikii-readout).
-  # A project that may send its files to TypeSafe's Jev adds hosted here. With a key set, shikii does not start the local model by
-  # itself: run SHIKII_MODEL=local shikii up for this question.
-  send_to: [local]
+  # The context is an excerpt of a file in the person's project. Like the other ready-made questions it follows the project's choice
+  # of model: TypeSafe's Jev when a key is set, unless the project chose the local model (shikii init --model local) or SHIKII_MODEL=local.
+  send_to: [hosted, local]
   pii: false
 
 thresholds:

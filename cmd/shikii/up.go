@@ -126,11 +126,12 @@ func probe(base string) probeResult {
 
 // upBlockedByHosted returns the reason not to start the local model when there is a key and decisions go to TypeSafe's Jev (SHIKII_MODEL is not local).
 // While Jev is active, the llama-server on :8086 is not started (the owner's decision, 2026-10-23). Empty means it may start.
-func upBlockedByHosted() string {
-	if !usesHosted() {
+// store is the project the model is started for (the hook passes it): a project that chose local starts it even with a key.
+func upBlockedByHosted(store string) string {
+	if !usesHosted(store) {
 		return ""
 	}
-	return "TYPESAFE_API_KEY is set, so decisions go to TypeSafe's Jev and the local model (llama-server) is not started. To use the local model, set SHIKII_MODEL=local and then run shikii up"
+	return "TYPESAFE_API_KEY is set, so decisions go to TypeSafe's Jev and the local model (llama-server) is not started. To use the local model, set SHIKII_MODEL=local (or shikii init --model local in a project) and then run shikii up"
 }
 
 func cmdUp(args []string) error {
@@ -141,10 +142,11 @@ func cmdUp(args []string) error {
 	fs.StringVar(&o.alias, "alias", "", "name for a GGUF (becomes the calibration key)")
 	fs.IntVar(&o.port, "port", 8080, "the port shikii looks at (shikii-readout). llama-server runs behind it on the port 6 above")
 	fs.IntVar(&o.ctx, "ctx", 4096, "context length (for a GGUF)")
+	store := fs.String("store", "", "the project store the model is started for: one that chose local (shikii init --model local) starts it even with a key")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if msg := upBlockedByHosted(); msg != "" {
+	if msg := upBlockedByHosted(*store); msg != "" {
 		return errors.New(msg)
 	}
 	llama, _ := exec.LookPath("llama-server")

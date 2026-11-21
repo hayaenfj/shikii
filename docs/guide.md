@@ -345,10 +345,10 @@ When a line is newly drawn, or when the truths reached `eval.min_n` but no line 
 
 ```sh
 export TYPESAFE_API_KEY=...       # the key is read from the environment only; shikii does not read a keychain
-shikii doctor                     # when hosted shows "key present", the hooks, the built-in questions (not quote-supports) and pii: false decisions go to Jev
+shikii doctor                     # when hosted shows "key present", the hooks, the built-in questions and pii: false decisions go to Jev
 ```
 
-The recommended model is TypeSafe's Jev. With the key, the hooks and the built-in questions go to Jev and no local model is started (`shikii up` refuses too, nothing to download). To use a local model while keeping the key set, use `SHIKII_MODEL=local`; to force Jev, use `SHIKII_MODEL=hosted` (the same for the CLI, MCP, `serve` and the hooks). `pii: true` decisions and the tools' `quote-supports` (`send_to: [local]`) are only ever sent to a local model, key or no key, so to answer them with a local model while the key is set, start it with `SHIKII_MODEL=local shikii up`.
+The recommended model is TypeSafe's Jev. With the key, the hooks and the built-in questions go to Jev and no local model is started (`shikii up` refuses too, nothing to download). To use a local model while keeping the key set, use `SHIKII_MODEL=local`; to force Jev, use `SHIKII_MODEL=hosted` (the same for the CLI, MCP, `serve` and the hooks). One project can choose for itself with `shikii init --model local` or `shikii init --model hosted`: the choice is kept in `.shikii/project.json`, comes before `SHIKII_MODEL` for that project's decisions, and the hooks start the local model for a project that chose local. `pii: true` decisions are only ever sent to a local model, key or no key, so to answer them with a local model while the key is set, start it with `SHIKII_MODEL=local shikii up`.
 
 ### The local model when you cannot set a key (llama.cpp)
 

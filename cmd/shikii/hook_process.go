@@ -255,14 +255,18 @@ func processAlive(pid int) bool {
 
 // ensureModel starts `shikii up` in the background if the local model (hookLocalURL) does not answer. Without llama-server it does not start and writes one line on how to install to hook.log (once per 10 minutes).
 // The first run downloads the model, so for the few turns until it answers there are simply no records. The hook does not wait for this.
-func ensureModel(agent string) {
-	if usesHosted() || modelUp() {
-		return // with a key, Jev is the standard (unless SHIKII_MODEL=local). The local model is not started
+// store is the project's store: a project that chose local gets the local model even when a key is set.
+func ensureModel(agent, store string) {
+	if usesHosted(store) || modelUp() {
+		return // with a key, Jev is the standard (unless the project or SHIKII_MODEL chose local). The local model is not started
 	}
 	startOnce(agent, "model", func() int {
 		if _, err := lookPath("llama-server"); err != nil {
 			hookLog("no local model on " + hookLocalURL + " and no llama-server on PATH: install llama.cpp (brew install llama.cpp) and the hooks will start it; until then they record nothing")
 			return 0
+		}
+		if store != "" {
+			return hookSpawn(agent, "up.log", "up", "--store", store)
 		}
 		return hookSpawn(agent, "up.log", "up")
 	})

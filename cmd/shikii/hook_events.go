@@ -60,7 +60,7 @@ func runHookEvent(event string) error {
 		return err
 	}
 	if event != "agent-task" && event != "tool-lesson" && event != "subagent-stop" {
-		ensureModel(common) // start it in the background if missing (this turn just gets no record; do not wait). Not started by the retired agent-task, nor when matching a lesson to a tool call
+		ensureModel(common, agent) // start it in the background if missing (this turn just gets no record; do not wait). Not started by the retired agent-task, nor when matching a lesson to a tool call
 	}
 	if event == "user-prompt-submit" {
 		judgeAskedTurn(agent, &in, loadSession(agent, in.SessionID)) // the turn that waited for the Stop after its block, when that Stop never came

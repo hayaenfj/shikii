@@ -9,7 +9,7 @@ AI agents can carry context forward through memory. A project also needs to use 
 **It remembers what you said, never needs telling twice, and earns room to act alone.**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](go.mod)
-[![Tests](https://img.shields.io/badge/tests-2503%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2511%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
 [![Version](https://img.shields.io/badge/version-0.39.0-00ADD8?style=flat-square)](CHANGELOG.md)
@@ -83,7 +83,7 @@ Everything else is the machine's job.
 
 | Endpoint | What it needs |
 |---|---|
-| Jev (TypeSafe AI) | Recommended. `TYPESAFE_API_KEY`. The built-in questions (except `quote-supports`, which stays local) and every business decision whose `send_to` allows `hosted` go here when the API key is set. [Official API](https://docs.typesafe.ai/introduction/quickstart) |
+| Jev (TypeSafe AI) | Recommended. `TYPESAFE_API_KEY`. The built-in questions and every business decision whose `send_to` allows `hosted` go here when the API key is set. [Official API](https://docs.typesafe.ai/introduction/quickstart) |
 | llama.cpp | Without an API key. Any chat GGUF through the included `shikii-readout` (the local standard is Ternary-Bonsai-27B; `shikii up` sets both up). Trained decision models such as OpenJev are passed through. Kev-4B is not supported. [Examples](integrations/readout.md) |
 | Ollama / LM Studio | Their `/v1/systemone` endpoints with a decision model, for business decisions. Not tested in this release |
 
@@ -91,7 +91,7 @@ Everything else is the machine's job.
 
 ### 1. Put a TypeSafe API key in the environment (recommended)
 
-Get an API key from [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart) and put it in the environment of your shell and your agent (`export TYPESAFE_API_KEY=…`). Nothing is downloaded and an ordinary PC is enough. With the API key, the hooks and the built-in questions go to Jev and no local model is started (`shikii up` does not start one either); the tools' `quote-supports` stays local, so it needs `SHIKII_MODEL=local shikii up`. The request text, the agent's reply and wiki lessons are sent to TypeSafe for the built-in questions; they also stay in the local records. `SHIKII_MODEL=local` keeps a local model even with an API key; `SHIKII_MODEL=hosted` forces Jev.
+Get an API key from [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart) and put it in the environment of your shell and your agent (`export TYPESAFE_API_KEY=…`). Nothing is downloaded and an ordinary PC is enough. With the API key, the hooks and the built-in questions go to Jev and no local model is started (`shikii up` does not start one either). The request text, the agent's reply and wiki lessons are sent to TypeSafe for the built-in questions; they also stay in the local records. `SHIKII_MODEL=local` keeps a local model even with an API key; `SHIKII_MODEL=hosted` forces Jev. A project can choose for itself with `shikii init --model local` (its requests, replies and file excerpts stay on this machine even with a key; the hooks start the local model for it) or `shikii init --model hosted`. The choice is kept in `.shikii/project.json`, comes before `SHIKII_MODEL`, and running `shikii init` again without `--model` keeps it.
 
 **Without an API key: llama.cpp.** shikii then runs a local model. It is a 27B model that needs about 10 GB of memory while running, which can be heavy for an ordinary PC. On macOS with Homebrew:
 
@@ -224,7 +224,7 @@ The decision model writes no text; it returns only the probability of yes/no or 
 | Did the changed files stay within the request? (`changes-in-scope`) | At the end |
 | Was the request completed? (`done-as-asked`) | At the end |
 
-`shikii init` also puts one question in each project for tools built on shikii: does this passage of a cited file support this claim of a report? (`quote-supports`). chiten asks it about the quotes of its research reports that it found in the cited files. Its `send_to` is `local` only, because it carries an excerpt of a file in your project. With a TypeSafe key set, shikii does not start the local model by itself, so run `SHIKII_MODEL=local shikii up` for this question, or add `hosted` in the project's copy to let Jev answer it. A person answers it on the page, and the Stop hook draws its line once enough answers are in.
+`shikii init` also puts one question in each project for tools built on shikii: does this passage of a cited file support this claim of a report? (`quote-supports`). chiten asks it about the quotes of its research reports that it found in the cited files. It carries an excerpt of a file in your project and, like the other built-in questions, goes to the model the project chose (below). A person answers it on the page, and the Stop hook draws its line once enough answers are in.
 
 These answers reach the agent as advice only once a line has been drawn. None of them ever stops the agent's tools from running.
 

@@ -24,10 +24,34 @@ type projectEntry struct {
 
 var errProjectInactive = errors.New("run shikii --init in this project")
 
-// Not a setting: a mark that an explicit initialization finished completely. Copying it elsewhere does not activate anything.
+// A mark that an explicit initialization finished completely. Copying it elsewhere does not activate anything. Its one setting is
+// Model, the model this project's decisions use (shikii init --model), kept across re-initializations and updates.
 type projectActivation struct {
 	Version int    `json:"version"`
 	Scope   string `json:"scope"`
+	Model   string `json:"model,omitempty"` // "hosted" (TypeSafe's Jev) or "local"; empty follows SHIKII_MODEL
+}
+
+// projectModel is the model the project of this store chose with shikii init --model ("hosted" or "local"; "" when it chose none
+// or store is not a project's).
+func projectModel(store string) string {
+	if store == "" {
+		return ""
+	}
+	a, ok := readProjectFile(filepath.Join(store, "project.json"))
+	if !ok {
+		return ""
+	}
+	return validModel(a.Model)
+}
+
+// validModel keeps "hosted" and "local" and turns anything else into "".
+func validModel(m string) string {
+	switch m {
+	case "hosted", "local":
+		return m
+	}
+	return ""
 }
 
 // projectInitVersionNow is the project.json version --init writes. 2 = 0.7.5 or later (the mark that tells each project the wipe crossing 0.7.0 is "done".
@@ -137,6 +161,14 @@ func projectActive(root, scope string) (bool, error) {
 // the caller (cmdInit) passes the original version: it neither raises the version nor writes the shared mark (raising it would make the next hook install --yes skip it as "already initialized by this version",
 // and the wipe crossing 0.7.0 would be skipped forever. Audit R3)
 func finishProjectInit(root, scope string, version int) error {
+	return finishProjectInitModel(root, scope, version, "")
+}
+
+// finishProjectInitModel is finishProjectInit that also sets the project's model; an empty model keeps the one already chosen.
+func finishProjectInitModel(root, scope string, version int, model string) error {
+	if model == "" {
+		model = projectModel(root)
+	}
 	// Even if the index is created first, the project shows up on neither the page nor the hook until the final mark exists.
 	if _, err := os.UserHomeDir(); err == nil {
 		if err := registerProject(scope); err != nil {
@@ -165,7 +197,7 @@ func finishProjectInit(root, scope string, version int) error {
 	} else if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	data, _ := json.Marshal(projectActivation{Version: version, Scope: scope})
+	data, _ := json.Marshal(projectActivation{Version: version, Scope: scope, Model: model})
 	f, err := os.CreateTemp(root, ".project-init-*")
 	if err != nil {
 		return err

@@ -10,6 +10,7 @@ func newServer(o serveOpts) http.Handler { return newServerState(o).handler() }
 
 func newServerState(o serveOpts) *server {
 	o.resolve()
+	o.ef.store = o.storeDir // the decisions of this page or MCP project follow that project's model choice
 	return &server{o: o, st: store.Store{Dir: o.storeDir}, lastCal: map[string]calibrationReport{}, tuning: map[string]bool{}, tuneErr: map[string]string{}}
 }
 
