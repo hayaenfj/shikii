@@ -139,7 +139,7 @@ func lineSummary(agent string) string         { return lineSummaryFor(agent, fal
 func internalLineSummary(agent string) string { return lineSummaryFor(agent, true) }
 func lineSummaryFor(agent string, internal bool) string {
 	var lines []string
-	for _, id := range append(append(append([]string{}, hookSpecs...), wikiSpecs...), deliverySpecs...) { // the questions whose lines the hook draws
+	for _, id := range slices.Concat(hookSpecs, wikiSpecs, deliverySpecs, toolSpecs) { // the questions whose lines the hook draws
 		if agentReviewOnly(id) != internal {
 			continue
 		}

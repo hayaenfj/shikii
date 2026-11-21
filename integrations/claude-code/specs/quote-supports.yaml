@@ -1,0 +1,47 @@
+# A question a tool built on shikii asks about a research report (chiten asks it about each source of a consultation's research report).
+# The report states a claim and backs it with a quote from a file. The tool first checks by itself that the quote is really in the file
+# (word for word, whitespace aside); only a quote found there is asked about here, with the lines around it in that file.
+# The question is whether the passage supports the claim, not whether its words are present.
+# The person answers samples on the page; once enough truths are in, the Stop hook draws the line like the other ready-made questions.
+id: quote-supports
+version: 1
+type: noul
+
+question: |
+  A research report makes the claim `claim` and cites `quote` as its evidence. The quote is really in the file `path`; `context` is the quote with the lines around it in that file. Read the context, not only the quote. Does the passage, as written there, support the claim? Answer "no" if it merely concerns the same feature, screen, word or technology, if the claim drops a condition, exception or negation stated in the context, or if the claim says more than the passage does.
+
+state:
+  template: |
+    claim: {{ claim }}
+    file: {{ path }}
+    quote: {{ quote }}
+    context in the file:
+    {{ context }}
+  required: [claim, quote, context]
+
+policy:
+  # The context is an excerpt of a file in the person's project. By default it stays on this machine (the local model through shikii-readout).
+  # A project that may send its files to TypeSafe's Jev adds hosted here.
+  send_to: [local]
+  pii: false
+
+thresholds:
+  act: 0.75
+  ask: 0.55
+
+eval:
+  min_n: 50
+
+display:
+  ja:
+    title: 引用が主張を支えるか
+    question: 報告のこの主張を、引いたファイルのこの一節は支えていますか？(同じ言葉や同じ機能の話というだけなら「いいえ」)
+    options:
+      "yes": 支えている
+      "no": 支えていない
+  en:
+    title: Does the quote support the claim?
+    question: Does this passage of the cited file support this claim of the report? (Being about the same word or feature alone is "no".)
+    options:
+      "yes": Supports it
+      "no": Does not support it

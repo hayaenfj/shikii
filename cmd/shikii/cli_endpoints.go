@@ -20,7 +20,7 @@ type endpointFlags struct {
 func (f *endpointFlags) bind(fs *flag.FlagSet) {
 	fs.StringVar(&f.model, "model", "jev-latest", "model name (sent in the request; in calibrate it is also the calibration key)")
 	fs.StringVar(&f.hosted, "hosted", "https://api.typesafe.ai", "hosted URL. A URL with a path is used as is (e.g. https://openrouter.ai/api/alpha/decisions). Key from DECISIONS_API_KEY or TYPESAFE_API_KEY")
-	fs.StringVar(&f.local, "local", "", "base URL of a local server (llama.cpp etc.)")
+	fs.StringVar(&f.local, "local", "", "base URL of a local server (llama.cpp etc.); decide uses the hooks' local model when it is empty")
 	fs.BoolVar(&f.tainted, "tainted", false, "session that read production data: never send to hosted")
 }
 

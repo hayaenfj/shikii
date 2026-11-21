@@ -52,6 +52,7 @@
 4 integrations/claude-code/specs/lesson-applies.yaml
 5 integrations/claude-code/specs/needs-plan.yaml
 7 integrations/claude-code/specs/prompt-kind.yaml
+4 integrations/claude-code/specs/quote-supports.yaml
 4 integrations/claude-code/specs/wiki-conflict.yaml
 4 integrations/claude-code/specs/wiki-place.yaml
 3 internal/handoff/handoff_test.go

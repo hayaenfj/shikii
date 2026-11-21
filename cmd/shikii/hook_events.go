@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -245,8 +246,8 @@ func runHookEvent(event string) error {
 				err = terr
 			}
 		}
-		// wiki insertion points and contradictions, and lesson-applies (0.12), also get lines on the same cycle once outcome truths pile up
-		for _, id := range append(append([]string{}, wikiSpecs...), deliverySpecs...) {
+		// wiki insertion points and contradictions, lesson-applies (0.12) and the tools' questions also get lines on the same cycle once truths pile up
+		for _, id := range slices.Concat(wikiSpecs, deliverySpecs, toolSpecs) {
 			if cerr := hookMaybeCalibrate(agent, id); cerr != nil && err == nil {
 				err = cerr
 			}

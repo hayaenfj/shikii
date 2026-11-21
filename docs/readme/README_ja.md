@@ -9,7 +9,7 @@ AIエージェントは、メモリーで以前の仕事を引き継げます。
 **言ったことを覚え、二度言わせず、任せられる範囲が広がる。**
 
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square)](../../go.mod)
-[![Tests](https://img.shields.io/badge/tests-2502%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
+[![Tests](https://img.shields.io/badge/tests-2501%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
 [![Version](https://img.shields.io/badge/version-0.39.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
@@ -225,6 +225,8 @@ hookを入れると、shikiiは人の依頼1つと、それに対するエージ
 | 変えたファイルは、頼まれた範囲に収まっているか(`changes-in-scope`) | 終える時 |
 | 頼まれたことを終えたか(`done-as-asked`) | 終える時 |
 
+`shikii init` は、shikii の上に作った道具のための問いも 1 つ各プロジェクトに入れる。報告のこの主張を、引いたファイルのこの一節は支えているか(`quote-supports`)。chiten は、調査報告の引用のうち引いたファイルに在った物について、これを聞く。プロジェクトのファイルの抜粋を渡すので、`send_to` は `local` だけ。Jev に答えさせてよいプロジェクトは、そのプロジェクトの写しに `hosted` を足す。人が画面で答え、答えが集まると Stop の hook が線を引く。
+
 これらの答えが助言として届くのは、線が引けてからです。どの答えも、エージェントの道具の実行を止めることはありません。
 
 ### 止める検査
@@ -275,7 +277,7 @@ cloneした中で（例の判定はインストーラーには入っていませ
 ```sh
 shikii new same-issue --from decisions/same-issue.yaml              # 例の判定を .shikii/decisions/ に写す
 SHIKII_MODEL=local shikii up                                     # この例の問いは pii: true なので手元のモデルが要る。APIキーがあると up は SHIKII_MODEL=local の時だけ起こす
-shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…" --local http://127.0.0.1:8080
+shikii decide .shikii/decisions/same-issue.yaml -i report1="…" -i report2="…"   # --local が無い時は、http://127.0.0.1:8080 の手元のモデル(shikii up が起こす物)を使う
 #   → band=ask   （線がまだ無いので人が決める）
 shikii serve --local http://127.0.0.1:8080                       # 答え合わせの画面: http://127.0.0.1:8095
 #   正解が必要な数（eval.min_n）に届くと、線は自動で引かれる

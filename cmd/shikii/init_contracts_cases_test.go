@@ -519,8 +519,8 @@ func TestGenericAgentSpecsKeepCodingCalibrationsSeparate(t *testing.T) {
 		"changes-in-scope": "9381415d9f1d3696", "done-as-asked": "2bba11b5ee687b57",
 	}
 	dir := t.TempDir()
-	if n, err := seedAgentSpecs(dir); err != nil || n != len(hookSpecs)+len(wikiSpecs)+len(deliverySpecs) {
-		t.Fatal("prepare the ready-made questions (4 for the hook, 2 for the wiki and 1 for the delivery)", n, err)
+	if n, err := seedAgentSpecs(dir); err != nil || n != len(hookSpecs)+len(wikiSpecs)+len(deliverySpecs)+len(toolSpecs) {
+		t.Fatal("prepare the ready-made questions (4 for the hook, 2 for the wiki, 1 for the delivery and 1 for tools)", n, err)
 	}
 	for id, oldHash := range previous {
 		t.Run(id, func(t *testing.T) {
@@ -943,7 +943,7 @@ func TestSeedFailureDoesNotPublishPartialSpec(t *testing.T) {
 		t.Fatalf("do not publish a spec that failed to write under its final name: %v %v", files, err)
 	}
 	n, err := seedAgentSpecs(dir)
-	if err != nil || n != len(hookSpecs)+len(wikiSpecs)+len(deliverySpecs) {
+	if err != nil || n != len(hookSpecs)+len(wikiSpecs)+len(deliverySpecs)+len(toolSpecs) {
 		t.Fatalf("a retry prepares every ready-made question correctly: n=%d err=%v", n, err)
 	}
 	for _, id := range hookSpecs {
@@ -1003,7 +1003,7 @@ func TestShippedSpecsAskPeopleInOneSentenceInBothLanguages(t *testing.T) {
 		t.Fatal(err)
 	}
 	files, _ := filepath.Glob(filepath.Join(dir, "*.yaml"))
-	if len(files) != len(hookSpecs)+len(wikiSpecs)+len(deliverySpecs) {
+	if len(files) != len(hookSpecs)+len(wikiSpecs)+len(deliverySpecs)+len(toolSpecs) {
 		t.Fatalf("expected every shipped spec, got %v", files)
 	}
 	marks := map[string][2]string{"ja": {"？", "。"}, "en": {"?", ". "}}

@@ -29,6 +29,11 @@ func cmdDecide(args []string) error {
 	if err != nil {
 		return err
 	}
+	if ef.local == "" {
+		// a tool that asks without --local (chiten) gets the local model the hooks use, the one shikii up starts, so the choice
+		// between hosted and local stays shikii's and the spec's send_to
+		ef.local = hookLocalURL
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	d, err := decide.Decide(ctx, sp, inputs, decide.Session{Tainted: ef.tainted}, ef.endpoints())
