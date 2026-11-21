@@ -62,3 +62,31 @@ func TestDecideKeepsHostedWhenTheDefaultLocalModelIsNotNeeded(t *testing.T) {
 		t.Fatalf("a local-only spec reaches the default local model even with a key:\n%s", out)
 	}
 }
+
+// A tainted session never sends to hosted, so with a key set a [local, hosted] spec has no permitted endpoint until the default
+// local model is added: the pre-check must see the session as tainted, or the decision abstains.
+func TestDecideAddsTheDefaultLocalModelForATaintedSession(t *testing.T) {
+	hosted := rawAnswerModel(t, `{"type":"noul","noul":0.6}`)
+	local := rawAnswerModel(t, `{"type":"noul","noul":0.3}`)
+	t.Setenv("TYPESAFE_API_KEY", "test-key")
+	t.Setenv("DECISIONS_API_KEY", "")
+	t.Setenv("SHIKII_MODEL", "")
+	dir := t.TempDir()
+	specPath := writeNoulSpec(t, dir)
+	b, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(specPath, []byte(strings.Replace(string(b), "send_to: [local]", "send_to: [local, hosted]", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := hookLocalURL
+	hookLocalURL = local.URL
+	t.Cleanup(func() { hookLocalURL = old })
+	out := capture(t, func() error {
+		return cmdDecide([]string{specPath, "--no-record", "--tainted", "--hosted", hosted.URL, "-i", "a=x"})
+	})
+	if !strings.Contains(out, "endpoint=local") || !strings.Contains(out, "p=0.300") {
+		t.Fatalf("a tainted session reaches the default local model instead of abstaining:\n%s", out)
+	}
+}

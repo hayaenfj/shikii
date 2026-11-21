@@ -28,7 +28,8 @@ policy:
 
 thresholds:
   # ask is low: before a line is drawn the local model put supporting passages at 0.44 to 0.53 and contradicted ones at 0.15 or below
-  # (2026-11-21), so the usual 0.55 read a supporting passage as "no". The line drawn from people's answers replaces this guess.
+  # (2026-11-21), so the usual 0.55 read a supporting passage as "no". The line drawn from people's answers recalibrates p; the
+  # thresholds stay, so a calibrated p under 0.3 (at least 70% "does not support") is a discard.
   act: 0.75
   ask: 0.3
 
