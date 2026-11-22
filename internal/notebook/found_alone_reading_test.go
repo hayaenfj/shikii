@@ -97,6 +97,35 @@ func TestWordsFoundAloneUsesOnlyTheReadingOfItsOwnSearch(t *testing.T) {
 	}
 }
 
+// The reading belongs to the scope it was made under, as it does to the query and the project: a view made under one scope is not used
+// for the same project (the same root) asked under another, which is read again and answers for the words asked.
+func TestWordsFoundAloneUsesNoReadingOfAnotherScope(t *testing.T) {
+	b := readingBook(t)
+	view, err := b.QueryPage(readingQuery, "")
+	if err != nil || view.reading == nil || view.reading.scope != b.Scope {
+		t.Fatalf("control: the search that found nothing keeps its reading, under its own scope: %v", err)
+	}
+	parses, splits := PageParses(), pageTokenizations.Load()
+	words, err := b.WordsFoundAlone(readingQuery, "", view)
+	if err != nil || !slices.Equal(words, []string{"lanterns"}) {
+		t.Fatalf("control: under its own scope the reading answers: %q %v", words, err)
+	}
+	if got := countsSince(parses, splits); got != (readCounts{}) {
+		t.Fatalf("control: under its own scope the reading is used and nothing is read: %+v", got)
+	}
+
+	other := b
+	other.Scope = b.Scope + "/another"
+	parses, splits = PageParses(), pageTokenizations.Load()
+	words, err = other.WordsFoundAlone(readingQuery, "", view)
+	if err != nil || !slices.Equal(words, []string{"lanterns"}) {
+		t.Fatalf("under another scope the answer is that of the words asked: %q %v", words, err)
+	}
+	if got := countsSince(parses, splits); got != (readCounts{readingArticles, readingArticles}) {
+		t.Fatalf("under another scope the reading of the first is not used: the wiki is read again: %+v", got)
+	}
+}
+
 // When a word asked has a term that the texts were not split for, they are split again for the words (in memory: no article is read).
 func TestWordsFoundAloneSplitsAgainWhatTheReadingDidNotSplitFor(t *testing.T) {
 	b := readingBook(t)
