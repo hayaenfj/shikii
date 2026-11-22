@@ -231,8 +231,114 @@ var upgradeBatchDocs = []struct {
 func upgradeBatchDocProblems(read func(file string) string, n int) []string {
 	var problems []string
 	for _, d := range upgradeBatchDocs {
-		if !strings.Contains(read(d.file), d.phrase(n)) {
+		if !strings.Contains(strings.Join(strings.Fields(read(d.file)), " "), d.phrase(n)) { // a sentence wrapped over two lines is the same sentence
 			problems = append(problems, d.file+" does not say "+strconv.Quote(d.phrase(n)))
+		}
+	}
+	return problems
+}
+
+// upgradeBatchProseDocs are the documents whose prose speaks of the memory upgrade in the present tense, and so may state no number of
+// articles for it but the size of the batch. The history in memory-and-learning (a table of versions and the retrospective of each, which
+// keep the old size of the versions that had it) is not here: the list above checks what it says of the batch now.
+var upgradeBatchProseDocs = []string{
+	"../../skills/shikii/references/recording.md",
+	"../../skills/shikii/references/tidy.md",
+	"../../skills/shikii/SKILL.md",
+	"../../docs/guide.md",
+	"../../docs/guide.ja.md",
+}
+
+// upgradeBatchTerms are the words by which a sentence speaks of the memory upgrade (the query, the field, the progress message, the
+// optimization that includes it, and its names in Japanese). A number of articles in a block that has one is a number of the batch.
+var upgradeBatchTerms = regexp.MustCompile(`(?i)memory[-_ ]upgrade|upgrading memory|memory[- ]policy|memory[- ]optimi[sz]|\x{8a18}\x{61b6}\x{306e}(?:\x{79fb}\x{3057}\x{66ff}\x{3048}|\x{66f4}\x{65b0}|\x{6700}\x{9069}\x{5316})`)
+
+// upgradeBatchCounts finds a number of articles or pages: "at most 10 full pinned articles", "a two-article batch", and in Japanese a
+// number (digits or one of the kanji numbers up to ten) before the counters for articles, items and pages.
+var upgradeBatchCounts = regexp.MustCompile(`(?i)\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)[- ](?:(?:full|pinned)[- ])*(?:articles?|pages?)\b` +
+	`|([0-9\x{ff10}-\x{ff19}]+|[\x{4e00}\x{4e8c}\x{4e09}\x{56db}\x{4e94}\x{516d}\x{4e03}\x{516b}\x{4e5d}\x{5341}])\s*(?:\x{8a18}\x{4e8b}|\x{4ef6}|\x{30da}\x{30fc}\x{30b8})`)
+
+var upgradeBatchNumberWords = map[string]int{"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+	"\u4e00": 1, "\u4e8c": 2, "\u4e09": 3, "\u56db": 4, "\u4e94": 5, "\u516d": 6, "\u4e03": 7, "\u516b": 8, "\u4e5d": 9, "\u5341": 10}
+
+// upgradeBatchCountValue is the number of one match of upgradeBatchCounts (-1 when it cannot be read).
+func upgradeBatchCountValue(m []string) int {
+	word := strings.ToLower(m[1] + m[2])
+	if n, ok := upgradeBatchNumberWords[word]; ok {
+		return n
+	}
+	n := 0
+	for _, r := range word {
+		if r >= '\uff10' && r <= '\uff19' {
+			r = '0' + (r - '\uff10')
+		}
+		if r < '0' || r > '9' {
+			return -1
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n
+}
+
+// proseBlocks splits a text into its blocks: a paragraph (up to a blank line) or a list item (a line that starts with a bullet or a
+// number, with the lines that continue it), each with its lines joined.
+func proseBlocks(text string) []string {
+	var blocks []string
+	var block []string
+	flush := func() {
+		if len(block) > 0 {
+			blocks = append(blocks, strings.Join(block, " "))
+			block = nil
+		}
+	}
+	for _, line := range strings.Split(text, "\n") {
+		switch {
+		case strings.TrimSpace(line) == "":
+			flush()
+		case listItemLine.MatchString(line):
+			flush()
+			block = append(block, strings.TrimSpace(line))
+		default:
+			block = append(block, strings.TrimSpace(line))
+		}
+	}
+	flush()
+	return blocks
+}
+
+var listItemLine = regexp.MustCompile(`^\s*(?:[-*]|\d+\.)\s`)
+
+// upgradeBatchCountProblems is the allow-list of the numbers: in a block (a paragraph or a list item) that speaks of the memory upgrade,
+// each number of articles must be n, the size of the batch. A block that says another number is named with it, whether the number is the
+// old two or any other, and wherever in the block it stands (a stale sentence after the right one is found too). A count in a block that
+// is not about the upgrade (the ordinary review of two articles in `wiki query`) is not looked at.
+func upgradeBatchCountProblems(text string, n int) []string {
+	var problems []string
+	for _, block := range proseBlocks(text) {
+		if !upgradeBatchTerms.MatchString(block) {
+			continue
+		}
+		for _, at := range upgradeBatchCounts.FindAllStringSubmatchIndex(block, -1) {
+			m := []string{block[at[0]:at[1]], "", ""}
+			for i := 1; i <= 2; i++ {
+				if at[2*i] >= 0 {
+					m[i] = block[at[2*i]:at[2*i+1]]
+				}
+			}
+			if got := upgradeBatchCountValue(m); got != n {
+				around := []rune(block)[max(0, len([]rune(block[:at[0]]))-50):min(len([]rune(block)), len([]rune(block[:at[1]]))+30)]
+				problems = append(problems, fmt.Sprintf("%s (%d, not %d) in a block that speaks of the memory upgrade: ...%s...", strconv.Quote(m[0]), got, n, string(around)))
+			}
+		}
+	}
+	return problems
+}
+
+func upgradeBatchProseProblems(read func(file string) string, n int) []string {
+	var problems []string
+	for _, file := range upgradeBatchProseDocs {
+		for _, p := range upgradeBatchCountProblems(read(file), n) {
+			problems = append(problems, file+": "+p)
 		}
 	}
 	return problems
@@ -243,6 +349,9 @@ func TestUpgradeBatchDocsStateTheSizeTheNotebookUses(t *testing.T) {
 	for _, n := range []int{notebook.MemoryUpgradeBatch, 10} {
 		if problems := upgradeBatchDocProblems(read, n); len(problems) > 0 {
 			t.Errorf("the documents state a batch other than %d articles: %s", n, strings.Join(problems, "; "))
+		}
+		if problems := upgradeBatchProseProblems(read, n); len(problems) > 0 {
+			t.Errorf("a paragraph or list item about the memory upgrade says a number of articles other than %d:\n%s", n, strings.Join(problems, "\n"))
 		}
 	}
 }
@@ -263,5 +372,34 @@ func TestUpgradeBatchDocCheckNamesADocumentWithTheOldSize(t *testing.T) {
 	}
 	if problems := upgradeBatchDocProblems(stale, 2); len(problems) != 0 {
 		t.Fatalf("a document that says the size asked for passes: %v", problems)
+	}
+}
+
+// A negative case for the allow-list of the numbers: a paragraph or list item about the memory upgrade that says any number of articles
+// but the size of the batch is named, the old two or another; a text that says only the size, and counts in blocks that are not about the
+// upgrade, pass. Each text is judged alone, so the check does not pass by finding the right sentence somewhere else in the file.
+func TestUpgradeBatchCountCheckNamesAnyOtherNumberAboutTheUpgrade(t *testing.T) {
+	for _, c := range []struct {
+		name, text string
+		want       int
+	}{
+		{"the right number alone passes", "At a break in work, prepare with the same receipt and query memory-upgrade for at most 10 full pinned articles.", 0},
+		{"the right number in Japanese passes", "\u901a\u5e38\u306f1\u4f9d\u983c\u306b\u3064\u304d\u3001\u8a18\u61b6\u306e\u66f4\u65b0\u3092\u6700\u592710\u8a18\u4e8b\u306e1\u7d44\u3060\u3051\u78ba\u8a8d\u3057\u307e\u3059\u3002", 0},
+		{"the old number in a sentence of its own, beside the right one", "At a break in work, query memory-upgrade for at most 10 full pinned articles. Ordinary tasks review at most two full pinned articles of the memory upgrade.", 1},
+		{"a number that was never the size", "Prepare with query memory-upgrade for at most 9 full pinned articles.", 1},
+		{"the sentence after the one that names the upgrade", "A shipped memory policy upgrade shows Upgrading memory and reviews knowledge in batches. Ordinary tasks review at most one two-article batch.", 1},
+		{"a sentence wrapped over two lines", "Prepare with query memory-upgrade for at most\ntwo full pinned articles.", 1},
+		{"a number in words that is not the size", "Prepare with query memory-upgrade for at most nine articles.", 1},
+		{"the old number in Japanese, in digits", "\u8a18\u61b6\u306e\u66f4\u65b0\u306f1\u4f9d\u983c\u3067\u6700\u59272\u8a18\u4e8b\u306e1\u7d44\u305a\u3064\u9032\u3081\u307e\u3059\u3002", 1},
+		{"the old number in Japanese, with the counter for items", "\u8a18\u61b6\u306e\u79fb\u3057\u66ff\u3048\u306f2 \u4ef6\u305a\u3064\u78ba\u8a8d\u3057\u307e\u3059\u3002", 1},
+		{"the old number in Japanese, in kanji", "\u8a18\u61b6\u306e\u6700\u9069\u5316\u3067\u306f\u4e8c\u8a18\u4e8b\u305a\u3064\u6574\u3048\u307e\u3059\u3002", 1},
+		{"a stale sentence after the right one, in the same paragraph", "A shipped memory policy upgrade shows Upgrading memory. Ordinary tasks review at most one batch of 10 articles, then resume. Ordinary tasks review at most one two-article batch. An explicit request continues.", 1},
+		{"a list item about something else is not near", "- The memory upgrade takes a batch of at most 10 articles.\n- A tidy request takes small batches of up to two articles.\n  The second line of that item.", 0},
+		{"a number about something else is not looked at", "The wiki query reviews at most two articles of the ordinary maintenance.", 0},
+		{"another paragraph is not near", "The memory upgrade runs in batches.\n\nThe ordinary review takes at most two articles.", 0},
+	} {
+		if got := upgradeBatchCountProblems(c.text, 10); len(got) != c.want {
+			t.Errorf("%s: %d problems, want %d: %v", c.name, len(got), c.want, got)
+		}
 	}
 }
