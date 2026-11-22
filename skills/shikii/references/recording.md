@@ -245,6 +245,20 @@ at the article limit when batches continue. Unavailable
 sources stay blocked and must not be deleted to claim completion. Hosts running
 assigned child agents do not automatically schedule this project-wide migration.
 
+When the 10 pages of a batch do not fit `max_bytes` (the CLI's default bound often
+cannot hold 10 full pages), the reply gives up text in this order, and
+`output.omitted` names each step: the passages that come with each page
+(`orientation`); then the body of each page; then the `lesson` of each page. A page
+without its body keeps its `ref`, `maintenance_ref`, `task`, title and the exact
+`query` that reads it whole; its `body_included` is false, it counts as unread and
+is not quotable, and its `ref` and `maintenance_ref` stay valid with the receipt.
+Read it with that `query` before reviewing it. When that still does not fit, the
+last pages of the batch are left out, one at a time, and the first page at least
+stays: `output.omitted` says `memory_upgrade.pages[] after the first N`, and the
+pages left out were not reviewed, so the next prepare returns them first. When not
+even the first page fits, `memory_upgrade` is left out whole and `output.omitted`
+names it; nothing was reviewed, so prepare again with a larger `max_bytes`.
+
 Related-page version lineage alone does not reopen a reviewed article when all
 stored content, conditions, sources and edit reasons are exactly unchanged. The
 edited article itself still needs review. New evidence, changed premises and the

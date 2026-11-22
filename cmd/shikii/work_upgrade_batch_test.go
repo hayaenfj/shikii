@@ -222,6 +222,7 @@ var upgradeBatchDocs = []struct {
 	phrase func(n int) string
 }{
 	{"../../skills/shikii/references/recording.md", func(n int) string { return fmt.Sprintf("for at most %d full pinned articles", n) }},
+	{"../../skills/shikii/references/tidy.md", func(n int) string { return fmt.Sprintf("(at most %d articles)", n) }},
 	{"../../docs/guide.md", func(n int) string { return fmt.Sprintf("review at most one batch of %d articles", n) }},
 	{"../../docs/guide.ja.md", func(n int) string { return fmt.Sprintf("\u6700\u5927%d\u8a18\u4e8b", n) }},
 	{"../../docs/memory-and-learning.md", func(n int) string { return fmt.Sprintf("raised to %d articles", n) }},
@@ -400,6 +401,27 @@ func TestUpgradeBatchCountCheckNamesAnyOtherNumberAboutTheUpgrade(t *testing.T) 
 	} {
 		if got := upgradeBatchCountProblems(c.text, 10); len(got) != c.want {
 			t.Errorf("%s: %d problems, want %d: %v", c.name, len(got), c.want, got)
+		}
+	}
+}
+
+// The documents say what becomes of the pages of the batch that do not fit max_bytes: what goes first, that the pages left out come back
+// first in the next prepare, and where output says so. The label is the one trimMemoryUpgrade writes to output.omitted
+// (TestTheUpgradeBatchOfTenStaysWhenItsPagesDoNotFit reads it from a real reply).
+func TestUpgradeBatchDocsSayWhatBecomesOfPagesThatDoNotFit(t *testing.T) {
+	for _, d := range []struct {
+		file  string
+		words []string
+	}{
+		{"../../skills/shikii/references/recording.md", []string{"the CLI's default bound often cannot hold 10 full pages", "`output.omitted` names each step", "memory_upgrade.pages[] after the first N", "the next prepare returns them first", "`memory_upgrade` is left out whole", "the exact `query` that reads it whole"}},
+		{"../../docs/guide.md", []string{"the CLI's default bound often cannot hold 10 full articles", "the next prepare returns them first", "`output.omitted` says what was left out"}},
+		{"../../docs/guide.ja.md", []string{"CLI\u306e\u65e2\u5b9a\u306e\u4e0a\u9650\u306b\u306f\u5165\u308a\u304d\u3089\u306a\u3044\u3053\u3068\u304c\u591a\u3044", "\u6b21\u306eprepare\u304c\u6700\u521d\u306b\u8fd4\u3057", "`output.omitted`\u306b\u51fa\u307e\u3059"}},
+	} {
+		text := strings.Join(strings.Fields(string(mustRead(t, d.file))), " ")
+		for _, words := range d.words {
+			if !strings.Contains(text, words) {
+				t.Errorf("%s does not say %q", d.file, words)
+			}
 		}
 	}
 }

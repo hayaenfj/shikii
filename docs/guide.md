@@ -670,7 +670,12 @@ Memory unknown/unused assessments need no invented explanation. A shipped memory
 policy upgrade shows Upgrading memory… and lets the installed agent review existing
 knowledge in resumable batches, preserving sources, preferences and history. Ordinary
 tasks review at most one batch of 10 articles, then resume on the next task. An explicit
-request to finish the upgrade can continue the remaining batches.
+request to finish the upgrade can continue the remaining batches. When the 10 articles do
+not fit max_bytes (the CLI's default bound often cannot hold 10 full articles), prepare
+leaves out first the passages of each article, then its body (each article keeps its
+references, its task and the exact query that reads it whole), then its lesson, and last the
+final articles of the batch. The articles left out were not reviewed, so the next prepare
+returns them first, and `output.omitted` says what was left out.
 Related-page version lineage alone does not reopen a reviewed article when the
 related page's entire stored content, conditions, sources and edit reasons are exactly unchanged.
 The edited article itself still needs review. New evidence, changed premises and
