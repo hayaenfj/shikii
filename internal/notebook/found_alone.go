@@ -28,7 +28,9 @@ type FoundAlone struct {
 //
 // Each word is searched as a wiki query of that word is: the same pages, thresholds and discovery contexts, over one shared reading
 // of the wiki (wordSearcher: the pages are read, their sources checked and their texts split once for all the words, not once for
-// each). It records nothing: no lookup, no miss, no change to the journal.
+// each). The reading is the one the search of query made when view carries it (a view from QueryPage of the same query that found
+// nothing), so the wiki is not read again; a view without it, or with the reading of another query or project, reads the wiki here.
+// It records nothing: no lookup, no miss, no change to the journal.
 func (b Book) WordsFoundAlone(query, cursor string, view View) ([]string, error) {
 	q, ok := missQuery(query, cursor)
 	if !ok || !view.searchFoundNothing() {
@@ -56,7 +58,7 @@ func (b Book) WordsFoundAlone(query, cursor string, view View) ([]string, error)
 	if len(examined) == 0 {
 		return nil, nil
 	}
-	searcher, err := b.searcherFor(examined)
+	searcher, err := b.searcherAfter(query, view, examined)
 	if err != nil {
 		return nil, err
 	}

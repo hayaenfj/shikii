@@ -27,16 +27,21 @@ func splitPages(pages []Page, words []string) *pageTerms {
 	return t
 }
 
+// covers reports whether the pages were split for every term of terms.
+func (t *pageTerms) covers(terms map[string]bool) bool {
+	for term := range terms {
+		if !t.wanted[term] {
+			return false
+		}
+	}
+	return true
+}
+
 // fieldsOf is the terms of the texts of the page at index i that are in terms, as searchTermsFor(text, terms) gives them, or nil
 // when some term was not among those the pages were split for (the ranking then splits the page itself).
 func (t *pageTerms) fieldsOf(i int, terms map[string]bool) []map[string]bool {
-	if i >= len(t.fields) {
+	if i >= len(t.fields) || !t.covers(terms) {
 		return nil
-	}
-	for term := range terms {
-		if !t.wanted[term] {
-			return nil
-		}
 	}
 	out := make([]map[string]bool, len(t.fields[i]))
 	for j, field := range t.fields[i] {
@@ -70,6 +75,30 @@ func (b Book) searcherFor(words []string) (*wordSearcher, error) {
 		return nil, err
 	}
 	return &wordSearcher{lessons: v.Lessons, terms: splitPages(v.Lessons, words)}, nil
+}
+
+// searchReading is the reading of the wiki a word search that found no candidate made (View.reading): the pages it ranked, with their
+// texts split for the terms of its query. It belongs to the project and the query it was made for.
+type searchReading struct {
+	root, scope, query string
+	searcher           *wordSearcher
+}
+
+// searcherAfter is the searcher of words (words of a search, as for searcherFor) over the reading that the search of query made
+// (view), so that the wiki is not read again. It reads the wiki (searcherFor) when view carries no reading, or the reading of another
+// project or query. When a term of the words is not among those the texts were split for, they are split again for the words, which
+// reads nothing.
+func (b Book) searcherAfter(query string, view View, words []string) (*wordSearcher, error) {
+	r := view.reading
+	if r == nil || r.query != query || r.root != b.Root || r.scope != b.Scope {
+		return b.searcherFor(words)
+	}
+	for _, word := range words {
+		if !r.searcher.terms.covers(searchTerms(word)) {
+			return &wordSearcher{lessons: r.searcher.lessons, terms: splitPages(r.searcher.lessons, words)}, nil
+		}
+	}
+	return r.searcher, nil
 }
 
 // finds reports whether a wiki query of the word finds an article (a candidate): word is one of the words searcherFor was given.

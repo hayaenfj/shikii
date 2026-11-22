@@ -89,6 +89,9 @@ type View struct {
 	// FoundAlone is set by a search of several words that found no candidate, when some of those words find an article if they are
 	// searched alone (WordsFoundAlone). The word query of the CLI, MCP and HTTP only; the caller fills it.
 	FoundAlone *FoundAlone `json:"found_alone,omitempty"`
+	// reading is what a word search that found no candidate read to rank (searchReading), kept so that WordsFoundAlone searches the
+	// words of the query over it instead of reading the wiki again. It is not part of the reply.
+	reading *searchReading
 }
 
 type Result struct {

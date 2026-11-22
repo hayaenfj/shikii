@@ -161,8 +161,18 @@ func (b Book) query(query string, recall bool) (View, error) {
 	if err != nil || done {
 		return v, err
 	}
-	if query != "" || recall {
-		v.Lessons, v.Matches = rankPages(v.Lessons, query, recall)
+	switch {
+	case recall:
+		v.Lessons, v.Matches = rankPages(v.Lessons, query, true)
+	case query != "":
+		// The texts are split once for the terms of the query, and the pages and their split texts are kept when the search finds
+		// nothing: WordsFoundAlone then asks about each word of the query over them, not over a new reading of the wiki.
+		pages := v.Lessons
+		terms := splitPages(pages, []string{query})
+		v.Lessons, v.Matches = rankPagesWith(pages, query, false, terms)
+		if len(v.Lessons) == 0 {
+			v.reading = &searchReading{root: b.Root, scope: b.Scope, query: query, searcher: &wordSearcher{lessons: pages, terms: terms}}
+		}
 	}
 	if recall {
 		// History stays in the count for rare words, and is ranked but dropped before cutting

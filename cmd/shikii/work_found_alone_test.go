@@ -101,6 +101,44 @@ func TestPrepareWithAReceiptNamesTheWordsThatFindAnArticleAlone(t *testing.T) {
 	}
 }
 
+// The words that find an article alone are asked over the reading that the search of the whole query made: a miss of several words
+// (a wiki query, and the search of a prepare that carries a receipt) parses the articles as often as a miss of one word, for which
+// found_alone is not asked. The count of parses is the measure, so this does not depend on how fast a machine is. The controls are
+// that the reply of the miss of several words names the word, and that a query reads the articles at all.
+func TestFoundAloneAsksNoReadOfTheWikiBeyondTheSearch(t *testing.T) {
+	f := newMissedFlow(t)
+	for _, a := range [][2]string{{"Marigold canal notes", "The marigold canal was drained."}, {"Juniper meadow records", "Walk the juniper meadow before release."}} {
+		loopPage(t, f.b, f.source, map[string]any{"title": a[0], "lesson": a[1], "applies_to": "notes"})
+	}
+	parsesOf := func(ask func() map[string]any) (uint64, map[string]any) {
+		before := notebook.PageParses()
+		reply := ask()
+		return notebook.PageParses() - before, reply
+	}
+	receipt := f.prepare("export audit", "")["receipt"].(string)
+
+	one, _ := parsesOf(func() map[string]any { return f.wiki("kestrel") })
+	if one == 0 {
+		t.Fatal("control: a wiki query reads the articles")
+	}
+	several, reply := parsesOf(func() map[string]any { return f.wiki(foundAloneQuery) })
+	if words, _ := foundAloneOf(t, reply); !slices.Equal(words, []string{"export"}) {
+		t.Fatalf("control: the miss of the five words names the word that finds an article: %q", words)
+	}
+	if several != one {
+		t.Fatalf("a wiki query of five words that finds nothing reads the articles as a query of one word does (%d parses), got %d", one, several)
+	}
+
+	one, _ = parsesOf(func() map[string]any { return f.prepare("kestrel", receipt) })
+	several, reply = parsesOf(func() map[string]any { return f.prepare(foundAloneQuery, receipt) })
+	if words, _ := foundAloneOf(t, reply); !slices.Equal(words, []string{"export"}) {
+		t.Fatalf("control: the search of a prepare names the word that finds an article: %q", words)
+	}
+	if several != one {
+		t.Fatalf("the search of a prepare of five words that finds nothing reads the articles as one of one word does (%d parses), got %d", one, several)
+	}
+}
+
 // The same over MCP, where the agent reads it in the structured result and in the text: a query, and the search of a prepare that
 // carries a receipt.
 func TestMCPNamesTheWordsThatFindAnArticleAlone(t *testing.T) {
