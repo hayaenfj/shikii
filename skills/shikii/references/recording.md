@@ -231,7 +231,7 @@ failed or omitted deliveries never establish a reusable notice.
 A shipped memory-policy epoch starts a source-preserving review of existing active
 wiki pages, with English progress "Upgrading memory…". Routine patch releases do
 not restart a completed epoch. At a break in work, prepare with the same receipt
-and query memory-upgrade for at most two full pinned articles. Compare original
+and query memory-upgrade for at most 10 full pinned articles. Compare original
 sources with current behavior, retain still-valid knowledge, correct obsolete
 conditions, classify superseded procedures as history, and consolidate duplicates
 through ordinary source-preserving edits/replaces. Preserve explicit preferences
@@ -274,7 +274,9 @@ For the optimization request, tidy each page before reviewing it, as tidy.md des
    read) in the reason. Reading alone is not review.
 3. Save any necessary edit, read the saved page, then record each reviewed page's
    maintenance with the `ref` from the latest prepare reply and a checked reason. A no-change
-   review uses the original ref. Several record calls in one turn are fine.
+   review uses the original ref. Several record calls in one turn are fine; a record takes
+   a limited number of maintenance reviews (see "Fixed limits" below), so a full batch can
+   need more than one record.
 4. Prepare again with the same receipt and `query: memory-upgrade` for the next
    pages, and repeat from step 2 until `memory_upgrade.status` is no longer
    `upgrading`, `reviewed` reaches `total`, or only blocked pages remain.

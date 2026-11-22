@@ -458,7 +458,20 @@ func trimMemoryUpgrade(reply map[string]any, quoted map[string]string, budget in
 		}
 	}
 	taken = append(taken, "memory_upgrade.pages[].article.lesson")
-	return taken, size(reply) <= budget
+	if size(reply) <= budget {
+		return taken, true
+	}
+	// A batch of MemoryUpgradeBatch pages can be larger than the smallest bound even in this form (about 700 bytes a page). The last
+	// pages go, one at a time, until the rest fits: they were not reviewed, so the next prepare returns them first. Before, such a
+	// bound dropped the whole batch (the first page at least stays; when even one does not fit, the caller drops the batch).
+	for len(pages) > 1 {
+		pages = pages[:len(pages)-1]
+		upgrade["pages"] = pages
+		if size(reply) <= budget {
+			return append(taken, fmt.Sprintf("memory_upgrade.pages[] after the first %d (the next prepare returns the pages not reviewed)", len(pages))), true
+		}
+	}
+	return taken, false
 }
 
 func suppliedPreparationReads(reply map[string]any) []store.KnowledgeReference {

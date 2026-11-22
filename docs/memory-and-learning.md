@@ -268,7 +268,7 @@ In 0.28.1, repeated long MCP strings share their original text and retain their 
 
 In 0.29.2, repeated notices share text within a response, and only quotations and excerpts actually returned in the final response count as delivered. A related article's earlier review can be reused when every content and evidence field is identical and only version lineage differs. Edited articles themselves, new evidence and changed premises still require review.
 
-After a memory-policy change, routine maintenance covers one batch of at most two articles per task. Saved progress survives interruption, while an explicit request to complete maintenance can continue the remaining batches. Preferences, original sources and past judgments remain; unavailable sources are not marked as reviewed.
+In these versions, after a memory-policy change, routine maintenance covers one batch of at most two articles per task (the batch was later raised to 10 articles). Saved progress survives interruption, while an explicit request to complete maintenance can continue the remaining batches. Preferences, original sources and past judgments remain; unavailable sources are not marked as reviewed.
 
 ### In 0.29.3, preserve the current intent while reducing repeated delivery
 

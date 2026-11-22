@@ -1,6 +1,7 @@
 package notebook
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 )
@@ -10,14 +11,16 @@ import (
 // the batch moves on, the page is reported by its id and does not count as reviewed, and it returns to review once its revision changes.
 func TestMemoryUpgradeSkipsAPageDeclaredBlocked(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/project"}
-	for i, title := range []string{"Blocked rule", "Second rule", "Third rule"} {
-		if _, err := b.Ingest(draft(seed(t, b, i+1), title)); err != nil {
+	// one page more than a batch holds, so that the page after the batch is the one that enters when a page is declared blocked
+	total := MemoryUpgradeBatch + 1
+	for i := 1; i <= total; i++ {
+		if _, err := b.Ingest(draft(seed(t, b, i), fmt.Sprintf("Rule %02d", i))); err != nil {
 			t.Fatal(err)
 		}
 	}
 	u, err := b.MemoryUpgrade()
-	if err != nil || u.Total != 3 || len(u.Tasks) != 2 {
-		t.Fatal("start with two bounded tasks", u, err)
+	if err != nil || u.Total != total || len(u.Tasks) != MemoryUpgradeBatch {
+		t.Fatal("start with a full batch of bounded tasks", u, err)
 	}
 	blocked := u.Tasks[0]
 	if err := b.BlockMemoryUpgrade(blocked.PageID, blocked.Revision, blocked.Key, ""); err == nil {
@@ -33,7 +36,7 @@ func TestMemoryUpgradeSkipsAPageDeclaredBlocked(t *testing.T) {
 	if !slices.Contains(u.Blocked, blocked.PageID) {
 		t.Fatal("the blocked page must be reported by its id", u.Blocked)
 	}
-	if len(u.Tasks) != 2 || slices.ContainsFunc(u.Tasks, func(task MaintenanceTask) bool { return task.PageID == blocked.PageID }) {
+	if len(u.Tasks) != MemoryUpgradeBatch || slices.ContainsFunc(u.Tasks, func(task MaintenanceTask) bool { return task.PageID == blocked.PageID }) {
 		t.Fatal("the batch must move on past the blocked page to the next unreviewed pages", u.Tasks)
 	}
 
@@ -44,7 +47,7 @@ func TestMemoryUpgradeSkipsAPageDeclaredBlocked(t *testing.T) {
 		}
 	}
 	u, err = resumed.MemoryUpgrade()
-	if err != nil || u.Status != "blocked" || u.Reviewed != 2 || len(u.Tasks) != 0 || !slices.Contains(u.Blocked, blocked.PageID) {
+	if err != nil || u.Status != "blocked" || u.Reviewed != MemoryUpgradeBatch || len(u.Tasks) != 0 || !slices.Contains(u.Blocked, blocked.PageID) {
 		t.Fatal("when only blocked pages remain the upgrade says so instead of waiting", u, err)
 	}
 

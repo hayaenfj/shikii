@@ -14,8 +14,8 @@ func TestMemoryUpgradeReviewsEveryExistingPageAndResumes(t *testing.T) {
 		}
 	}
 	u, err := b.MemoryUpgrade()
-	if err != nil || u.Status != "upgrading" || u.Total != 3 || u.Reviewed != 0 || len(u.Tasks) != 2 {
-		t.Fatal("all existing knowledge must enter bounded upgrade work", u, err)
+	if err != nil || u.Status != "upgrading" || u.Total != 3 || u.Reviewed != 0 || len(u.Tasks) != 3 {
+		t.Fatal("all existing knowledge must enter the upgrade work (three pages fit one batch)", u, err)
 	}
 	if u.Message != "\u8a18\u61b6\u3092\u66f4\u65b0\u3057\u3066\u3044\u307e\u3059\u2026" {
 		t.Fatal("the progress message the person sees must be Japanese", u.Message)
@@ -27,7 +27,7 @@ func TestMemoryUpgradeReviewsEveryExistingPageAndResumes(t *testing.T) {
 	resumed := Book{Root: b.Root, Scope: b.Scope}
 	u, err = resumed.MemoryUpgrade()
 	if err != nil || u.Reviewed != 1 || len(u.Tasks) != 2 {
-		t.Fatal("resume from durable progress", u, err)
+		t.Fatal("resume from durable progress: the two pages not reviewed remain", u, err)
 	}
 	for _, task := range u.Tasks {
 		if _, err := resumed.Maintain(MaintenanceReview{task.PageID, task.Revision, task.Key, "Reviewed the sources and current policy."}); err != nil {

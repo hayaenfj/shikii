@@ -19,7 +19,7 @@ func isMemoryUpgradeQuery(q string) bool {
 	return q == "memory-upgrade" || q == memoryOptimizeQuery
 }
 
-const memoryUpgradeNext = "Review one batch per task (at most two articles), against original sources and current behavior. Save necessary corrections, then maintenance with the latest returned ref and a checked reason. Preserve sources, preferences and history; reading alone is not review. Resume remaining articles on the next task from durable progress. An explicit request to finish the upgrade may continue with prepare:{receipt,query:memory-upgrade}. Report actual blocked sources; never replace missing evidence with deletion or human grading."
+var memoryUpgradeNext = fmt.Sprintf("Review one batch per task (at most %d articles), against original sources and current behavior. Save necessary corrections, then maintenance with the latest returned ref and a checked reason. Preserve sources, preferences and history; reading alone is not review. Resume remaining articles on the next task from durable progress. An explicit request to finish the upgrade may continue with prepare:{receipt,query:memory-upgrade}. Report actual blocked sources; never replace missing evidence with deletion or human grading.", notebook.MemoryUpgradeBatch)
 
 // memoryUpgradeSummaryNext is the next action of a topic summary: while the upgrade is blocked it does not send the agent back to review.
 func memoryUpgradeSummaryNext(u notebook.MemoryUpgrade) string {
@@ -94,7 +94,7 @@ func memoryUpgradeHook(root, scope string, s *hookSession) (hookOut, string, err
 	key := fmt.Sprintf("%s:%s:%d/%d", u.Epoch, u.Status, u.Reviewed, u.Total)
 	out := hookOut{}
 	if u.Status != "complete" && u.Status != "blocked" && s.MemoryUpgrade != key {
-		out.Context = "shikii: Upgrading memory… At a break in work, prepare the current receipt with query memory-upgrade. Review one batch (at most two articles) this task, then resume next task. Retain original sources, preferences and history."
+		out.Context = fmt.Sprintf("shikii: Upgrading memory… At a break in work, prepare the current receipt with query memory-upgrade. Review one batch (at most %d articles) this task, then resume next task. Retain original sources, preferences and history.", notebook.MemoryUpgradeBatch)
 	}
 	if s.MemoryUpgrade != key {
 		out.System = fmt.Sprintf("shikii: %s (%d/%d)", u.Message, u.Reviewed, u.Total)

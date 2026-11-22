@@ -33,15 +33,15 @@ func TestWorkUpgradeUsesExistingReceiptAndMaintenance(t *testing.T) {
 		t.Fatal("deliver the actual pinned upgrade articles", v)
 	}
 	pages := u["pages"].([]any)
-	if len(pages) != 2 || !strings.Contains(u["next_action"].(string), "one batch per task") {
-		t.Fatal("routine work must review one bounded batch and resume later", u["next_action"])
+	if len(pages) != 3 || !strings.Contains(u["next_action"].(string), "one batch per task") {
+		t.Fatal("the three pages fit one batch, and routine work must review one bounded batch and resume later", len(pages), u["next_action"])
 	}
 	page := pages[0].(map[string]any)
 	if page["article"] == nil || page["ref"] == "" || page["maintenance_ref"] == "" {
 		t.Fatal(page)
 	}
 	maintenance := []any{}
-	for _, raw := range pages {
+	for _, raw := range pages[:2] { // two of the three are reviewed; the third waits for the next task
 		p := raw.(map[string]any)
 		maintenance = append(maintenance, map[string]any{"ref": p["maintenance_ref"], "reason": "Checked original evidence; the rule remains applicable."})
 		if p["task"].(map[string]any)["next_action"] == u["policy"] {

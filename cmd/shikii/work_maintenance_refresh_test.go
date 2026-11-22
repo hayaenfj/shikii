@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -17,8 +18,9 @@ func TestWorkMaintenanceRefreshRequiresCurrentFullRead(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			for _, title := range []string{"Refresh first", "Refresh second", "Refresh third"} {
-				loopPage(t, b, source.ID, map[string]any{"title": title})
+			// one page more than a batch holds: the untracked mode reads the page that is not in the batch
+			for i := 1; i <= notebook.MemoryUpgradeBatch+1; i++ {
+				loopPage(t, b, source.ID, map[string]any{"title": fmt.Sprintf("Refresh page %02d", i)})
 			}
 			runHook(t, "user-prompt-submit", map[string]any{"session_id": "refresh", "cwd": repo, "prompt": "Check the routing implementation."})
 			initial, e := workCall(t, b, "prepare", map[string]any{"session_id": "refresh", "turn_id": loadSession(root, "refresh").TurnID, "query": "memory-upgrade"})

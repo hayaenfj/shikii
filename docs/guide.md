@@ -669,7 +669,7 @@ when the complete transport response becomes smaller.
 Memory unknown/unused assessments need no invented explanation. A shipped memory
 policy upgrade shows Upgrading memory… and lets the installed agent review existing
 knowledge in resumable batches, preserving sources, preferences and history. Ordinary
-tasks review at most one two-article batch, then resume on the next task. An explicit
+tasks review at most one batch of 10 articles, then resume on the next task. An explicit
 request to finish the upgrade can continue the remaining batches.
 Related-page version lineage alone does not reopen a reviewed article when the
 related page's entire stored content, conditions, sources and edit reasons are exactly unchanged.

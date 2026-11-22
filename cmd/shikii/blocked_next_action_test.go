@@ -28,24 +28,15 @@ func TestOnlyBlockedPagesRemainingDoesNotSendReviewOn(t *testing.T) {
 		t.Fatal(err)
 	}
 	pages := v["memory_upgrade"].(map[string]any)["pages"].([]any)
+	if len(pages) != 3 {
+		t.Fatal("setup: the three pages fit one batch, and all of them are declared blocked", len(pages))
+	}
 	maint := []any{}
 	for _, p := range pages {
 		maint = append(maint, map[string]any{"ref": p.(map[string]any)["maintenance_ref"], "reason": "The cited source file does not exist.", "blocked": true})
 	}
 	if _, err := workCall(t, b, "record", map[string]any{"receipt": v["receipt"], "maintenance": maint, "result": map[string]any{"changed": "Declared pages blocked.", "checked": "Sources missing."}}); err != nil {
 		t.Fatal("setup: first block", err)
-	}
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "upgrade", "cwd": repo, "prompt": "Check the next routing condition."})
-	v2, err := workCall(t, b, "prepare", map[string]any{"session_id": "upgrade", "turn_id": loadSession(root, "upgrade").TurnID, "query": "memory-upgrade"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	pages2 := v2["memory_upgrade"].(map[string]any)["pages"].([]any)
-	if len(pages2) != 1 {
-		t.Fatal("setup: one page remains", pages2)
-	}
-	if _, err := workCall(t, b, "record", map[string]any{"receipt": v2["receipt"], "maintenance": []any{map[string]any{"ref": pages2[0].(map[string]any)["maintenance_ref"], "reason": "The cited source file does not exist.", "blocked": true}}, "result": map[string]any{"changed": "Declared last page blocked.", "checked": "Sources missing."}}); err != nil {
-		t.Fatal("setup: last block", err)
 	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "upgrade", "cwd": repo, "prompt": "Check the routing condition again."})
 	v3, err := workCall(t, b, "prepare", map[string]any{"session_id": "upgrade", "turn_id": loadSession(root, "upgrade").TurnID, "query": "memory-upgrade"})

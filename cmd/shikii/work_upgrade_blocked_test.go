@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -18,17 +19,18 @@ func TestWorkRecordBlockedPageLetsTheBatchMoveOn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loopPage(t, b, s.ID, nil)
-	loopPage(t, b, s.ID, map[string]any{"title": "Second upgrade rule"})
-	loopPage(t, b, s.ID, map[string]any{"title": "Third upgrade rule"})
+	// one page more than a batch holds: the page after the batch is the one that enters when a page is declared blocked
+	for i := 1; i <= notebook.MemoryUpgradeBatch+1; i++ {
+		loopPage(t, b, s.ID, map[string]any{"title": fmt.Sprintf("Upgrade rule %02d", i)})
+	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "upgrade", "cwd": repo, "prompt": "Check the routing implementation."})
 	v, err := workCall(t, b, "prepare", map[string]any{"session_id": "upgrade", "turn_id": loadSession(root, "upgrade").TurnID, "query": "memory-upgrade"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	pages := v["memory_upgrade"].(map[string]any)["pages"].([]any)
-	if len(pages) != 2 {
-		t.Fatal("the first preparation shows two pages", pages)
+	if len(pages) != notebook.MemoryUpgradeBatch {
+		t.Fatal("the first preparation shows a full batch", len(pages))
 	}
 	blocked := pages[0].(map[string]any)
 	blockedID := blocked["article"].(map[string]any)["id"].(string)
@@ -51,8 +53,8 @@ func TestWorkRecordBlockedPageLetsTheBatchMoveOn(t *testing.T) {
 			t.Fatal("the blocked page must not come back at the head of the batch", u["pages"])
 		}
 	}
-	if len(u["pages"].([]any)) != 2 {
-		t.Fatal("the batch moves on to the other pages", u["pages"])
+	if len(u["pages"].([]any)) != notebook.MemoryUpgradeBatch {
+		t.Fatal("the batch moves on to the other pages, the page after the first batch among them", len(u["pages"].([]any)))
 	}
 	if !strings.Contains(strings.Join(anyStrings(u["unavailable_sources"]), " "), blockedID) {
 		t.Fatal("the blocked page is reported by its id", u["unavailable_sources"])
