@@ -27,8 +27,8 @@ func upgradeBatchFixture(t *testing.T, n int) (repo, root string, b notebook.Boo
 	return repo, root, b
 }
 
-// The batch of ten pages comes through prepare as ten pages, and the page after them waits for the next prepare. Both calls of record
-// that review the first ten stay within the record's own limit of eight maintenance reviews (8, then 2), as recording.md says.
+// The batch of ten pages comes through prepare as ten pages, and the page after them waits for the next prepare. One record takes the
+// ten reviews of the full batch, and refuses one more.
 func TestWorkUpgradeBatchIsTenPagesAndTheEleventhComesNext(t *testing.T) {
 	repo, root, b := upgradeBatchFixture(t, 11)
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "upgrade", "cwd": repo, "prompt": "Check the routing implementation."})
@@ -52,16 +52,15 @@ func TestWorkUpgradeBatchIsTenPagesAndTheEleventhComesNext(t *testing.T) {
 		}
 		return items
 	}
-	if _, err := workCall(t, b, "record", map[string]any{"receipt": v["receipt"], "maintenance": maintenance(0, 10)}); err == nil || !strings.Contains(err.Error(), "maintenance: 10 sent, at most 8") {
-		t.Fatalf("one record takes at most eight maintenance reviews, and says so: %v", err)
+	tooMany := append(maintenance(0, 10), map[string]any{"ref": "upgrade-extra", "reason": "One more than a batch."})
+	if _, err := workCall(t, b, "record", map[string]any{"receipt": v["receipt"], "maintenance": tooMany}); err == nil || !strings.Contains(err.Error(), "maintenance: 11 sent, at most 10") {
+		t.Fatalf("one record takes at most a batch of maintenance reviews, and says so: %v", err)
 	}
 	if progress, err := b.MemoryUpgrade(); err != nil || progress.Reviewed != 0 {
 		t.Fatal("a refused record saves no review", progress, err)
 	}
-	for _, part := range [][2]int{{0, 8}, {8, 10}} {
-		if _, err := workCall(t, b, "record", map[string]any{"receipt": v["receipt"], "maintenance": maintenance(part[0], part[1])}); err != nil {
-			t.Fatalf("the ten reviews go in two records: %v", err)
-		}
+	if _, err := workCall(t, b, "record", map[string]any{"receipt": v["receipt"], "maintenance": maintenance(0, 10)}); err != nil {
+		t.Fatalf("the ten reviews of a full batch go in one record: %v", err)
 	}
 	if progress, err := b.MemoryUpgrade(); err != nil || progress.Reviewed != 10 || len(progress.Tasks) != 1 {
 		t.Fatalf("ten reviewed, one page left: reviewed %d, %d tasks, %v", progress.Reviewed, len(progress.Tasks), err)

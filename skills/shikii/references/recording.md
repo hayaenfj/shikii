@@ -274,9 +274,8 @@ For the optimization request, tidy each page before reviewing it, as tidy.md des
    read) in the reason. Reading alone is not review.
 3. Save any necessary edit, read the saved page, then record each reviewed page's
    maintenance with the `ref` from the latest prepare reply and a checked reason. A no-change
-   review uses the original ref. Several record calls in one turn are fine; a record takes
-   a limited number of maintenance reviews (see "Fixed limits" below), so a full batch can
-   need more than one record.
+   review uses the original ref. One record takes the whole batch; several record calls in
+   one turn are fine.
 4. Prepare again with the same receipt and `query: memory-upgrade` for the next
    pages, and repeat from step 2 until `memory_upgrade.status` is no longer
    `upgrading`, `reviewed` reaches `total`, or only blocked pages remain.
@@ -637,7 +636,7 @@ When the person sends a message while you are still working, the hook starts a n
 
 `complete:true` means the named batch and its touched reflection obligations are saved. It is not completion of every pending conversation or of the person's task. A turn change or checkpoint failure stops remaining operations; a source or article already published before the interruption is reported separately. Model calls remain outside the session commit lock. Finish the rest of the prepared work and honor reflection's `left`; do not mark sources reviewed as a shortcut. Hook completion checks continue to inspect the original planning, review and wiki records. They are not bypassed by a receipt.
 
-Fixed limits: canonical work input 1 MiB; observation content 64 KiB of UTF-8; CLI JSON transport 8 MiB (allows escaped text); at most 4 observations, 2 notes, 128 scores, 256 memory assessments, 64 reviewed sources and 8 maintenance reviews, 4 discoveries and 2 procedure outcomes per batch. A receipt retains at most 32 observations and 128 saved or reserved recording keys within the existing 1 MiB session limit. New notes freeze the validated watched-premise hashes and exact preview revision for publication; later file changes remain visible as recheck. Published-note recovery reserves its keys before publication, so later batches cannot consume them. New entries are checked before their storage effects; identical saved retries remain available at the limit. Split work or prepare again when asked. The MCP/HTTP transport retains its existing JSON limits.
+Fixed limits: canonical work input 1 MiB; observation content 64 KiB of UTF-8; CLI JSON transport 8 MiB (allows escaped text); at most 4 observations, 2 notes, 128 scores, 256 memory assessments, 64 reviewed sources and 10 maintenance reviews, 4 discoveries and 2 procedure outcomes per batch. A receipt retains at most 32 observations and 128 saved or reserved recording keys within the existing 1 MiB session limit. New notes freeze the validated watched-premise hashes and exact preview revision for publication; later file changes remain visible as recheck. Published-note recovery reserves its keys before publication, so later batches cannot consume them. New entries are checked before their storage effects; identical saved retries remain available at the limit. Split work or prepare again when asked. The MCP/HTTP transport retains its existing JSON limits.
 
 ## External assignments
 

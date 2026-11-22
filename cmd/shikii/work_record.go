@@ -24,7 +24,7 @@ func recordItemsOverLimit(req workRequest) []string {
 		name   string
 		n, max int
 	}{{"observations", len(req.Observations), 4}, {"notes", len(req.Notes), 2}, {"reviews", len(req.Reviews), 128}, {"memory", len(req.Memory), 256},
-		{"reviewed", len(req.Reviewed), 64}, {"maintenance", len(req.Maintenance), 8}, {"discoveries", len(req.Discoveries), 4}, {"outcomes", len(req.Outcomes), 2}} {
+		{"reviewed", len(req.Reviewed), 64}, {"maintenance", len(req.Maintenance), notebook.MemoryUpgradeBatch}, {"discoveries", len(req.Discoveries), 4}, {"outcomes", len(req.Outcomes), 2}} {
 		if l.n > l.max {
 			over = append(over, l.name+": "+strconv.Itoa(l.n)+" sent, at most "+strconv.Itoa(l.max))
 		}

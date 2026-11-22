@@ -1,6 +1,9 @@
 package main
 
-import "github.com/hayaenfj/shikii/internal/store"
+import (
+	"github.com/hayaenfj/shikii/internal/notebook"
+	"github.com/hayaenfj/shikii/internal/store"
+)
 
 // Work's schema describes content and local references; storage identifiers stay
 // inside the receipt. Runtime validation enforces byte and operation limits.
@@ -33,7 +36,7 @@ func makeWorkSchema() map[string]any {
 		"notes":        schemaArray(note, 2),
 		"reviews":      schemaArray(schemaObject(map[string]any{"ref": text, "answer": map[string]any{"type": "string", "enum": []string{"yes", "no", "unknown"}}, "reason": text}), 128),
 		"memory":       schemaArray(schemaObject(map[string]any{"ref": text, "result": text, "decision": text, "evidence": text, "correction_result": text}), 256),
-		"reviewed":     map[string]any{"type": "array", "maxItems": 64, "items": text, "description": "Inspected source/evidence refs without a lasting lesson; knowledgeN confirms inspected initial evidence, changeN acknowledges only the delivered change. Neither means usefulness or truth."}, "maintenance": schemaArray(schemaObject(map[string]any{"ref": text, "reason": text, "blocked": map[string]any{"type": "boolean", "description": "true declares the page blocked instead of reviewed: its original evidence cannot be read or does not support it. The reason says what blocks it. The batch then moves on past this page, which returns when its revision changes."}}, "ref", "reason"), 8),
+		"reviewed":     map[string]any{"type": "array", "maxItems": 64, "items": text, "description": "Inspected source/evidence refs without a lasting lesson; knowledgeN confirms inspected initial evidence, changeN acknowledges only the delivered change. Neither means usefulness or truth."}, "maintenance": schemaArray(schemaObject(map[string]any{"ref": text, "reason": text, "blocked": map[string]any{"type": "boolean", "description": "true declares the page blocked instead of reviewed: its original evidence cannot be read or does not support it. The reason says what blocks it. The batch then moves on past this page, which returns when its revision changes."}}, "ref", "reason"), notebook.MemoryUpgradeBatch),
 		"discoveries": schemaArray(schemaObject(map[string]any{"ref": text, "context": text, "decision": text, "evidence": text, "case_id": text}), 4),
 		"outcomes":    schemaArray(schemaObject(map[string]any{"ref": text, "conditions": text, "action": text, "failure": text, "correction": text, "result": text, "sources": refs}), 2),
 	})
