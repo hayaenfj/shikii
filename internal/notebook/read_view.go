@@ -27,6 +27,17 @@ func (b Book) ReadView() Book {
 	return b
 }
 
+// sharingParses is b with one parse-and-verify pass shared by every read made on it afterwards, which is what a request that reads the
+// wiki in several steps takes (a query: the ranking, then the observations, the maintenance and the list of unclassified articles).
+// A Book that already shares one (a ReadView or a snapshot of the caller) is returned as it is, so the caller's view is the one used.
+// Like ReadView, it shares only the pass: each read still opens the file and compares all its bytes.
+func (b Book) sharingParses() Book {
+	if b.read == nil {
+		b.read = &readView{pages: map[string]readPage{}}
+	}
+	return b
+}
+
 // CurrentPage checks one current article without scanning unrelated articles.
 // A missing, modified or uncheckable article is unavailable, as in an exact
 // current Query. Historical reads still use their explicit revision.

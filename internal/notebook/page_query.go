@@ -7,7 +7,7 @@ import (
 )
 
 func (b Book) Query(query string) (View, error) {
-	b = b.scopedRead()
+	b = b.sharingParses().scopedRead()
 	v, err := b.query(query, false)
 	if strings.HasPrefix(query, "lesson:") && strings.Contains(query, "@") {
 		return v, err

@@ -113,6 +113,8 @@ func (b Book) QueryPageCursors(query, cursor string) (View, func(kept int) strin
 }
 
 func (b Book) queryPage(query, cursor string) (View, func(kept int) string, error) {
+	// The query and the list of unclassified articles of the first reply read the same wiki: they share the parsing of the articles.
+	b = b.sharingParses()
 	all, err := b.Query(query)
 	if err != nil {
 		return all, nil, err
