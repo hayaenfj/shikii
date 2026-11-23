@@ -127,6 +127,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.40.0 | Each project chooses whether TypeSafe's Jev or the local model answers its decisions; the choice comes before the environment variables. A tool can ask the ready-made question quote-supports. |
 | 0.40.1 | When old memory is moved into the wiki, an agent reviews up to 10 articles at a time instead of 2. A search from the command that finds nothing is tied to the session that ran it. |
 | 0.40.2 | A search from the command that finds nothing is tied to its session in OpenCode too. |
+| 0.41.0 | A person can remove what a finished agent session left in the project, from the command line or, after shikii asks them directly, over MCP. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -461,3 +462,13 @@ Versions 0.40.1 and 0.40.2 finished what 0.39.0 left. Version 0.39.0 reported th
 Version 0.40.1 also made wiki searches faster. One search checks each source the articles cite once. In a made-up wiki of 300 articles, a search that finds nothing went from about 98 ms to about 67 ms, and the list without search words from about 124 ms to about 77 ms. The replies are byte for byte the same as before. When old memory is moved into the wiki, an agent now reviews up to 10 articles at a time instead of 2.
 
 For OpenCode, the variable passed to commands, and the hook keeping its record under the same id, were checked with the real OpenCode 2.3.2. A full run in which OpenCode's model runs the command could not be done, because the model's provider was overloaded, so the command was run by hand. An OpenCode subagent runs in a session of its own that the hook keeps no record of, so a search inside a subagent is read to belong to no session (this was not run with the real OpenCode).
+
+### In 0.41.0, what a finished session left is removed after a person checks it
+
+When 0.40.2 was checked, the real OpenCode was run in this project. Those trial sessions left about 30 files of real records: their work states, the deliveries and assessments of lessons, sources, decisions and machine answers, the ledger of areas not examined, and the records of checks. What they held was true, but trial records mix into the hints later work gets. shikii had no way to remove records, and records point at each other by id, so removing them by hand could break the real ones.
+
+So `shikii forget` was added. What it removes is decided by following the fields that hold the session's id and the ids the session's own records hold. It never searches for the id as text and removes what it finds. A check showed that a text search finds less than half of what should go, and that one source it does find is cited by a wiki article and must stay. A session's work state also lists sources of other conversations that the session only read. So only what the session made is removed, and what it only read stays.
+
+Removing records is for a person to decide. At first it was not on MCP, and a person ran it in a terminal. Then the person asked for it to work over MCP too, after asking them, and MCP's elicitation was used: shikii asks the person directly, not through the agent, whether to remove the records, and removes them only when they choose yes. A yes that the agent passes as an argument of the tool removes nothing. If the records change while the person decides, nothing is removed.
+
+What was checked is projects made inside the tests and the four trial sessions of this project. Having the real Claude Code, Codex and OpenCode show the MCP question was not tried. Claude Code and Codex are read to support it from the programs on this machine; OpenCode is not known.

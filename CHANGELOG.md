@@ -2,6 +2,13 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.41.0 — Remove what finished agent sessions left in a project
+
+### Changes
+
+- Added `shikii forget <session id>`, which removes the records that a finished agent session, such as a trial run or a session started by mistake, left in a project's `.shikii/`. Without `--apply` it only lists what would be removed, what stays and why. With `--apply` it removes them and keeps a copy in `.shikii/records/forgotten/`, so they can be restored. Sources that a wiki article cites, and decisions that a person answered, are never removed. A session that may still be running is refused.
+- An agent can now ask shikii to remove a session's records over MCP. shikii then asks you directly whether to remove them, and removes them only when you agree. The agent cannot answer for you. Agents that cannot show you such a question are told to have you run `shikii forget` instead.
+
 ## 0.40.2 — In OpenCode too, a search that finds nothing is remembered with the session that ran it
 
 ### Fixes
