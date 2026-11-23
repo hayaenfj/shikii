@@ -40,8 +40,9 @@ func (b Book) LiveWhere(keep func(Page) bool) ([]Page, error) {
 		}
 	}
 	live := []Page{}
+	check := b.sourceCheck()
 	for _, p := range pages {
-		if p.Status != "deleted" && !superseded[p.ID] && (keep == nil || keep(p)) && len(b.sourceIssues(p)) == 0 {
+		if p.Status != "deleted" && !superseded[p.ID] && (keep == nil || keep(p)) && len(check.issues(p)) == 0 {
 			p.Recheck = b.premiseChanges(p)
 			live = append(live, p)
 		}
@@ -113,11 +114,12 @@ func (b Book) searchPages(query string, recall bool) (v View, done bool, err err
 	superseded := map[string]bool{}
 	valid := []Page{}
 	exact := !recall && strings.HasPrefix(query, "lesson:")
+	check := b.sourceCheck()
 	for _, p := range pages {
 		for _, id := range p.Replaces {
 			superseded[id] = true
 		}
-		bad := b.sourceIssues(p)
+		bad := check.issues(p)
 		v.Issues = append(v.Issues, bad...)
 		if len(bad) > 0 {
 			continue

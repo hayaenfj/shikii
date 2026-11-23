@@ -19,7 +19,9 @@ func PageParses() uint64 { return pageParses.Load() }
 
 // ReadView shares validated parsing within one request. Every access still
 // opens and reads the regular file, compares all bytes, and rechecks sources and
-// watched premises. It is neither a filesystem snapshot nor a persistent cache.
+// watched premises (a loop over several pages reads a source that several of them
+// cite once for the loop: see sourceCheck). It is neither a filesystem snapshot nor
+// a persistent cache.
 func (b Book) ReadView() Book {
 	b.name = ""
 	b.snapshot = nil

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unicode/utf8"
@@ -19,9 +20,14 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
+// sourceOpens counts the opens of a file under the sources area (a source record, an archived original, the store's name file), whether or
+// not it opened. Tests hold a request to one read of each source it cites, whatever the speed of a machine.
+var sourceOpens atomic.Uint64
+
 // All source readers reject nonregular files on the descriptor they opened,
 // before reading or hashing. O_NONBLOCK prevents FIFO open from waiting.
 func openSourceFile(path string) (*os.File, error) {
+	sourceOpens.Add(1)
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err

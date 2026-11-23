@@ -247,15 +247,12 @@ func (b Book) MaybeLint() error {
 
 // Unclassified lists live pages missing kind or scene (pages made before the upgrade; 0.9.0), in id order.
 func (b Book) Unclassified() ([]Page, error) {
-	live, err := b.Live()
+	// The filter goes to LiveWhere, which runs it before the sources of a page are checked, so only the pages that lack a kind or a
+	// scene have their sources read and hashed: a wiki whose articles all have them (nearly every wiki) reads none here. Filtering the
+	// result of Live instead would hash the sources of every article, which each search of the wiki already did for its own reply.
+	out, err := b.LiveWhere(func(p Page) bool { return p.Kind == "" || p.Scene == "" })
 	if err != nil {
 		return nil, err
-	}
-	out := []Page{}
-	for _, p := range live {
-		if p.Kind == "" || p.Scene == "" {
-			out = append(out, p)
-		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
