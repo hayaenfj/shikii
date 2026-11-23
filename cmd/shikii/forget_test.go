@@ -299,6 +299,7 @@ func TestForgetTakesASubagentIdAlone(t *testing.T) {
 	// the same agent id under another session as well
 	w2 := newForgetWorld(t)
 	w2.delivery("Bshared", "d5d5d5d5d5d5d5d5", w2.tB, w2.childA, w2.B, "", "")
+	w2.ageRecords() // the delivery is as old as the others: a delivery written a moment ago says its agent may still work
 	before = w2.snapshot()
 	if out, err := forgetCommand(t, w2.childA, "--apply"); err == nil || !strings.Contains(err.Error(), "ran under several sessions") {
 		t.Errorf("an agent id of two sessions is taken alone: %v\n%s", err, out)
@@ -318,7 +319,7 @@ func TestForgetLeavesTheStateOfASessionThatWorkedElsewhere(t *testing.T) {
 	w := newForgetWorld(t)
 	const c = "ses_fx_c"
 	noteSessionRequest(c, "/somewhere/else/.shikii", w.tA)
-	w.must(appendGuardRecords(w.root, []guardRecord{{At: time.Now().UTC(), Session: c, Turn: "c0c0c0c0c0c0c0c0", Guard: "g", Pass: true}}))
+	w.must(appendGuardRecords(w.root, []guardRecord{{At: w.old.UTC(), Session: c, Turn: "c0c0c0c0c0c0c0c0", Guard: "g", Pass: true}}))
 	home, _ := os.UserHomeDir()
 	latest := filepath.Join(home, ".shikii", "agent", "latest", c+".json")
 	if out, err := forgetCommand(t, c, "--apply"); err != nil {

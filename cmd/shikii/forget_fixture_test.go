@@ -198,9 +198,10 @@ func newForgetWorld(t *testing.T) *forgetWorld {
 
 	// the guards, the reasoning history, the search journal, the delivery journal
 	now := time.Now().UTC()
-	w.must(appendGuardRecords(root, []guardRecord{{At: now, Session: w.A, Turn: w.tA0, Guard: "g", Pass: true}, {At: now, Session: w.B, Turn: w.tB, Guard: "g", Pass: true}, {At: now, Session: w.A, Turn: w.tA, Guard: "g", Pass: false, Reason: "stopped"}}))
+	then := w.old.UTC() // what the sessions wrote is as old as their records: a record written a minute ago says the session may still run
+	w.must(appendGuardRecords(root, []guardRecord{{At: then, Session: w.A, Turn: w.tA0, Guard: "g", Pass: true}, {At: then, Session: w.B, Turn: w.tB, Guard: "g", Pass: true}, {At: then, Session: w.A, Turn: w.tA, Guard: "g", Pass: false, Reason: "stopped"}}))
 	for _, h := range []struct{ session, turn, source, key string }{{w.A, w.tA0, w.src["a5"], "a"}, {w.B, w.tB, w.src["b1"], "b"}} {
-		w.writeJSON("records/work-reasoning-"+workHash([]string{w.name, h.session, h.turn, h.key})+".json", map[string]any{"store": w.name, "session": h.session, "turn": h.turn, "entry": map[string]any{"key": h.key, "source": h.source, "at": now}})
+		w.writeJSON("records/work-reasoning-"+workHash([]string{w.name, h.session, h.turn, h.key})+".json", map[string]any{"store": w.name, "session": h.session, "turn": h.turn, "entry": map[string]any{"key": h.key, "source": h.source, "at": then}})
 	}
 	workA, workB := workHash([]string{w.A, w.tA})[:16], workHash([]string{w.B, w.tB})[:16]
 	discovery := func(work string) map[string]any {
@@ -250,11 +251,30 @@ func newForgetWorld(t *testing.T) *forgetWorld {
 	noteSessionRequest(w.B, root, w.tB)
 	noticeOnce(w.A, scope)
 	noticeOnce(w.B, scope)
+	w.ageRecords()
 
 	told := sha256.Sum256([]byte(w.A + "\n" + scope))
 	w.mustNotStay = []string{hex.EncodeToString(told[:8]), w.A, w.tA, w.tA0, w.tr["fb"], w.tr["pend"], w.tr["la1"], w.src["a1"], w.src["a3"], w.src["a5"], "d1d1d1d1d1d1d1d1", "d2d2d2d2d2d2d2d2", "d3d3d3d3d3d3d3d3", w.childA, "agent_old", covA, workA}
 	w.mayNameAOnly = []string{w.src["a2"], w.src["mention"]}
 	return w
+}
+
+var forgetAtField = regexp.MustCompile(`"at":"[^"]*"`)
+
+// ageRecords makes the records the store and the hooks stamped with the time of writing (the deliveries, the conversations, the state of
+// the last turn) as old as the sessions' files. The newest of them tells forget whether a session may still be running.
+func (w *forgetWorld) ageRecords() {
+	w.t.Helper()
+	stamp := []byte(`"at":"` + w.old.UTC().Format(time.RFC3339Nano) + `"`)
+	for _, path := range []string{w.st.MemoriesFile(w.scope), w.st.FeedbackFile(w.scope)} {
+		w.must(os.WriteFile(path, forgetAtField.ReplaceAll(forgetRead(w.t, path), stamp), 0o600))
+	}
+	home, _ := os.UserHomeDir()
+	latest, err := filepath.Glob(filepath.Join(home, ".shikii", "agent", "latest", "*.json"))
+	w.must(err)
+	for _, path := range latest {
+		w.must(os.Chtimes(path, w.old, w.old))
+	}
 }
 
 // forget runs shikii forget with the arguments and gives what it printed and its error.

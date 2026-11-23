@@ -12,8 +12,8 @@ import (
 )
 
 // forget over MCP: the same plan as the list of shikii forget, shown to the person by the client (elicitation/create), and applied
-// only when the person's answer says yes. What the agent passes names the sessions and, for its own protection, its own session; it
-// never carries the answer.
+// only when the person's answer says yes. What the agent passes names the sessions and, for its own protection, its own session (which
+// it must name: work.session_id); it never carries the answer.
 
 // forgetNeedsPerson is what an agent is told when the person cannot be asked here.
 const forgetNeedsPerson = `this client does not offer to ask the person, so nothing was changed, and an agent does not remove records on its own: a person runs shikii forget <session id>... in the project's folder (without --apply it only lists what would go; with --apply it moves the records into .shikii/records/forgotten/ first). Show the person the session ids to give it`
@@ -51,6 +51,10 @@ func (c *mcpConn) forget(call json.RawMessage, target http.Handler, args json.Ra
 	}
 	if len(fa.Sessions) == 0 {
 		return toolError(errors.New("forget needs sessions: the ids of the finished sessions to remove")), true
+	}
+	// The session that asks stays whatever the sessions say, and only the call can name it: so a call that does not is not run.
+	if !forgetIDShape.MatchString(own.SessionID) {
+		return toolError(errors.New(`forget needs work.session_id: your own session's id (work:{"session_id":"<your session id>"}), so that the session that asks is never removed; nothing was changed`)), true
 	}
 	ids, err := forgetUniqueIDs(fa.Sessions)
 	if err != nil {

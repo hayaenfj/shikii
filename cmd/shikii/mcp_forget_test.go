@@ -169,8 +169,11 @@ func accept(remove any) map[string]any {
 	return map[string]any{"action": "accept", "content": map[string]any{"remove": remove}}
 }
 
+// forgetCaller is the session that asks in the tests (a session of its own, which is not removed): forget needs it in work.session_id.
+const forgetCaller = "ses_fx_caller"
+
 func forgetArgs(w *forgetWorld, extra map[string]any) map[string]any {
-	args := map[string]any{"operation": "forget", "sessions": []string{w.A}}
+	args := map[string]any{"operation": "forget", "sessions": []string{w.A}, "work": map[string]any{"session_id": forgetCaller}}
 	for k, v := range extra {
 		args[k] = v
 	}
@@ -377,7 +380,7 @@ func TestMCPForgetTakesNoConfirmationFromItsArguments(t *testing.T) {
 	before := w.snapshot()
 	c := newLiveMCP(t, w.mcpHandler())
 	c.initialize(map[string]any{"elicitation": map[string]any{}})
-	c.callForget(2, forgetArgs(w, map[string]any{"work": map[string]any{"remove": true, "confirm": true}}))
+	c.callForget(2, forgetArgs(w, map[string]any{"work": map[string]any{"session_id": forgetCaller, "remove": true, "confirm": true}}))
 	q := c.question() // asked: work's other fields are not an answer
 	c.send(answerTo(q, map[string]any{"action": "decline"}))
 	if _, body := c.reply(2); body["status"] != "declined" {
@@ -447,7 +450,7 @@ func TestMCPForgetRefusesWhatTheCommandRefuses(t *testing.T) {
 		before := w.snapshot()
 		c := newLiveMCP(t, w.mcpHandler())
 		c.initialize(map[string]any{"elicitation": map[string]any{}})
-		c.callForget(2, map[string]any{"operation": "forget", "sessions": []string{"ses_typo"}})
+		c.callForget(2, forgetArgs(w, map[string]any{"sessions": []string{"ses_typo"}}))
 		failed, body := c.reply(2)
 		if !failed || !strings.Contains(body["message"].(string), "nothing in this project's .shikii/ names ses_typo") {
 			t.Errorf("an id nothing names was not refused: %v", body)

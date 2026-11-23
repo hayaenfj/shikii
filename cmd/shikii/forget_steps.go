@@ -17,32 +17,35 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
+// forgetStep is one step of the removal. lock, when it is set, takes the lock the step needs (nil for a step whose files are locked
+// one by one, as they are rewritten).
 type forgetStep struct {
 	name string
 	run  func() error
+	lock func() (func(), error)
 }
 
 func (r *forgetRun) steps() []forgetStep {
 	return []forgetStep{
-		{"decisions", r.stepDecisions},
-		{"assessments", r.stepAssessments},
+		{"decisions", r.stepDecisions, nil},
+		{"assessments", r.stepAssessments, r.lockMemory},
 		{"memories", func() error {
 			return r.rewrite("records/memories", r.st.MemoriesFile(r.scope), r.dropMemory, "lessons delivered to the sessions and to their subagents")
-		}},
-		{"wiki", r.stepWiki},
+		}, r.lockMemory},
+		{"wiki", r.stepWiki, r.lockWiki},
 		{"coverage", func() error {
 			return r.rewrite("records/coverage", r.st.CoverageFile(r.scope), r.dropCoverage, "lines of the results the sessions made; a line that closed another work's row goes too, and that row is open again")
-		}},
-		{"reviews", r.stepReviews},
+		}, nil},
+		{"reviews", r.stepReviews, nil},
 		{"feedback", func() error {
 			return r.rewrite("records/feedback", r.st.FeedbackFile(r.scope), r.dropFeedback, "conversations of the sessions")
-		}},
-		{"reasoning", r.stepReasoning},
+		}, nil},
+		{"reasoning", r.stepReasoning, nil},
 		{"guards", func() error {
 			return r.rewrite("records/guards.jsonl", guardRecordsPath(r.root), r.dropGuard, "checks of the sessions' turns")
-		}},
-		{"sessions", r.stepSessions},
-		{"agent", r.stepAgent},
+		}, nil},
+		{"sessions", r.stepSessions, nil},
+		{"agent", r.stepAgent, nil},
 	}
 }
 

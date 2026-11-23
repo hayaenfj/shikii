@@ -37,19 +37,20 @@ type forgetRun struct {
 	f         *store.Forgotten
 	plan      forgetPlan
 
-	parents     map[string]bool   // the ids that are sessions of this project
-	childOnly   map[string]string // an id that is only a subagent's: the session its deliveries ran under
-	hashes      map[string]bool   // store.CoverageSession of each session
-	turns       map[string]bool   // the turns of the sessions
-	made        map[string]string // a source id the sessions made, and the record that says so
-	read        map[string]bool   // a source id the sessions' work states name as read, not made
-	sessTraces  map[string]bool   // the decisions the sessions' own records wait on
-	quoteTraces map[string]bool   // the decisions the deliveries made
-	deliveries  map[string]bool   // the deliveries removed
-	children    map[string]bool   // the subagents of the sessions
-	want        map[string]bool   // every decision trace that goes (unless a person labeled it)
-	reasoning   []string          // the reasoning history files of the sessions
-	updated     map[string]time.Time
+	parents     map[string]bool      // the ids that are sessions of this project
+	childOnly   map[string]string    // an id that is only a subagent's: the session its deliveries ran under
+	hashes      map[string]bool      // store.CoverageSession of each session
+	turns       map[string]bool      // the turns of the sessions
+	made        map[string]string    // a source id the sessions made, and the record that says so
+	read        map[string]bool      // a source id the sessions' work states name as read, not made
+	sessTraces  map[string]bool      // the decisions the sessions' own records wait on
+	quoteTraces map[string]bool      // the decisions the deliveries made
+	deliveries  map[string]bool      // the deliveries removed
+	children    map[string]bool      // the subagents of the sessions
+	want        map[string]bool      // every decision trace that goes (unless a person labeled it)
+	reasoning   []string             // the reasoning history files of the sessions
+	newest      map[string]time.Time // the newest time any record of the id was written at (see touch)
+	parts       map[string]string    // what each step added to the plan the last time it was only listed (see runStep)
 	first, last time.Time
 }
 
@@ -91,6 +92,14 @@ func jmap(v any, keys ...string) map[string]any { m, _ := jget(v, keys...).(map[
 func (r *forgetRun) turn(id string) {
 	if forgetHex16.MatchString(id) {
 		r.turns[id] = true
+	}
+}
+
+// touch notes that a record of the id was written at the time. The newest of these says whether the session may still be running:
+// the record of the session is not the only thing a live session writes, and a session whose own record is gone leaves the others.
+func (r *forgetRun) touch(id string, at time.Time) {
+	if id != "" && at.After(r.newest[id]) {
+		r.newest[id] = at
 	}
 }
 
@@ -194,8 +203,9 @@ type forgetDelivery struct {
 }
 
 type forgetFeedbackRow struct {
-	ID      string `json:"id"`
-	Session string `json:"session"`
+	ID      string    `json:"id"`
+	Session string    `json:"session"`
+	At      time.Time `json:"at"`
 	Targets []struct {
 		TraceID string `json:"trace_id"`
 	} `json:"targets"`
@@ -274,7 +284,7 @@ func (r *forgetRun) gather() error {
 	r.plan = forgetPlan{At: time.Now().UTC(), Sessions: append([]string{}, r.ids...)}
 	r.parents, r.childOnly, r.hashes = map[string]bool{}, map[string]string{}, map[string]bool{}
 	r.turns, r.made, r.sessTraces, r.quoteTraces, r.read = map[string]bool{}, map[string]string{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
-	r.deliveries, r.children, r.want, r.updated = map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]time.Time{}
+	r.deliveries, r.children, r.want, r.newest = map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]time.Time{}
 	r.reasoning, r.first, r.last = nil, time.Time{}, time.Time{}
 	ids := forgetSet(r.ids)
 	for _, id := range r.ids {
@@ -312,7 +322,7 @@ func (r *forgetRun) gatherSessions(ids map[string]bool) error {
 		r.parents[id] = true
 		r.collectSession(doc)
 		if info, err := os.Lstat(path); err == nil {
-			r.updated[id] = info.ModTime()
+			r.touch(id, info.ModTime())
 			r.see(info.ModTime())
 		}
 		var saved struct {
@@ -336,6 +346,7 @@ func (r *forgetRun) gatherLogs(ids map[string]bool) error {
 			r.parents[g.Session] = true
 			r.turn(g.Turn)
 			r.see(g.At)
+			r.touch(g.Session, g.At)
 		}
 	}
 	files, err := filepath.Glob(filepath.Join(r.root, "records", "work-reasoning-*.json"))
@@ -363,6 +374,7 @@ func (r *forgetRun) gatherLogs(ids map[string]bool) error {
 		r.turn(h.Turn)
 		r.own(h.Entry.Source, "the reasoning history of the session")
 		r.see(h.Entry.At)
+		r.touch(h.Session, h.Entry.At)
 	}
 	feedback, err := forgetRows[forgetFeedbackRow](r.st, r.st.FeedbackFile(r.scope))
 	if err != nil {
@@ -372,6 +384,7 @@ func (r *forgetRun) gatherLogs(ids map[string]bool) error {
 		if ids[f.Session] {
 			r.parents[f.Session] = true
 			r.turn(f.ID)
+			r.touch(f.Session, f.At)
 		}
 	}
 	for _, spec := range forgetReviewSpecs {
@@ -386,15 +399,19 @@ func (r *forgetRun) gatherLogs(ids map[string]bool) error {
 			}
 		}
 	}
-	lines, err = r.st.JSONLLines(r.st.MemoriesFile(r.scope))
+	deliveries, err := forgetRows[forgetDelivery](r.st, r.st.MemoriesFile(r.scope))
 	if err != nil {
 		return err
 	}
-	for _, line := range lines {
-		if d, ok := decodeRow[forgetDelivery](line); ok && ids[d.Session] {
+	for _, d := range deliveries {
+		if ids[d.Session] {
 			r.parents[d.Session] = true
 			r.turn(d.Parent)
 			r.see(d.At)
+			r.touch(d.Session, d.At)
+		}
+		if ids[d.Agent] {
+			r.touch(d.Agent, d.At) // an id that is only a subagent's is given: its own deliveries say whether it still works
 		}
 	}
 	lines, err = r.st.JSONLLines(r.st.CoverageFile(r.scope))
@@ -407,8 +424,11 @@ func (r *forgetRun) gatherLogs(ids map[string]bool) error {
 		}
 	}
 	for _, id := range r.ids {
-		if _, ok := r.latestOf(id); ok {
+		if path, ok := r.latestOf(id); ok {
 			r.parents[id] = true
+			if info, err := os.Stat(path); err == nil {
+				r.touch(id, info.ModTime())
+			}
 		}
 	}
 	return nil
@@ -452,9 +472,9 @@ func (r *forgetRun) classify() error {
 		for _, why := range r.ownSession(id) {
 			r.plan.Refusals = append(r.plan.Refusals, fmt.Sprintf("%s is %s", id, why))
 		}
-		if at, ok := r.updated[id]; ok && time.Since(at) < forgetQuiet {
+		if at, ok := r.newest[id]; ok && time.Since(at) < forgetQuiet {
 			wait := (forgetQuiet - time.Since(at)).Round(time.Minute)
-			r.plan.Refusals = append(r.plan.Refusals, fmt.Sprintf("the record of %s was written %s ago, so the session may still be running; try again in about %s", id, time.Since(at).Round(time.Second), wait))
+			r.plan.Refusals = append(r.plan.Refusals, fmt.Sprintf("a record of %s was written %s ago, so the session may still be running; try again in about %s", id, time.Since(at).Round(time.Second), wait))
 		}
 	}
 	return nil

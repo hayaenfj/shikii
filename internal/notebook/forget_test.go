@@ -120,3 +120,66 @@ func TestForgetKeepsASourceSomethingStillNames(t *testing.T) {
 		t.Errorf("the search journal keeps the wrong misses: %s", data)
 	}
 }
+
+// A source that no current article cites stays when an older revision of an article cites it, or when an assignment names it: the
+// revision's check (lint) and the assignment still read it. Each case gives the one place that names the source, and the folder of the
+// articles exists because another article was ingested.
+func TestForgetKeepsASourceOnlyARevisionOrAnAssignmentNames(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		place func(t *testing.T, b Book) string // the path of the one file that names the source
+		kept  string
+	}{
+		{"an older revision of an article", func(t *testing.T, b Book) string {
+			pages, err := b.directory(false, "pages")
+			if err != nil {
+				t.Fatal(err)
+			}
+			return filepath.Join(pages, "revisions", "00000000000000aa-00000000000000bb.md")
+		}, "cited by the revision 00000000000000aa-00000000000000bb.md"},
+		{"an assignment", func(t *testing.T, b Book) string {
+			dir := filepath.Join(b.Root, "records", "assignments", b.storeName())
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			return filepath.Join(dir, "work-1.json")
+		}, "named by the assignment work-1.json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := forgetBook(t)
+			base, named, free := forgetCapture(t, b, "base"), forgetCapture(t, b, "named"), forgetCapture(t, b, "free")
+			if _, err := b.Ingest(Draft{Sources: []string{base}, Title: "Forget test lesson", Lesson: "Keep the article.", AppliesTo: "forget tests", Kind: "rule", Scene: "when testing forget"}); err != nil {
+				t.Fatal(err)
+			}
+			path := tc.place(t, b)
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(`{"text":"it names `+named+`"}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			unlock, err := b.LockForForget()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer unlock()
+			f, err := (store.Store{Dir: b.Root}).NewForgotten(time.Now(), "ses_x")
+			if err != nil {
+				t.Fatal(err)
+			}
+			res, err := b.Forget(ForgetRequest{Owned: []string{named, free}}, f, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(res.Removed, []string{free}) || !strings.Contains(res.Kept[named], tc.kept) {
+				t.Fatalf("what only %s names is not kept: removed %v, kept %v (want %q)", tc.name, res.Removed, res.Kept, tc.kept)
+			}
+			dir := filepath.Join(b.Root, "records", "wiki-sources", b.storeName())
+			for id, stays := range map[string]bool{named: true, free: false} {
+				if _, err := os.Stat(filepath.Join(dir, id+".json")); stays != (err == nil) {
+					t.Errorf("source %s: stays=%v but the file is %v", id, stays, err)
+				}
+			}
+		})
+	}
+}

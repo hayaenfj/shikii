@@ -34,7 +34,8 @@ const forgetQuiet = 10 * time.Minute
 // forgetSessionVariables are the environment variables an agent passes the id of its own session in: forget never removes that one.
 var forgetSessionVariables = []string{"CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "OPENCODE_SESSION_ID"}
 
-// forgetAfterStep runs after each step of an application (a test makes one fail to stop a run in the middle).
+// forgetAfterStep runs after each step of an application, when the locks of the step are released (a test makes one fail to stop a run in
+// the middle, and one looks at what another process can take between two steps).
 var forgetAfterStep = func(step string) error { return nil }
 
 var forgetIDShape = regexp.MustCompile(`^[A-Za-z0-9_-]{1,200}$`)
@@ -117,9 +118,15 @@ func (r *forgetRun) run(apply bool) error {
 // errForgetPlanChanged is why an application stops when the records are no longer what the person was shown.
 var errForgetPlanChanged = errors.New("what would be removed changed after the plan was made, so nothing was changed; list it again")
 
+// errForgetStepChanged is why an application stops before a step whose records changed after the plan was made (the plan was of them
+// all, and the step read its own again under its own lock): the steps before it had already gone by the plan.
+var errForgetStepChanged = errors.New("what this step would remove changed after the plan was made, so it was not run")
+
 // execute makes the plan and, with apply, moves what it lists away. It prints nothing (over MCP stdout is the protocol's channel).
-// expect, when it is not empty, is the digest of the plan a person agreed to: the plan read again under the locks must be that
-// plan, or nothing is changed.
+// expect, when it is not empty, is the digest of the plan a person agreed to: the plan read again under the sessions' locks must be
+// that plan, or nothing is changed. The wiki's locks and the memory's are not held across the run, because other sessions' hooks wait
+// only two seconds for them: each is taken by the step that needs it, which reads its records again under it and runs only when they
+// are what the plan said (see runStep).
 func (r *forgetRun) execute(apply bool, expect string) error {
 	// Nothing is locked or written until the plan is known and nothing in it is refused: a refusal changes nothing, not even a lock file.
 	if err := r.pass(false); err != nil {
@@ -131,12 +138,12 @@ func (r *forgetRun) execute(apply bool, expect string) error {
 	if err := r.refused(); err != nil {
 		return err
 	}
-	unlock, err := r.lockAll()
+	unlock, err := r.lockSessions()
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	// what the locks now protect is read again: the plan below is of that
+	// what the sessions' locks now protect is read again: the plan below is of that
 	if err := r.pass(false); err != nil {
 		return err
 	}
@@ -164,28 +171,30 @@ func (r *forgetRun) execute(apply bool, expect string) error {
 // does not depend on how the records were read. The time, the refusals (a plan with one is never applied) and Done are not in it.
 func (r *forgetRun) digest() string {
 	p := r.plan
-	canon := func(v any) string {
-		out := []string{}
-		switch items := v.(type) {
-		case []forgetItem:
-			for _, item := range items {
-				if item.Place == "sessions" && item.What == "lock files" {
-					continue // the locks taken to apply the plan make empty lock files of their own, which is no change of what goes
-				}
-				b, _ := json.Marshal(item)
-				out = append(out, string(b))
-			}
-		case []forgetNote:
-			for _, item := range items {
-				b, _ := json.Marshal(item)
-				out = append(out, string(b))
-			}
-		}
-		sort.Strings(out)
-		return strings.Join(out, "\n")
-	}
-	sum := sha256.Sum256([]byte(strings.Join([]string{strings.Join(p.Sessions, ","), strings.Join(p.Children, ","), strings.Join(p.Turns, ","), canon(p.Remove), canon(p.Keep), canon(p.Candidates)}, "\n--\n")))
+	sum := sha256.Sum256([]byte(strings.Join([]string{strings.Join(p.Sessions, ","), strings.Join(p.Children, ","), strings.Join(p.Turns, ","), forgetCanon(p.Remove), forgetCanon(p.Keep), forgetCanon(p.Candidates)}, "\n--\n")))
 	return hex.EncodeToString(sum[:])
+}
+
+// forgetCanon is a list of the plan (of forgetItem or of forgetNote) as one text that does not depend on the order it was found in.
+func forgetCanon(v any) string {
+	out := []string{}
+	switch items := v.(type) {
+	case []forgetItem:
+		for _, item := range items {
+			if item.Place == "sessions" && item.What == "lock files" {
+				continue // the locks taken to apply the plan make empty lock files of their own, which is no change of what goes
+			}
+			b, _ := json.Marshal(item)
+			out = append(out, string(b))
+		}
+	case []forgetNote:
+		for _, item := range items {
+			b, _ := json.Marshal(item)
+			out = append(out, string(b))
+		}
+	}
+	sort.Strings(out)
+	return strings.Join(out, "\n")
 }
 
 func (r *forgetRun) refused() error {
@@ -212,14 +221,17 @@ func (r *forgetRun) savePlan() error {
 }
 
 // pass gathers the evidence and runs each step: with apply false it only builds the plan, with apply true it does what the plan lists
-// (from the evidence read again, under the locks).
+// (from the evidence read again, under the sessions' locks).
 func (r *forgetRun) pass(apply bool) error {
 	r.applying = apply
+	if r.parts == nil {
+		r.parts = map[string]string{}
+	}
 	if err := r.gather(); err != nil {
 		return err
 	}
 	for _, s := range r.steps() {
-		if err := s.run(); err != nil {
+		if err := r.runStep(s, apply); err != nil {
 			return fmt.Errorf("%s: %w", s.name, err)
 		}
 		if apply {
@@ -231,9 +243,61 @@ func (r *forgetRun) pass(apply bool) error {
 	return nil
 }
 
-// lockAll takes every lock the removal needs, outside in: each session's own locks (its work state, its planning, its record), the
-// wiki's folders, the memory deliveries. A lock that cannot be taken means the session may still be running: nothing is changed.
-func (r *forgetRun) lockAll() (func(), error) {
+// planMark is where the lists of the plan stood before a step ran: what the step added is what stands after it.
+type planMark struct{ remove, keep, candidates int }
+
+func (r *forgetRun) mark() planMark {
+	return planMark{len(r.plan.Remove), len(r.plan.Keep), len(r.plan.Candidates)}
+}
+
+// part is what the step added to the plan since the mark, in the form the digest compares, and rewind takes it out again.
+func (r *forgetRun) part(m planMark) string {
+	p := r.plan
+	return strings.Join([]string{forgetCanon(p.Remove[m.remove:]), forgetCanon(p.Keep[m.keep:]), forgetCanon(p.Candidates[m.candidates:])}, "\n--\n")
+}
+
+func (r *forgetRun) rewind(m planMark) {
+	r.plan.Remove, r.plan.Keep, r.plan.Candidates = r.plan.Remove[:m.remove], r.plan.Keep[:m.keep], r.plan.Candidates[:m.candidates]
+}
+
+// runStep runs one step. A listing runs it as it is and notes what it adds to the plan. An application takes the lock the step needs
+// (the wiki's or the memory's), holds it for this step alone, and first lists again what the step would remove: that must be what
+// the plan said (the part noted by the listing that came before), or the step is not run. The records the lock protects could change
+// between that listing and the lock, and a plan that is not the one the person saw is not applied.
+func (r *forgetRun) runStep(s forgetStep, apply bool) error {
+	if !apply {
+		m := r.mark()
+		if err := s.run(); err != nil {
+			return err
+		}
+		r.parts[s.name] = r.part(m)
+		return nil
+	}
+	if s.lock != nil {
+		unlock, err := s.lock()
+		if err != nil {
+			return err
+		}
+		defer unlock()
+		m := r.mark()
+		r.applying = false
+		err = s.run()
+		got := r.part(m)
+		r.rewind(m)
+		r.applying = true
+		if err != nil {
+			return err
+		}
+		if got != r.parts[s.name] {
+			return errForgetStepChanged
+		}
+	}
+	return s.run()
+}
+
+// lockSessions takes the locks of each session asked for, outside in: its work state, its planning, its record. A lock that cannot be
+// taken means the session may still be running: nothing is changed.
+func (r *forgetRun) lockSessions() (func(), error) {
 	var held store.Unlocks
 	release := func() { held.Release() }
 	for _, id := range r.ids {
@@ -253,16 +317,13 @@ func (r *forgetRun) lockAll() (func(), error) {
 			held.Add(unlock)
 		}
 	}
-	for _, take := range []func() (func(), error){r.book.LockForForget, func() (func(), error) { return r.st.LockMemory(r.scope) }} {
-		unlock, err := take()
-		if err != nil {
-			release()
-			return nil, fmt.Errorf("refused, nothing was changed: %w", err)
-		}
-		held.Add(unlock)
-	}
 	return release, nil
 }
+
+// lockWiki and lockMemory are the locks of the steps that read and write the wiki's folders and the memory deliveries: the other
+// writers of those files take them, in the order the wiki's own writers do.
+func (r *forgetRun) lockWiki() (func(), error)   { return r.book.LockForForget() }
+func (r *forgetRun) lockMemory() (func(), error) { return r.st.LockMemory(r.scope) }
 
 func (r *forgetRun) remove(place, what string, count int, why string, names ...string) {
 	if count > 0 {

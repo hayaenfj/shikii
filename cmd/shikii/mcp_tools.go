@@ -113,7 +113,7 @@ var mcpTools = []map[string]any{
 		"inputSchema": schemaObject(map[string]any{
 			"operation":   map[string]any{"type": "string", "enum": []string{"prepare", "record", "query", "ingest", "patch", "compare", "capture", "maintain", "lint", "classify", "handoff_list", "handoff_read", "handoff_write", "handoff_append", "forget"}},
 			"work":        workSchema,
-			"sessions":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "forget: ids of finished sessions to remove. shikii asks the person; the answer is never an argument. Your own session goes in work.session_id and stays. Read status and changed"},
+			"sessions":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "forget: ids of finished sessions to remove. shikii asks the person; the answer is never an argument. Your own session id is required in work.session_id and stays. Read status and changed"},
 			"path":        map[string]any{"type": "string", "description": "path of a work record (handoff_*), relative to .shikii/handoff/ (e.g. audit-0.8.1/report-A.md). Refuses .., hidden names and absolute paths"},
 			"content":     map[string]any{"type": "string", "description": "text for handoff_write (replace) or handoff_append (add to the end). UTF-8 text, up to 1 MiB per call"},
 			"patch":       patchSchema,
