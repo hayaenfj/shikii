@@ -127,7 +127,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.40.0 | Each project chooses whether TypeSafe's Jev or the local model answers its decisions; the choice comes before the environment variables. A tool can ask the ready-made question quote-supports. |
 | 0.40.1 | When old memory is moved into the wiki, an agent reviews up to 10 articles at a time instead of 2. A search from the command that finds nothing is tied to the session that ran it. |
 | 0.40.2 | A search from the command that finds nothing is tied to its session in OpenCode too. |
-| 0.41.0 | A person can remove what a finished agent session left in the project, from the command line or, after shikii asks them directly, over MCP. |
+| 0.41.0 | A person can remove what a finished agent session left in the project, and a tool can withdraw the articles it made from removed work, kept until the person restores or deletes them; removal from the command line or, after shikii asks them directly, over MCP. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -472,3 +472,7 @@ So `shikii forget` was added. What it removes is decided by following the fields
 Removing records is for a person to decide. At first it was not on MCP, and a person ran it in a terminal. Later it was made to work over MCP too, with the person asked first, using MCP's elicitation: shikii asks the person directly, not through the agent, whether to remove the records, and removes them only when they choose yes. A yes that the agent passes as an argument of the tool removes nothing. If the records change while the person decides, nothing is removed.
 
 What was checked is projects made inside the tests and the four trial sessions of this project. Having the real Claude Code, Codex and OpenCode show the MCP question was not tried. Claude Code and Codex are read to support it from the programs on this machine; OpenCode is not known.
+
+Later audits changed how "still running" is decided several times. At first it was whether 10 minutes had passed since the last record. But long work can go more than 10 minutes without a record. So the hook now notes the agent's process, and the decision is whether that process is alive. Even with the application open, a session can be removed when it is not thinking and nothing it started is still running. Whether it is thinking can only be inferred from hook events, though. Each audit found one more case, such as a subagent in the background or another hook asking to go on, and each was settled on the side of not removing.
+
+The same version added `shikii wiki withdraw`, with which a tool such as chiten takes back the articles it made from its own work. At first it deleted them. But the kind of a source is written freely by whoever saves it, so articles made from a person's words could be withdrawn too. So a withdrawn article is now kept, and the person checks it on the answer page and chooses to restore or delete it.
