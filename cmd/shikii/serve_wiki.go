@@ -81,7 +81,7 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 		c["path"] = wikiRel(s.o.wikiDir, p)
 		claims = append(claims, c)
 	}
-	result := map[string]any{"claims": claims, "lessons": []notebook.Page{}, "notebook_issues": []notebook.Issue{}, "pending_sources_count": 0, "notebook_project": filepath.Base(s.o.projectScope)}
+	result := map[string]any{"claims": claims, "lessons": []notebook.Page{}, "withdrawn": []notebook.WithdrawnArticle{}, "notebook_issues": []notebook.Issue{}, "pending_sources_count": 0, "notebook_project": filepath.Base(s.o.projectScope)}
 	if list, err := (handoff.Book{Store: s.o.storeDir}).List(); err == nil { // work records (0.8.1): read in the page's knowledge section
 		result["handoff"] = list
 	} else {
@@ -112,6 +112,9 @@ func (s *server) handleWikiList(w http.ResponseWriter, r *http.Request) {
 		if cursor == "" { // the page reads the whole list in one reply (0.10.1): splitting it as MCP replies are split made dozens of calls, each reading the whole wiki again
 			view, err = book.Query("")
 			view.Remaining = book.RemainingUnclassified()
+			if withdrawn, werr := book.Withdrawn(); werr == nil { // the articles a work took back, for the person to restore or delete (the first reply only)
+				result["withdrawn"] = withdrawn
+			}
 		} else {
 			view, err = book.QueryPage("", cursor)
 		}

@@ -45,6 +45,14 @@ type Page struct {
 	Scene        string   `json:"scene,omitempty" yaml:"scene,omitempty"` // scene (a "when ..." phrase in the project's own words, up to sceneMax characters; 0.9.0)
 }
 
+// StatusWithdrawn is the status of an article the work that made it took back (Withdraw): it stays with its text, history and sources,
+// is not delivered or searched, and a person restores it or deletes it on the Knowledge page.
+const StatusWithdrawn = "withdrawn"
+
+// Gone says the article is out of the wiki's working set: deleted, or withdrawn and waiting for a person. Neither is delivered, searched,
+// reviewed or saved into.
+func (p Page) Gone() bool { return p.Status == "deleted" || p.Status == StatusWithdrawn }
+
 // Kinds are the kinds of page. Fixed to shapes every kind of work has (do not add more): a rule decided in this project, a how-to, a criterion for judging, a premise or fact, and history.
 var Kinds = []string{"rule", "howto", "criteria", "fact", "history"}
 

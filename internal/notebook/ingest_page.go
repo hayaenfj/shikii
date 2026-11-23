@@ -42,7 +42,7 @@ func (b Book) buildIngestPage(d Draft, body, sourceDir string, pages []Page, ref
 			id = digest([]byte(strings.TrimSpace(d.Title)))[:16]
 			// The id comes from the first title. After a rename it belongs to an
 			// article with another title; a new lesson must not overwrite that one.
-			if old, ok := byID[id]; ok && old.Status != "deleted" && old.Title != d.Title {
+			if old, ok := byID[id]; ok && !old.Gone() && old.Title != d.Title {
 				return nil, fmt.Errorf("%w: the title %q was the first title of article %s, now titled %q; update that article by its id, or give the new lesson another title", ErrArticleConflict, d.Title, id, old.Title)
 			}
 		} else if _, ok := byID[id]; !ok {
@@ -62,12 +62,14 @@ func (b Book) buildIngestPage(d Draft, body, sourceDir string, pages []Page, ref
 		if d.CreateOnly && byID[id].ID != "" {
 			return nil, ErrArticleConflict
 		}
-		if byID[id].Status == "deleted" {
+		// A deleted article is never saved into again. A withdrawn one is left to a person: only the person's restore or delete (Manage)
+		// touches it, so a lesson saved under its title does not bring it back.
+		if byID[id].Gone() && !(byID[id].Status == StatusWithdrawn && d.change != nil && (d.change.Action == "restore" || d.change.Action == "delete")) {
 			return nil, ErrArticleConflict
 		}
 		if _, exists := byID[id]; !exists {
 			for _, old := range pages {
-				if old.Status == "deleted" && old.Title == d.Title {
+				if old.Gone() && old.Title == d.Title {
 					return nil, ErrArticleConflict
 				}
 			}
@@ -108,7 +110,7 @@ func (b Book) buildIngestPage(d Draft, body, sourceDir string, pages []Page, ref
 				p.Scene = old.Scene
 			}
 		}
-		if !validKindScene(p.Kind, p.Scene) && !(d.change != nil && d.change.Action == "delete") {
+		if !validKindScene(p.Kind, p.Scene) && (d.change == nil || d.change.Action == "edit") {
 			return nil, kindSceneError(p.Kind, p.Scene)
 		}
 		p.ChangeReason = d.ChangeReason
@@ -182,8 +184,11 @@ func (b Book) buildIngestPage(d Draft, body, sourceDir string, pages []Page, ref
 			return nil, errors.New("replaced wiki lessons must not form a cycle")
 		}
 		if d.change != nil {
-			if d.change.Action == "delete" {
+			switch d.change.Action {
+			case "delete":
 				p.Status = "deleted"
+			case "withdraw":
+				p.Status = StatusWithdrawn
 			}
 			observation := changeObservation(*d.change)
 			data, _ := json.Marshal(observation)

@@ -154,13 +154,13 @@ export default Plugin.define({
     // its task, and what shikii gives (the rules for every request and how to report) goes on the task's message. Only the first message of a subagent's session is its task; a later one (the
     // parent continuing it) starts another turn of the same subagent, whose end is reported again, so its start is told again too (shikii
     // keeps a subagent open from its start to its end, and nothing else tells the parent's session that the subagent thinks again): that
-    // start carries no task, and what shikii answers is not used, as the subagent has what it was given. A message that joins a turn that
-    // is running is no new turn.
+    // start carries no task and says it is a later turn (continued), so shikii keeps the subagent open and delivers and records nothing, as
+    // the subagent has what it was given. A message that joins a turn that is running is no new turn.
     const subagentPrompt = async (sessionID: string, sub: { parent: string; agent: string }, e: any) => {
       const began = !working.has(sessionID)
       working.add(sessionID)
       if (briefed.has(sessionID)) {
-        if (began) await hook("subagent-start", sub.parent, { agent_id: sessionID, agent_type: sub.agent })
+        if (began) await hook("subagent-start", sub.parent, { agent_id: sessionID, agent_type: sub.agent, continued: true })
         return
       }
       briefed.add(sessionID)

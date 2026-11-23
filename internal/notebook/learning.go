@@ -165,7 +165,7 @@ func (b Book) validateLearningEvidence(p *Page, old Page, pages map[string]Page)
 			}
 		}
 		current, ok := pages[c.ID]
-		if !preserved && (!ok || current.Status == "deleted" || retired[c.ID] || current.Revision != c.Revision) {
+		if !preserved && (!ok || current.Gone() || retired[c.ID] || current.Revision != c.Revision) {
 			return ErrArticleConflict
 		}
 		past, err := b.readRevision("lesson:" + c.ID + "@" + c.Revision)

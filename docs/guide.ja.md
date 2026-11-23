@@ -517,7 +517,7 @@ MCP では、同じ計画をクライアントが人に質問として見せる(
 | `shikii import <past.csv> --spec <spec>` | 手元の過去の表を正解の貯金(JSON)にする |
 | `shikii judge <spec> --local <URL>` | 別の大きいモデルを審判にし、人の正解と十分に一致すれば正解の無い記録に重み付きの正解を付ける |
 | `shikii wiki query` / `consult` / `reuse` / `organize` / `reconcile` / `patch` / `diagnose` / `compare` / `capture` / `ingest` / `classify` / `maintain` / `lint` / `verify` | wiki の検索・作業案の照合・手順の再利用・原資料・登録・種類と場面を付ける・見直し・点検・主張の再検証 |
-| `shikii wiki withdraw` | chiten のように自分の仕事から記事を保存する道具が、使う人がその仕事を消した時に、自分が作った記事を取り下げて、後の依頼に配られないようにする(履歴と出典は残る)。標準入力に `{id,revision,sources,reason}` を渡し、記事が引く出典が全部 `sources` に名指されていて、しかも道具が自分の仕事から保存した記録(kind が `agent`・`code`・`test`)の時だけ取り下げる。人の言葉を引く記事(hook が記録した会話、訂正、kind が `human` の出典)とリリースの記録を引く記事は断る。コマンドラインだけで、MCP と HTTP には無い。エージェントは自分の判断では呼ばない |
+| `shikii wiki withdraw` | chiten のように自分の仕事から記事を保存する道具が、使う人がその仕事を消した時に、自分が作った記事を配信から外す。記事は消えず、中身・履歴・出典を持ったまま「取り下げた記事」になり、配られず、検索にも出ない。知識の画面に取り下げた記事が並び、使う人が記事ごとに元に戻す(また配られる)か、削除する(何が消えるかを見せる確かめの後で。削除した記事は元に戻せない)。標準入力に `{id,revision,sources,reason}` を渡し、記事が引く出典が全部 `sources` に名指されていて、人の訂正を持たない時だけ取り下げる。コマンドラインだけで、MCP と HTTP には無い。元に戻す・削除をするコマンドも MCP の操作も無く、エージェントは自分の判断では呼ばない。取り下げた記事の数は `shikii status` と画面の状態に出る |
 | `shikii handoff list` / `read` / `write` / `append` | 作業記録の読み書き |
 | `shikii guard list` / `add` / `enable` / `disable` / `try` | 止める検査 |
 | `shikii review query` / `submit` | 会話と結果からの仮採点(振り返りでまとめて使うことが多い) |
@@ -548,7 +548,7 @@ MCP では、同じ計画をクライアントが人に質問として見せる(
 | `POST /v1/tune/sync` | `{"spec","propose"}` | その場で聞き方の改善を回して結果を返す(MCP の `shikii_tune` が使う。採用はしない) |
 | `GET /v1/wiki` · `POST /v1/wiki/claim` | | wiki の主張の一覧 · 主張の状態を変える(promote / delete。変えるのは人だけ) |
 | `POST /v1/wiki/notebook` | `operation: prepare / record / query / consult / reuse / organize / reconcile / ingest / patch / diagnose / compare / capture / classify / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append` | プロジェクトのwiki。原資料と記事の検索・登録・見直し・点検。教訓は仮説。handoff_* は作業記録の読み書き(MCP と同じ操作。画面そのものは読むだけ) |
-| `POST /v1/wiki/article` | `action: edit / delete`、`id`、`revision`。editは`title`、`lesson`、`applies_to`、`body`、`kind`、`scene` | このプロジェクトの記事を編集・削除する。古い版は409。削除後は検索・配信から外し、出典と履歴を残す。 |
+| `POST /v1/wiki/article` | `action: edit / delete / restore`、`id`、`revision`。editは`title`、`lesson`、`applies_to`、`body`、`kind`、`scene` | このプロジェクトの記事を編集・削除する。仕事が取り下げた記事は元に戻す(restore)か削除する(`GET /v1/wiki`の`withdrawn`に並ぶ)。古い版は409で、取り下げた記事は画面が見せた版を名指した時だけ元に戻す・削除できる。削除後は検索・配信から外し、出典と履歴を残す。 |
 | `GET /v1/handoff/file?path=` | `path`(.shikii/handoff/ からの相対) | 作業記録の 1 件。画像は画像、文字と HTML は text/plain、それ以外は保存。置き場の外は 400 |
 | `POST /v1/review` | `operation: query / submit` | 会話と結果から仮採点。原文・対象・訂正例を取得し、根拠付きで保存。人の確認は抜き取りと保留 |
 | `POST /v1/reflect` | `operation: query / place / submit`、`reviews` / `wiki` / `memory` / `maintenance` | 採点・wiki整理・届いた記憶と訂正の観察、記事の見直しをまとめて確認・保存(query は整理待ちの会話を古い順に並べる(古い 2 件は原文、続く 40 件までは頭だけ。載らなかった会話は more_pending に件数を入れ、次の query で並べる)。原資料と見直しの対象は 2 件ずつ見せ、submit は会話・項目・見直しの数を限らない。既存の記事に足す時、元の出典は引き継がれる)。`complete`と各`error`を確認する |

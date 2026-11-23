@@ -42,7 +42,7 @@ func (b Book) LiveWhere(keep func(Page) bool) ([]Page, error) {
 	live := []Page{}
 	check := b.sourceCheck()
 	for _, p := range pages {
-		if p.Status != "deleted" && !superseded[p.ID] && (keep == nil || keep(p)) && len(check.issues(p)) == 0 {
+		if !p.Gone() && !superseded[p.ID] && (keep == nil || keep(p)) && len(check.issues(p)) == 0 {
 			p.Recheck = b.premiseChanges(p)
 			live = append(live, p)
 		}
@@ -86,7 +86,7 @@ func (b Book) AlwaysRules() ([]Page, error) {
 	}
 	out := []Page{}
 	for _, p := range valid {
-		if p.Status != "deleted" && !superseded[p.ID] && p.Kind == "rule" && IsAlways(p.Scene) {
+		if !p.Gone() && !superseded[p.ID] && p.Kind == "rule" && IsAlways(p.Scene) {
 			p.Recheck = b.premiseChanges(p)
 			out = append(out, p)
 		}
@@ -132,7 +132,7 @@ func (b Book) searchPages(query string, recall bool) (v View, done bool, err err
 	}
 	for _, p := range valid {
 		// For automatic delivery (recall), drop history pages before ranking (dropping them after cutting the candidates lets history take the seats and rules do not arrive; audit 0.9.1 medium-3)
-		if p.Status != "deleted" && !superseded[p.ID] && !exact {
+		if !p.Gone() && !superseded[p.ID] && !exact {
 			v.Lessons = append(v.Lessons, p)
 		}
 	}

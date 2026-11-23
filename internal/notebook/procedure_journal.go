@@ -27,7 +27,7 @@ func (b Book) procedureCurrent(c ProcedureBasis) bool {
 		}
 		seen[r.ID] = true
 		v, e := b.Query("lesson:" + r.ID)
-		if e != nil || len(v.Lessons) != 1 || v.Lessons[0].Status == "deleted" || v.Lessons[0].Revision != r.Revision || len(v.Lessons[0].Recheck) > 0 {
+		if e != nil || len(v.Lessons) != 1 || v.Lessons[0].Gone() || v.Lessons[0].Revision != r.Revision || len(v.Lessons[0].Recheck) > 0 {
 			return false
 		}
 	}

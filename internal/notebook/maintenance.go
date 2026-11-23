@@ -72,7 +72,7 @@ func maintenanceTasks(pages []Page) []MaintenanceTask {
 	}
 	out := []MaintenanceTask{}
 	for _, p := range pages {
-		if p.Status == "deleted" {
+		if p.Gone() {
 			continue
 		}
 		task := MaintenanceTask{PageID: p.ID, Revision: p.Revision, Title: p.Title, Dependencies: deps[p.ID]}
@@ -202,7 +202,7 @@ func (b Book) maintenance(ids []string, outcomesOnly bool) ([]MaintenanceTask, e
 			if !exists {
 				return nil, fmt.Errorf("selected page %s is missing; restore its current article before reviewing", id)
 			}
-			if p.Status == "deleted" {
+			if p.Gone() {
 				continue
 			}
 			required := append([]string{id}, p.Related...)

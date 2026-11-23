@@ -20,6 +20,7 @@
       {#if m.corrections?.delivered}<p>{t('summaryCorrections')(m.corrections)}</p>{/if}
     {:else}<p class="text-muted">{t('summaryMemoryNone')}</p>{/if}
     {#if g.rituals}<p class="summary-rituals" data-rituals>{t('summaryRituals')(g.rituals)}</p>{/if}
+    {#if summary.wiki?.withdrawn}<p data-withdrawn-count>{t('summaryWithdrawn')(summary.wiki.withdrawn)}</p>{/if}
   </section>
   <section class={panel}>
     <h3 class={head}>{t('summaryGuardsHead')}</h3>

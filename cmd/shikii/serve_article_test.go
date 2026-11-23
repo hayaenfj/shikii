@@ -70,3 +70,81 @@ func TestArticleHTTPChangesAreScopedAndRevisionChecked(t *testing.T) {
 		t.Fatalf("deleted article remains: %+v %v", v, err)
 	}
 }
+
+// An article a work withdrew is listed on the Knowledge page apart from the live ones. The person restores it or deletes it there; the
+// page cannot withdraw (only the program that made the article does, from the command line), edit a withdrawn article, or act on a
+// revision other than the withdrawn one.
+func TestArticleHTTPWithdrawnArticleIsRestoredOrDeletedByThePerson(t *testing.T) {
+	root := t.TempDir()
+	b := notebook.Book{Root: filepath.Join(root, ".shikii"), Scope: root}
+	article := func(n int, title string) (notebook.Page, notebook.Page) {
+		src, err := b.CaptureObserved(notebook.Observation{Kind: "agent", Title: "Work record " + title, Content: "what the work did " + title, Reference: "test", Version: "v1", ObservedAt: time.Unix(int64(n), 0)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := b.Ingest(notebook.Draft{Title: title, Lesson: "Summary of " + title, AppliesTo: "Docs", Kind: "howto", Scene: "Docs", Sources: []string{src.ID}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		w, err := b.Withdraw(notebook.Withdrawal{ID: r.Page.ID, Revision: r.Page.Revision, Sources: []string{src.ID}, Reason: "the request of " + title + " was deleted"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return *r.Page, w
+	}
+	h := localHostOnly(newServer(serveOpts{storeDir: b.Root, projectScope: root}))
+	post := func(c map[string]any) *httptest.ResponseRecorder {
+		data, _ := json.Marshal(c)
+		req := httptest.NewRequest("POST", "http://127.0.0.1:8095/v1/wiki/article", strings.NewReader(string(data)))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+	list := func() (lessons, withdrawn []notebook.WithdrawnArticle) {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", "http://127.0.0.1:8095/v1/wiki", nil))
+		var got struct {
+			Lessons   []notebook.WithdrawnArticle `json:"lessons"`
+			Withdrawn []notebook.WithdrawnArticle `json:"withdrawn"`
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil {
+			t.Fatalf("list: %d %s", w.Code, w.Body.String())
+		}
+		return got.Lessons, got.Withdrawn
+	}
+	liveBefore, withdrawnBefore := article(1, "First")
+	deletedBefore, deletedWithdrawn := article(2, "Second")
+	lessons, withdrawn := list()
+	if len(lessons) != 0 || len(withdrawn) != 2 || withdrawn[0].Withdrawal.Reason == "" || len(withdrawn[0].Withdrawal.Work) != 1 {
+		t.Fatalf("the page lists the withdrawn articles apart from the live ones, with why and from which work: %+v %+v", lessons, withdrawn)
+	}
+	for name, c := range map[string]map[string]any{
+		"a withdrawal sent by the page":  {"id": liveBefore.ID, "revision": withdrawnBefore.Revision, "action": "withdraw"},
+		"an edit of a withdrawn article": {"id": liveBefore.ID, "revision": withdrawnBefore.Revision, "action": "edit", "title": "Edited", "lesson": "Edited", "applies_to": "Docs", "kind": "howto", "scene": "Docs"},
+	} {
+		if w := post(c); w.Code < 400 {
+			t.Fatalf("%s: %d %s", name, w.Code, w.Body.String())
+		}
+	}
+	if w := post(map[string]any{"id": liveBefore.ID, "revision": liveBefore.Revision, "action": "restore"}); w.Code != 409 {
+		t.Fatalf("a restore that names the revision from before the withdrawal: %d", w.Code)
+	}
+	if w := post(map[string]any{"id": deletedBefore.ID, "revision": deletedBefore.Revision, "action": "delete"}); w.Code != 409 {
+		t.Fatalf("a delete that names the revision from before the withdrawal: %d", w.Code)
+	}
+	if _, withdrawn := list(); len(withdrawn) != 2 {
+		t.Fatalf("refused requests leave both articles withdrawn: %+v", withdrawn)
+	}
+	var restored, deleted notebook.Page
+	if w := post(map[string]any{"id": liveBefore.ID, "revision": withdrawnBefore.Revision, "action": "restore"}); w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &restored) != nil || restored.Status != "hypothesis" {
+		t.Fatalf("restore: %d %s", w.Code, w.Body.String())
+	}
+	if w := post(map[string]any{"id": deletedBefore.ID, "revision": deletedWithdrawn.Revision, "action": "delete"}); w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &deleted) != nil || deleted.Status != "deleted" {
+		t.Fatalf("delete: %d %s", w.Code, w.Body.String())
+	}
+	lessons, withdrawn = list()
+	if len(lessons) != 1 || lessons[0].ID != liveBefore.ID || len(withdrawn) != 0 {
+		t.Fatalf("the restored article is live again and the deleted one is gone: %+v %+v", lessons, withdrawn)
+	}
+}

@@ -64,6 +64,7 @@ func runHookEvent(event string) error {
 		return err
 	}
 	noteAgentProcess(agent, in.SessionID, in.eventAt()) // which agent process runs the session, for shikii forget; written only when the record has another
+	keepSubagentOfEarlierProcess(agent, event, &in)     // a subagent an earlier process left open, working again under this one
 	if event != "agent-task" && event != "tool-lesson" && event != "subagent-stop" {
 		ensureModel(common, agent) // start it in the background if missing (this turn just gets no record; do not wait). Not started by the retired agent-task, nor when matching a lesson to a tool call
 	}
@@ -333,6 +334,12 @@ func isNotification(prompt string) bool {
 // (4 of 37 deliveries to children helped). Deliveries are recorded under an ID separate from the parent's (a hash of the turn and the
 // subagent). Nothing is output if there is no parent request yet. No decisions (the 2 questions) are made.
 func hookSubagentStart(agent string, in *hookInput, snapshot *hookSession) (hookOut, error) {
+	// A later turn of a subagent that was given its rules at its first start (OpenCode's plugin tells the start of every turn, so that the
+	// subagent stays open while it thinks again): the plugin does not hand a later answer to the child, so a delivery would be recorded
+	// that the child never saw and no report of its would assess. The event has already kept the subagent open (sessionActivity).
+	if in.Continued {
+		return hookOut{}, nil
+	}
 	if snapshot.Request == "" || snapshot.Scope == "" || snapshot.TurnID == "" {
 		return hookOut{}, nil
 	}

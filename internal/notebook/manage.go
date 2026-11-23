@@ -10,7 +10,7 @@ import (
 var ErrArticleConflict = errors.New("the article changed or is no longer active; read it again before saving")
 var ErrArticleMissing = errors.New("the article does not exist in this project")
 
-// Change contains only the fields the Knowledge page can change. Evidence,
+// Change contains only the fields the Knowledge page can change (edit, delete, and restore for an article a work withdrew). Evidence,
 // relationships and history are always taken from the current saved article.
 type Change struct {
 	ID        string              `json:"id"`
@@ -33,8 +33,13 @@ func (b Book) Manage(c Change) (Page, error) {
 	if !idPattern.MatchString(c.ID) || !idPattern.MatchString(c.Revision) {
 		return Page{}, errors.New("article id and revision must be 16 lowercase hexadecimal characters")
 	}
-	if c.Action != "edit" && c.Action != "delete" {
-		return Page{}, errors.New("article action must be edit or delete")
+	if c.Action != "edit" && c.Action != "delete" && c.Action != "restore" && c.Action != "withdraw" {
+		return Page{}, errors.New("article action must be edit, delete or restore")
+	}
+	// Only Withdraw (the program that made the article, from the command line) takes an article back, and it always carries its own
+	// withdrawal; a change a page or an agent sends cannot ask for it by name.
+	if (c.Action == "withdraw") != (c.withdrawal != nil) {
+		return Page{}, errors.New("article action must be edit, delete or restore")
 	}
 	dir, err := b.directory(true, "pages")
 	if err != nil {
@@ -66,8 +71,22 @@ func (b Book) Manage(c Change) (Page, error) {
 	if old.ID == "" {
 		return Page{}, ErrArticleMissing
 	}
-	if old.Revision != c.Revision || old.Status == "deleted" {
+	if old.Revision != c.Revision {
 		return Page{}, ErrArticleConflict
+	}
+	switch c.Action {
+	case "restore": // the person takes a withdrawn article back: only a withdrawn one has anything to restore
+		if old.Status != StatusWithdrawn {
+			return Page{}, ErrArticleConflict
+		}
+	case "delete": // a withdrawn article is deleted by the person like a live one; a deleted one is gone
+		if old.Status == "deleted" {
+			return Page{}, ErrArticleConflict
+		}
+	default: // edit and withdraw take a live article only
+		if old.Gone() {
+			return Page{}, ErrArticleConflict
+		}
 	}
 	if c.check != nil {
 		if err := c.check(old); err != nil {

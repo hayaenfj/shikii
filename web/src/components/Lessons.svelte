@@ -8,11 +8,25 @@
   import { plainText } from '../lib/text.js';
   import { applyArticle, setPage } from '../lib/state.svelte.js';
   import ArticleEditor from './ArticleEditor.svelte';
+  import WithdrawnDelete from './WithdrawnDelete.svelte';
+  import { api } from '../lib/api.js';
 
   let { wiki, onchange = applyArticle } = $props();
   let editing = $state(null);
   function openEditor(action) { setPage('wiki'); editing = { article: { ...selected }, action }; }
   function saved(page) { editing = null; if (page.status === 'deleted') selectedId = ''; onchange(page); }
+  // Articles the work that made them took back wait for the person. Restore sends at once (nothing is lost); delete opens a check first and
+  // sends only when the person presses delete there.
+  let withdrawn = $derived(wiki.withdrawn || []);
+  let deleting = $state(null), restoring = $state(''), withdrawnError = $state('');
+  async function restore(a) {
+    if (restoring) return;
+    restoring = a.id; withdrawnError = '';
+    try { onchange(await api.article({ id: a.id, revision: a.revision, action: 'restore' })); }
+    catch (e) { withdrawnError = e.status === 409 ? t('withdrawnConflict') : t('error')(e.message); }
+    finally { restoring = ''; }
+  }
+  function deletedWithdrawn(page) { deleting = null; onchange(page); }
   const KINDS = ['rule', 'howto', 'criteria', 'fact', 'history'];
   const NONE = '__none__', OTHER = '__other__';
   const read = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
@@ -83,6 +97,26 @@
             {:else}
               <button type="button" class="weak" data-open={it.lesson_id} onclick={() => showLesson(it.lesson_id)}>{byId.get(it.lesson_id)?.title || it.lesson}</button>{#if it.count > 1}<span class="k" data-inbox-count> {t('inboxTimes')(it.count)}</span>{/if}
             {/if}
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+
+  {#if withdrawn.length}
+    <div class="{panel} mb-4 border-amber" data-withdrawn>
+      <h3 class={head}>{t('withdrawnTitle')(withdrawn.length)}</h3>
+      <p class="k m-0 mb-2">{t('withdrawnHow')}</p>
+      {#if withdrawnError}<p role="alert" data-withdrawn-error class="m-0 mb-2 text-[14px]">{withdrawnError}</p>{/if}
+      <ul class="m-0 list-none p-0">
+        {#each withdrawn as a (a.id)}
+          <li class="border-b border-line py-2 last:border-0" data-withdrawn-item={a.id}>
+            <div class="font-bold wrap-anywhere">{a.title}</div>
+            <div class="k wrap-anywhere">{t('withdrawnReason')}: {a.withdrawal?.reason || a.change_reason}</div>
+            <div class="mt-1 flex gap-2">
+              <button type="button" class="weak" disabled={!!restoring} data-withdrawn-restore onclick={() => restore(a)}>{t('withdrawnRestore')}</button>
+              <button type="button" class="weak" data-withdrawn-delete onclick={() => { deleting = a; }}>{t('withdrawnDelete')}</button>
+            </div>
           </li>
         {/each}
       </ul>
@@ -180,5 +214,7 @@
     </div>
   </div>
 </section>
+
+{#if deleting}<WithdrawnDelete article={deleting} oncancel={() => { deleting = null; }} ondeleted={deletedWithdrawn} />{/if}
 
 {#if editing}<ArticleEditor article={editing.article} action={editing.action} oncancel={() => { editing = null; }} onsaved={saved} />{/if}

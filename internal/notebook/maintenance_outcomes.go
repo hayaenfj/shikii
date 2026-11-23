@@ -32,7 +32,7 @@ func (b Book) addOutcomeReviews(tasks []MaintenanceTask, pages []Page) error {
 	for i := range tasks {
 		task := &tasks[i]
 		p := byID[task.PageID]
-		if p.Kind != "howto" || p.Status == "deleted" {
+		if p.Kind != "howto" || p.Gone() {
 			continue
 		}
 		all := []ProcedureOutcome{}

@@ -72,6 +72,8 @@ func (b Book) DeliverySnapshot(keep func(Page) bool) ([]Page, DeliveryCase, erro
 		switch {
 		case p.Status == "deleted":
 			state = "deleted"
+		case p.Status == StatusWithdrawn:
+			state = StatusWithdrawn
 		case replaced[p.ID]:
 			state = "superseded"
 		case keep != nil && !keep(p):
@@ -155,7 +157,7 @@ func (b Book) HistoricalPages(c DeliveryCase) ([]Page, error) {
 	}
 	pages := []Page{}
 	for _, e := range c.Entries {
-		if e.Retrieval == "deleted" || e.Retrieval == "superseded" || e.Retrieval == "invalid_sources" {
+		if e.Retrieval == "deleted" || e.Retrieval == StatusWithdrawn || e.Retrieval == "superseded" || e.Retrieval == "invalid_sources" {
 			continue
 		}
 		p, err := b.readRevision("lesson:" + e.ID + "@" + e.Revision)

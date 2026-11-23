@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
@@ -125,6 +126,14 @@ func printMemoryEffect(out io.Writer, st store.Store, scope string, now time.Tim
 	}
 }
 
+// printWithdrawn says how many articles a work took back and nobody has restored or deleted yet. A person decides each one on the
+// Knowledge page, so the number is shown where the person's work is counted; nothing is printed when none waits.
+func printWithdrawn(out io.Writer, storeDir, scope string) {
+	if n, err := (notebook.Book{Root: storeDir, Scope: scope}).WithdrawnCount(); err == nil && n > 0 {
+		fmt.Fprintf(out, "withdrawn articles: %d, kept but not delivered; restore or delete each on the Knowledge page\n", n)
+	}
+}
+
 // storeScope takes the parent of the store (.shikii/) as the project and uses it (real path) as the boundary for conversations and memory.
 func storeScope(storeDir string) string {
 	abs, err := filepath.Abs(storeDir)
@@ -188,6 +197,8 @@ func statusSummary(st store.Store, root, scope string, person personWork, now ti
 		out["memory"] = memoryEffectSummary{}.json()
 	}
 	out["guards"] = guardSummaryJSON(root)
+	withdrawn, _ := (notebook.Book{Root: root, Scope: scope}).WithdrawnCount()
+	out["wiki"] = map[string]any{"withdrawn": withdrawn} // articles a work took back, waiting for the person's restore or delete
 	return out
 }
 

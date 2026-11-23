@@ -69,7 +69,7 @@ func parsePage(data []byte) (Page, error) {
 	if err := yaml.Unmarshal(data[4:4+end], &p); err != nil {
 		return p, err
 	}
-	if !idPattern.MatchString(p.ID) || (p.Status != "hypothesis" && p.Status != "deleted") || p.Title == "" || p.Lesson == "" || p.AppliesTo == "" || len(p.Sources) == 0 || len(p.Body) > 16<<10 {
+	if !idPattern.MatchString(p.ID) || (p.Status != "hypothesis" && !p.Gone()) || p.Title == "" || p.Lesson == "" || p.AppliesTo == "" || len(p.Sources) == 0 || len(p.Body) > 16<<10 {
 		return p, errors.New("invalid wiki lesson metadata")
 	}
 	if p.Previous != "" && !idPattern.MatchString(p.Previous) {

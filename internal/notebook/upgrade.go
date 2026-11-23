@@ -153,7 +153,7 @@ func (b Book) MemoryUpgrade() (MemoryUpgrade, error) {
 		for _, id := range p.Replaces {
 			retired[id] = true
 		}
-		if p.Status != "deleted" {
+		if !p.Gone() {
 			current[p.ID] = p
 		}
 	}
@@ -205,7 +205,7 @@ func (b Book) MemoryUpgrade() (MemoryUpgrade, error) {
 			u.block(id, sourceIssuesReason(issues))
 			continue
 		}
-		if p.Status == "deleted" {
+		if p.Gone() {
 			withdrawn[id] = p.Revision
 			u.Withdrawn++
 			continue

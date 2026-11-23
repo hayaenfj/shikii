@@ -56,7 +56,7 @@ func (b Book) Reconcile(intent Patch) (Reconciliation, error) {
 	for _, issue := range view.Issues {
 		blocked = blocked || issue.Page == intent.ID || issue.Kind == "unreadable-page" || issue.Kind == "changed-page"
 	}
-	if err != nil || len(view.Lessons) != 1 || view.Lessons[0].Status == "deleted" || blocked {
+	if err != nil || len(view.Lessons) != 1 || view.Lessons[0].Gone() || blocked {
 		out.Reason = "The current article is unavailable, replaced, deleted or has invalid sources."
 		return out, nil
 	}

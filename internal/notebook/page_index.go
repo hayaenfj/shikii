@@ -23,7 +23,7 @@ func index(pages []Page) []byte {
 	}
 	for _, p := range pages {
 		status := p.Status
-		if p.Status != "deleted" && replaced[p.ID] {
+		if !p.Gone() && replaced[p.ID] {
 			status = "updated by a later lesson"
 		}
 		title, _ := json.Marshal(p.Title)

@@ -78,8 +78,12 @@ export function refresh() {
 export function applyArticle(article) {
   dropPendingLoads();
   if (data.state?.wiki) {
-    data.state.wiki.lessons = (data.state.wiki.lessons || []).flatMap(p => p.id !== article.id ? [p] : article.status === 'deleted' ? [] : [article]);
-    if (article.status === 'deleted') data.state.wiki.inbox = (data.state.wiki.inbox || []).filter(p => p.lesson_id !== article.id);
+    const lessons = data.state.wiki.lessons || [];
+    const out = article.status === 'deleted' || article.status === 'withdrawn';
+    // A restored article is a live one again, and a withdrawn one leaves the list of those waiting for a person once it is restored or deleted
+    data.state.wiki.lessons = lessons.flatMap(p => p.id !== article.id ? [p] : out ? [] : [article]).concat(!out && !lessons.some(p => p.id === article.id) ? [article] : []);
+    data.state.wiki.withdrawn = (data.state.wiki.withdrawn || []).filter(p => p.id !== article.id);
+    if (out) data.state.wiki.inbox = (data.state.wiki.inbox || []).filter(p => p.lesson_id !== article.id);
   }
   load();
 }

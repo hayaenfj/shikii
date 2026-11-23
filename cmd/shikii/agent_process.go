@@ -156,6 +156,33 @@ func noteAgentProcess(agent, id string, at time.Time) {
 	}
 }
 
+// keepSubagentOfEarlierProcess puts the time of a subagent to the time of this event when the state says the subagent began before the agent
+// process was noted: an earlier process of the agent (the session was resumed) opened it and never told its end, and now it works again. forget
+// counts a subagent that began at or after the process was noted (openSubagent), so without this a subagent that works under the new process
+// would still be taken for one of the old. Only an event of a subagent that is not its end or a Stop does it, and only when the state has the
+// subagent open: a subagent begun under this process keeps the time of its first event.
+func keepSubagentOfEarlierProcess(agent, event string, in *hookInput) {
+	if in.AgentID == "" || in.SessionID == "" || event == "stop" || event == "subagent-stop" {
+		return
+	}
+	s, err := readSession(agent, in.SessionID)
+	if err != nil || s.Process == nil || s.Process.Noted.IsZero() {
+		return
+	}
+	noted, at := s.Process.Noted, in.eventAt()
+	if at.Before(noted) {
+		return
+	}
+	updateSessionLatest(in.SessionID, func(latest *sessionLatest, known bool) bool {
+		began, open := latest.Subagents[in.AgentID]
+		if !known || !open || !began.Before(noted) {
+			return false
+		}
+		latest.Subagents[in.AgentID] = at
+		return true
+	})
+}
+
 // readProcessRow reads one pid from the process table of this machine: /proc on Linux, ps elsewhere.
 func readProcessRow(ctx context.Context, pid int) (processRow, processState) {
 	if runtime.GOOS == "linux" {

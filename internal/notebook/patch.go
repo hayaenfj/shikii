@@ -70,7 +70,7 @@ func (b Book) patch(c Patch, preview bool) (Result, error) {
 	for _, required := range c.Requires {
 		found := false
 		for _, p := range pages {
-			if p.ID == required.ID && p.Revision == required.Revision && p.Status != "deleted" && len(b.sourceIssues(p)) == 0 {
+			if p.ID == required.ID && p.Revision == required.Revision && !p.Gone() && len(b.sourceIssues(p)) == 0 {
 				found = true
 			}
 			for _, id := range p.Replaces {
@@ -86,7 +86,7 @@ func (b Book) patch(c Patch, preview bool) (Result, error) {
 	if old.ID == "" {
 		return Result{}, ErrArticleMissing
 	}
-	if old.Revision != c.Revision || old.Status == "deleted" {
+	if old.Revision != c.Revision || old.Gone() {
 		return Result{}, ErrArticleConflict
 	}
 	next := old

@@ -48,6 +48,7 @@ func cmdStatus(args []string) error {
 		fmt.Fprintln(stdout, "no records, no labels, no specs")
 		if scope := storeScope(*storeDir); scope != "" {
 			printMemoryEffect(stdout, st, scope, time.Now())
+			printWithdrawn(stdout, *storeDir, scope)
 		}
 		printGuardStats(stdout, *storeDir)
 		return nil
@@ -158,6 +159,7 @@ func cmdStatus(args []string) error {
 	}
 	if scope := storeScope(*storeDir); scope != "" { // effect of delivered lessons (the store's parent is the project)
 		printMemoryEffect(stdout, st, scope, time.Now())
+		printWithdrawn(stdout, *storeDir, scope)
 	}
 	printGuardStats(stdout, *storeDir)               // blocking checks (0.7.3): how many are on, how many blocked, how many fixed
 	if scope := storeScope(*storeDir); scope != "" { // the page (0.8.0): one per project, on a free port
