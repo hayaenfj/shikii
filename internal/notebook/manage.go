@@ -24,6 +24,9 @@ type Change struct {
 	Kind      string              `json:"kind,omitempty"`
 	Scene     string              `json:"scene,omitempty"`
 	Passages  *[]KnowledgePassage `json:"passages,omitempty"`
+	// A withdrawal (Withdraw) deletes with its own check and source; no JSON a page or an agent sends can set them.
+	withdrawal *Withdrawal
+	check      func(Page) error
 }
 
 func (b Book) Manage(c Change) (Page, error) {
@@ -66,6 +69,11 @@ func (b Book) Manage(c Change) (Page, error) {
 	if old.Revision != c.Revision || old.Status == "deleted" {
 		return Page{}, ErrArticleConflict
 	}
+	if c.check != nil {
+		if err := c.check(old); err != nil {
+			return Page{}, err
+		}
+	}
 	d := Draft{ID: old.ID, Title: old.Title, Lesson: old.Lesson, AppliesTo: old.AppliesTo, Kind: old.Kind, Scene: old.Scene, baseRevision: old.Revision, change: &c}
 	for _, src := range old.Sources {
 		d.Sources = append(d.Sources, src.ID)
@@ -79,6 +87,9 @@ func (b Book) Manage(c Change) (Page, error) {
 		d.Passages = c.Passages
 	}
 	d.ChangeReason = fmt.Sprintf("%s from the Knowledge page", c.Action)
+	if c.withdrawal != nil {
+		d.ChangeReason = "withdrawn by the work that made it: " + c.withdrawal.Reason
+	}
 	result, err := b.ingest(d, true)
 	if err != nil {
 		return Page{}, err
@@ -90,6 +101,9 @@ func (b Book) Manage(c Change) (Page, error) {
 // A submitted change is a source snapshot, not an authenticated identity or a
 // calibration truth. Capture it only after validation, while holding the page lock.
 func changeObservation(c Change) Observation {
+	if c.withdrawal != nil {
+		return withdrawalObservation(*c.withdrawal)
+	}
 	data, _ := json.Marshal(c)
 	return Observation{Kind: "human", Title: "Knowledge page " + c.Action, Content: string(data), Reference: "lesson:" + c.ID + "@" + c.Revision, Version: c.Revision, ObservedAt: time.Now().UTC()}
 }

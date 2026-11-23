@@ -77,6 +77,7 @@ var agentUsages = map[string]agentUsage{
 			"kind of a source: human, agent, code, test or release. kind of a lesson: rule, howto, criteria, fact or history.",
 			"patch, maintain, consult, reuse, organize, reconcile, diagnose and compare also read one JSON object from standard input: patch takes the patch object, maintain {page_id, revision, key, reason}, the others the arguments of shikii_wiki of the MCP server.",
 			"classify <page id> <kind> <scene> and verify [pattern.md ...] read no standard input; lint takes no arguments.",
+			"withdraw {id, revision, sources, reason} deletes an article whose every source you saved, when the work it came from was deleted (the article's history and sources stay). It runs from the command line only.",
 		},
 	},
 	"handoff": {

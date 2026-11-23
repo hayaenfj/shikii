@@ -177,6 +177,9 @@ func cmdNotebook(args []string) error {
 	if len(args) == 0 {
 		return usageRefusal("wiki", "")
 	}
+	if args[0] == "withdraw" {
+		return cmdWikiWithdraw(args)
+	}
 	if args[0] != "query" && args[0] != "ingest" && args[0] != "lint" && args[0] != "capture" && args[0] != "maintain" && args[0] != "classify" && args[0] != "patch" && args[0] != "diagnose" && args[0] != "compare" && args[0] != "consult" && args[0] != "reuse" && args[0] != "organize" && args[0] != "reconcile" {
 		if strings.HasPrefix(args[0], "-") {
 			return usageRefusal("wiki", "wiki takes its operation first, and no flags")
@@ -317,4 +320,33 @@ func (s *server) handleNotebook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeReplyJSON(w, 200, result)
+}
+
+// cmdWikiWithdraw is shikii wiki withdraw: a program that saved an article's sources from its own work (chiten, for a task that reached
+// its goal) deletes the article when the person deletes that work. It runs from the command line only: runNotebook, which HTTP and MCP
+// call, does not know it, so neither an agent's tool call nor the page can withdraw an article.
+func cmdWikiWithdraw(args []string) error {
+	if len(args) != 1 {
+		return usageRefusal("wiki", "wiki withdraw reads one JSON object from standard input, not from arguments", "wiki withdraw")
+	}
+	data, err := io.ReadAll(io.LimitReader(stdin, 64<<10+1))
+	if err != nil || len(data) > 64<<10 {
+		return errors.New("wiki withdraw input exceeds 64 KiB or could not be read")
+	}
+	if noJSON(data) {
+		return emptyInputRefusal("wiki", "wiki withdraw")
+	}
+	var w notebook.Withdrawal
+	if err, extra := decodeStrictObject(data, &w); err != nil || extra {
+		return fmt.Errorf("wiki withdraw needs one JSON object with id, revision, sources and reason: %v", err)
+	}
+	root, scope, err := currentProjectStore()
+	if err != nil {
+		return err
+	}
+	page, err := (notebook.Book{Root: root, Scope: scope}).Withdraw(w)
+	if err != nil {
+		return err
+	}
+	return writeReply(stdout, page)
 }

@@ -83,6 +83,7 @@ var jsonEntries = []jsonEntry{
 	{"shikii wiki capture", "cmdNotebook", cliJSONEntry("wiki", "capture")},
 	{"shikii wiki patch", "cmdNotebook", cliJSONEntry("wiki", "patch")},
 	{"shikii wiki maintain", "cmdNotebook", cliJSONEntry("wiki", "maintain")},
+	{"shikii wiki withdraw", "cmdWikiWithdraw", cliJSONEntry("wiki", "withdraw")},
 	{"shikii wiki consult", "cmdNotebook", cliJSONEntry("wiki", "consult")},
 	{"shikii wiki reuse", "cmdNotebook", cliJSONEntry("wiki", "reuse")},
 	{"shikii wiki organize", "cmdNotebook", cliJSONEntry("wiki", "organize")},
