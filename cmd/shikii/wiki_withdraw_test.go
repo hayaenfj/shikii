@@ -23,7 +23,7 @@ func TestWikiWithdrawRunsOnlyFromTheCommandLine(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &src); err != nil || src.ID == "" {
 		t.Fatalf("capture: %v %s", err, out)
 	}
-	draft, _ := json.Marshal(map[string]any{"sources": []string{src.ID}, "title": "a task reached its goal", "lesson": "a task reached its goal", "applies_to": "chiten の仕事を実行するとき", "kind": "history", "scene": "chiten のタスクが到達したとき", "body": "the report"})
+	draft, _ := json.Marshal(map[string]any{"sources": []string{src.ID}, "title": "a task reached its goal", "lesson": "a task reached its goal", "applies_to": "chiten \u306e\u4ed5\u4e8b\u3092\u5b9f\u884c\u3059\u308b\u3068\u304d", "kind": "history", "scene": "chiten \u306e\u30bf\u30b9\u30af\u304c\u5230\u9054\u3057\u305f\u3068\u304d", "body": "the report"})
 	withStdin(t, string(draft), func() { out = capture(t, func() error { return cmdNotebook([]string{"ingest"}) }) })
 	var ingested struct {
 		Page struct {

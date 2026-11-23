@@ -28,7 +28,7 @@ func TestWithdrawDeletesOnlyAnArticleWhoseSourcesTheCallerNames(t *testing.T) {
 	if _, err := b.Withdraw(Withdrawal{ID: p.ID, Revision: p.Revision, Sources: []string{mine}}); err == nil {
 		t.Fatal("a withdrawal says why")
 	}
-	if _, err := b.Withdraw(Withdrawal{ID: p.ID, Revision: p.Revision, Sources: []string{mine}, Reason: strings.Repeat("削", 301)}); err == nil {
+	if _, err := b.Withdraw(Withdrawal{ID: p.ID, Revision: p.Revision, Sources: []string{mine}, Reason: strings.Repeat("\u524a", 301)}); err == nil {
 		t.Fatal("a reason that does not fit the article's change reason is refused")
 	}
 	if _, err := b.Withdraw(Withdrawal{ID: p.ID, Revision: "0000000000000000", Sources: []string{mine}, Reason: "the request was deleted"}); !errors.Is(err, ErrArticleConflict) {
