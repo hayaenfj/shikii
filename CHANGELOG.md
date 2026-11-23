@@ -6,8 +6,13 @@
 
 ### Changes
 
-- Added `shikii forget <session id>`, which removes the records that a finished agent session, such as a trial run or a session started by mistake, left in a project's `.shikii/`. Without `--apply` it only lists what would be removed, what stays and why. With `--apply` it removes them and keeps a copy in `.shikii/records/forgotten/`, so they can be restored. Sources that a wiki article cites, and decisions that a person answered, are never removed. A session that may still be running is refused.
-- An agent can now ask shikii to remove a session's records over MCP. shikii then asks you directly whether to remove them, and removes them only when you agree. The agent cannot answer for you. Agents that cannot show you such a question are told to have you run `shikii forget` instead.
+- Added `shikii forget <session id>`, which removes the records (the lessons it was given and how they were assessed, its work records and so on) that a finished agent session, such as a trial run or a session started by mistake, left in a project's `.shikii/`.
+  - Without `--apply` it only lists what would be removed, what stays and why.
+  - With `--apply` it removes them and keeps what it removed under `.shikii/records/forgotten/`, in the same layout as before. There is no command to put them back. Files it moved whole can be moved back. For files it removed only some lines from, the copy holds only those lines, so they are added back to the end of the current file; replacing the current file with the copy would lose other sessions' lines. What sits under `home/` in the copy goes back to `~/.shikii/`, not to the project.
+  - Records that a wiki article cites as a source, and decisions that a person answered, are never removed.
+  - A session any of whose records was written in the last 10 minutes, and the current session, are refused, since they may still be running.
+  - The session id is the one in the agent's own records (Claude Code's conversation file name, Codex's thread id, OpenCode's id starting with `ses_`).
+- An agent can now ask shikii to remove a session's records over MCP. shikii then asks you directly whether to remove them, and removes them only when you agree. The agent cannot answer for you through the request it sends. When the agent's app does not say that it can show you such a question, the agent is told to have you run `shikii forget` instead.
 
 ## 0.40.2 — In OpenCode too, a search that finds nothing is remembered with the session that ran it
 
