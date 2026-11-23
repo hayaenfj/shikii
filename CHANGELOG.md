@@ -2,6 +2,12 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.40.2 — In OpenCode too, a search that finds nothing is remembered with the session that ran it
+
+### Fixes
+
+- When an agent in OpenCode runs `shikii wiki query` and the wiki has nothing for it, shikii now remembers which OpenCode session searched. At the end of a task, shikii shows the agent the words it searched for in that task that found nothing, so the agent can add what the wiki lacks. Until now such a search from OpenCode belonged to no session, so its words could be shown at the end of a task in another session. Claude Code and Codex have worked this way since 0.40.1.
+
 ## 0.40.1 — Faster wiki searches, and old memory moves into the wiki up to 10 articles at a time
 
 ### Changes
