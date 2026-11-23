@@ -40,15 +40,15 @@ func (w *forgetWorld) freshRecord(session string, at time.Time) {
 	w.must(appendGuardRecords(w.root, []guardRecord{{At: at, Session: session, Turn: w.tA, Guard: "g", Pass: true}}))
 }
 
-// A session whose agent process is still the one its record names is running, whatever the age of its records: they were written two
-// days ago here.
+// A session whose agent process is still the one its record names and whose last turn has not ended is running, whatever the age of its
+// records: they were written two days ago here. (When the request has ended, forget_idle_test.go says what decides.)
 func TestForgetRefusesASessionWhoseAgentProcessIsStillAlive(t *testing.T) {
 	w := newForgetWorld(t)
 	p, _ := useRealProcessTable(t)
 	w.setProcess(w.A, processDoc(p))
 	before := w.snapshot()
 	out, err := forgetCommand(t, w.A, "--apply")
-	if err == nil || !strings.Contains(err.Error(), "is still running: its agent process") || !strings.Contains(err.Error(), "however long its records have been quiet") {
+	if err == nil || !strings.Contains(err.Error(), "is still running: its agent process") || !strings.Contains(err.Error(), "its last turn has not ended") {
 		t.Fatalf("a session whose agent process is alive, with records two days old, was not refused: %v\n%s", err, out)
 	}
 	if after := w.snapshot(); !reflect.DeepEqual(before, after) {

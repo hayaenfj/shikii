@@ -89,7 +89,15 @@ type sessionLatest struct {
 	Root  string `json:"root"`
 	Turn  string `json:"turn"`
 	Ended bool   `json:"ended,omitempty"`
+	// InTurn says whether the agent is in the middle of a turn: any message of the person that reached the hook (a request, a completion
+	// notice, a slash command that is not a request) opens it, and a Stop that lets the turn end closes it. shikii forget goes by it
+	// (forget_idle.go), not by Ended, which a slash command leaves as it was. It is a pointer so that a state from before the field was
+	// written (nil) is told from one that says the turn has ended (false): that one is unknown, and forget refuses it.
+	InTurn *bool `json:"in_turn,omitempty"`
 }
+
+// turnFlag is a value for InTurn.
+func turnFlag(b bool) *bool { return &b }
 
 // sessionLatestName is the name of a state the hook writes (sessionPath makes it).
 var sessionLatestName = regexp.MustCompile(`^[A-Za-z0-9_-]+\.json$`)
@@ -179,15 +187,15 @@ func updateSessionLatest(sessionID string, change func(latest *sessionLatest, kn
 // noteSessionRequest notes the person's request: the session's turn is on it now (root "" outside every project).
 func noteSessionRequest(sessionID, root, turn string) {
 	updateSessionLatest(sessionID, func(latest *sessionLatest, _ bool) bool {
-		*latest = sessionLatest{Root: root, Turn: turn}
+		*latest = sessionLatest{Root: root, Turn: turn, InTurn: turnFlag(true)}
 		return true
 	})
 }
 
 // sessionTurnEvent changes the state of the session's turn by an event, wherever the agent's shell stands: a Stop that lets the
 // turn end ends the request it saw (turn, read when the Stop came; a request that came since is left as it is), and a completion
-// notice reopens the session's last request (the agent works on). A Stop a check stopped, and an event of a subagent, change
-// nothing.
+// notice reopens the session's last request (the agent works on). A slash command, or a message with no text, is no request and changes
+// nothing of the request, but the agent works on it until its Stop: only InTurn says so. A Stop a check stopped, and an event of a subagent, change nothing.
 func sessionTurnEvent(event string, in *hookInput, turn string, blocked bool) {
 	if in.AgentID != "" || in.SessionID == "" {
 		return
@@ -195,18 +203,28 @@ func sessionTurnEvent(event string, in *hookInput, turn string, blocked bool) {
 	switch {
 	case event == "stop" && !blocked:
 		updateSessionLatest(in.SessionID, func(latest *sessionLatest, known bool) bool {
-			if !known || latest.Turn != turn || latest.Ended {
+			if !known || latest.Turn != turn {
 				return false
 			}
-			latest.Ended = true
-			return true
+			changed := !latest.Ended || latest.InTurn == nil || *latest.InTurn
+			latest.Ended, latest.InTurn = true, turnFlag(false)
+			return changed
 		})
 	case event == "user-prompt-submit" && isNotification(in.Prompt):
 		updateSessionLatest(in.SessionID, func(latest *sessionLatest, known bool) bool {
-			if !known || !latest.Ended {
+			if !known {
 				return false
 			}
-			latest.Ended = false
+			changed := latest.Ended || latest.InTurn == nil || !*latest.InTurn
+			latest.Ended, latest.InTurn = false, turnFlag(true)
+			return changed
+		})
+	case event == "user-prompt-submit" && (isSlashCommand(in.Prompt) || strings.TrimSpace(in.Prompt) == ""):
+		updateSessionLatest(in.SessionID, func(latest *sessionLatest, known bool) bool {
+			if !known || latest.InTurn != nil && *latest.InTurn {
+				return false
+			}
+			latest.InTurn = turnFlag(true)
 			return true
 		})
 	}

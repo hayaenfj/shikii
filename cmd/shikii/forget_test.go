@@ -346,7 +346,7 @@ func forgetRead(t *testing.T, path string) []byte {
 
 // A run that stops in the middle is run again and finds the rest: the evidence a step goes by is removed after it.
 func TestForgetRunAgainAfterAStopRemovesTheRest(t *testing.T) {
-	for _, stop := range []string{"decisions", "wiki", "feedback", "guards", "sessions"} {
+	for _, stop := range []string{"decisions", "wiki", "feedback", "guards", "agent"} {
 		t.Run(stop, func(t *testing.T) {
 			w := newForgetWorld(t)
 			before := w.snapshot()
@@ -362,10 +362,8 @@ func TestForgetRunAgainAfterAStopRemovesTheRest(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), "running the same command again removes the rest") {
 				t.Fatalf("the run was not stopped at %s: %v\n%s", stop, err, out)
 			}
-			if stop != "sessions" {
-				if _, ok := w.snapshot()["store/sessions/"+w.A+".json"]; !ok {
-					t.Fatalf("the session's own record went before the step that removes it")
-				}
+			if _, ok := w.snapshot()["store/sessions/"+w.A+".json"]; !ok {
+				t.Fatalf("the session's own record went before the step that removes it")
 			}
 			if out, err := forgetCommand(t, w.A, "--apply"); err != nil {
 				t.Fatalf("the second run: %v\n%s", err, out)

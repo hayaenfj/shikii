@@ -2,6 +2,9 @@ package main
 
 // The steps of shikii forget, in the order they run: the evidence a step goes by is removed after it, so a run that stops in the middle
 // can be run again and finds the rest (the decisions come first, as they are found through the deliveries; the session records last).
+// What says whether a session may still be running (its record, which names the agent process, and the state of its last turn) goes in
+// that last step together, and the step takes the lock it needs before it moves anything: a run that stopped before it is judged by
+// the same evidence when it is run again.
 
 import (
 	"crypto/sha256"
@@ -44,8 +47,8 @@ func (r *forgetRun) steps() []forgetStep {
 		{"guards", func() error {
 			return r.rewrite("records/guards.jsonl", guardRecordsPath(r.root), r.dropGuard, "checks of the sessions' turns")
 		}, nil},
-		{"sessions", r.stepSessions, nil},
 		{"agent", r.stepAgent, nil},
+		{"sessions", r.stepSessions, nil},
 	}
 }
 
@@ -232,7 +235,20 @@ var (
 	forgetSessionLocks = []string{".json.lock", ".json.work.lock", ".json.planning.lock"}
 )
 
+// stepSessions removes the records of the sessions and the state the agents' common folder (~/.shikii/agent) keeps of their last turn,
+// where it was and whether it ended. It is the last step: forget goes by these two to say whether a session is running.
 func (r *forgetRun) stepSessions() error {
+	common, err := agentHome()
+	if err != nil {
+		return err
+	}
+	if info, err := os.Lstat(filepath.Join(common, "latest")); err == nil && info.IsDir() {
+		unlock, ok := lockPathWithin(filepath.Join(common, "latest", ".lock"), hookLockWait, nil)
+		if !ok {
+			return fmt.Errorf("the lock of %s is busy", filepath.Join(common, "latest"))
+		}
+		defer unlock()
+	}
 	var data, locks []string
 	for _, id := range r.ids {
 		if !r.parents[id] {
@@ -271,37 +287,29 @@ func (r *forgetRun) stepSessions() error {
 	}
 	r.remove("sessions", "files", len(data), "the record of each session and the caches beside it", names(data)...)
 	r.remove("sessions", "lock files", len(locks), "empty, left by the session", names(locks)...)
-	return nil
-}
-
-// stepAgent removes the state the agents' common folder (~/.shikii/agent) keeps of the sessions: where the session's last turn was, and
-// the notes that it was told about a folder.
-func (r *forgetRun) stepAgent() error {
-	common, err := agentHome()
-	if err != nil {
-		return err
-	}
-	if info, err := os.Lstat(filepath.Join(common, "latest")); err == nil && info.IsDir() {
-		unlock, ok := lockPathWithin(filepath.Join(common, "latest", ".lock"), hookLockWait, nil)
-		if !ok {
-			return fmt.Errorf("the lock of %s is busy", filepath.Join(common, "latest"))
-		}
-		defer unlock()
-	}
-	var names []string
+	var latest []string
 	for _, id := range r.ids {
 		path, ok := r.latestOf(id)
 		if !ok {
 			continue
 		}
-		names = append(names, filepath.Base(path))
+		latest = append(latest, filepath.Base(path))
 		if r.applying {
 			if err := r.moveUserFile(path, filepath.Join("agent", "latest", filepath.Base(path))); err != nil {
 				return err
 			}
 		}
 	}
-	r.remove("~/.shikii/agent/latest", "files", len(names), "where each session's last turn was, when it was in this project", names...)
+	r.remove("~/.shikii/agent/latest", "files", len(latest), "where each session's last turn was, when it was in this project", latest...)
+	return nil
+}
+
+// stepAgent removes the notes the agents' common folder (~/.shikii/agent) keeps that a session was told about a folder.
+func (r *forgetRun) stepAgent() error {
+	common, err := agentHome()
+	if err != nil {
+		return err
+	}
 	return r.stepTold(common)
 }
 

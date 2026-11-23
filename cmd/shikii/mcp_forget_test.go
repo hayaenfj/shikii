@@ -442,6 +442,23 @@ func TestMCPForgetRefusesWhatTheCommandRefuses(t *testing.T) {
 			t.Errorf("the project changed: %v", forgetDiff(before, after))
 		}
 	})
+	t.Run("an idle session with a process under its agent that started after it", func(t *testing.T) {
+		w := newForgetWorld(t)
+		w.idle(w.A, processEntry{PID: fxPidJob, Parent: fxPidA, Started: w.old.Add(time.Hour), Name: "go"})
+		before := w.snapshot()
+		c := newLiveMCP(t, w.mcpHandler())
+		c.initialize(map[string]any{"elicitation": map[string]any{}})
+		c.callForget(2, forgetArgs(w, nil))
+		failed, body := c.reply(2) // no question first
+		message, _ := body["message"].(string)
+		if !failed || body["status"] != "refused" || !strings.Contains(message, "a process under it that started after the session did is running (go, pid 910200") {
+			t.Errorf("an idle session with a process of its agent running was not refused with the process: %v", body)
+		}
+		c.finish()
+		if after := w.snapshot(); !reflect.DeepEqual(before, after) {
+			t.Errorf("the project changed: %v", forgetDiff(before, after))
+		}
+	})
 	t.Run("an id nothing names", func(t *testing.T) {
 		w := newForgetWorld(t)
 		before := w.snapshot()

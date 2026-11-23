@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -61,7 +62,7 @@ func TestMCPForgetSaysPartialWhenTheRemovalStopsAfterTheYes(t *testing.T) {
 		}
 	}
 	left, _ := body["steps_left"].([]any)
-	if len(left) == 0 || left[0] != "wiki" || !reflect.DeepEqual(left[len(left)-1], "agent") {
+	if len(left) == 0 || left[0] != "wiki" || !reflect.DeepEqual(left[len(left)-1], "sessions") {
 		t.Errorf("steps_left is not the wiki step and those after it: %v", left)
 	}
 	plan, _ := body["plan"].(map[string]any)
@@ -194,5 +195,110 @@ func TestForgetTheAppliedPlanIsTheListedPlan(t *testing.T) {
 	}
 	if !saved.Done || forgetCanon(saved.Remove) != forgetCanon(list.plan.Remove) {
 		t.Errorf("plan.json says done=%v and removes:\n%s\n--- listed:\n%s", saved.Done, forgetCanon(saved.Remove), forgetCanon(list.plan.Remove))
+	}
+}
+
+// The third audit (audit-3.md): a removal that stops before it has moved anything has changed nothing, and says so.
+
+// liteSession adds a session of the world whose only records are one delivery of a lesson and its own record, whose agent has ended: the
+// first step with something to remove is the memories step, so a stop there has moved nothing.
+func (w *forgetWorld) liteSession() string {
+	w.t.Helper()
+	const id = "ses_lite"
+	w.delivery("lite", "d9d9d9d9d9d9d9d9", "e9e9e9e9e9e9e9e9", "", id, "", "")
+	w.writeJSON("sessions/"+id+".json", map[string]any{"request": "r", "turn_id": "e9e9e9e9e9e9e9e9", "scope": w.scope, "at": w.old,
+		"process": map[string]any{"pid": 910999, "start": "gone", "host": thisMachine(w.t), "name": "claude", "noted": w.old.UTC()}})
+	w.must(os.Chtimes(filepath.Join(w.root, "sessions", id+".json"), w.old, w.old))
+	w.ageRecords()
+	return id
+}
+
+func TestForgetThatStopsBeforeMovingAnythingChangesNothingAndSaysSo(t *testing.T) {
+	w := newForgetWorld(t)
+	id := w.liteSession()
+	release, err := w.st.LockMemory(w.scope) // held by another agent's hook: the memories step is the first that needs it
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := w.snapshot()
+	out, err := forgetCommand(t, id, "--apply")
+	if err == nil || !strings.Contains(err.Error(), "memories: ") || !strings.Contains(err.Error(), "the memory record is busy") ||
+		!strings.Contains(err.Error(), "nothing was removed, and running the same command again tries again") || strings.Contains(err.Error(), "already removed") {
+		release()
+		t.Fatalf("a removal that stopped before it moved anything did not say that nothing was removed: %v\n%s", err, out)
+	}
+	if diff := withoutEmptyLocks(forgetDiff(before, w.snapshot())); len(diff) > 0 {
+		t.Errorf("a removal that moved nothing changed the project (the folder of the run is left?): %v", diff)
+	}
+	release()
+	if out, err := forgetCommand(t, id, "--apply"); err != nil {
+		t.Fatalf("the second run: %v\n%s", err, out)
+	}
+	if w.fileExists("sessions/"+id+".json") || w.fileHas("records/memories/"+w.name+".jsonl", "d9d9d9d9d9d9d9d9") {
+		t.Errorf("the second run did not remove the session")
+	}
+}
+
+func TestMCPForgetSaysFailedWhenTheRemovalStoppedBeforeMovingAnything(t *testing.T) {
+	w := newForgetWorld(t)
+	id := w.liteSession()
+	release, err := w.st.LockMemory(w.scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	before := w.snapshot()
+	c := newLiveMCP(t, w.mcpHandler())
+	c.initialize(map[string]any{"elicitation": map[string]any{}})
+	args := forgetArgs(w, nil)
+	args["sessions"] = []string{id}
+	c.callForget(2, args)
+	c.send(answerTo(c.question(), accept(true)))
+	failed, body := c.reply(2)
+	message, _ := body["message"].(string)
+	if !failed || body["status"] != "failed" || body["changed"] != false || !strings.Contains(message, "stopped before it removed anything") || !strings.Contains(message, "the memory record is busy") {
+		t.Errorf("a removal that stopped before it moved anything did not say failed with nothing changed: %v", body)
+	}
+	if _, has := body["steps_left"]; has {
+		t.Errorf("a removal that moved nothing lists the steps left: %v", body)
+	}
+	c.finish()
+	if diff := withoutEmptyLocks(forgetDiff(before, w.snapshot())); len(diff) > 0 {
+		t.Errorf("the project changed: %v", diff)
+	}
+}
+
+// withoutEmptyLocks leaves out of a difference the empty lock files that an application leaves where it took a lock (forgetCanon does
+// not count them either).
+func withoutEmptyLocks(diff []string) []string {
+	var rest []string
+	for _, d := range diff {
+		if !strings.HasSuffix(d, ".lock") {
+			rest = append(rest, d)
+		}
+	}
+	return rest
+}
+
+// The other side of it: once one thing was moved, a stop is partial and says what is kept (the tests above of the memories step, the
+// wiki step and the locks hold the cases), and a run whose every step ran but whose last note failed is not "nothing was moved".
+func TestAForgetThatMovedSomethingAndThenStoppedIsNotSaidToHaveMovedNothing(t *testing.T) {
+	w := newForgetWorld(t)
+	run := &forgetRun{root: w.root, scope: w.scope, st: w.st, book: w.book, ids: []string{w.A}}
+	old := forgetAfterStep
+	forgetAfterStep = func(step string) error {
+		if step == "decisions" { // the first step moves the decisions of the session
+			return errors.New("the disk went away")
+		}
+		return nil
+	}
+	defer func() { forgetAfterStep = old }()
+	err := run.execute(true, "")
+	var stopped *forgetStopped
+	if !errors.As(err, &stopped) || !stopped.moved || !strings.Contains(err.Error(), "what was already removed is in") {
+		t.Fatalf("a stop after a step that moved something: %v", err)
+	}
+	if _, err := os.Stat(stopped.dir); err != nil {
+		t.Errorf("the folder that keeps what was moved is gone: %v", err)
 	}
 }

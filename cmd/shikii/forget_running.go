@@ -3,7 +3,9 @@ package main
 // Whether a session forget is asked to remove may still be running. The hook notes the session's agent process in its record at each
 // event (agent_process.go), and that decides, whatever the time since the last record:
 //
-//   - the noted process is on this machine, with the same pid and the same start time: the session is running, and forget refuses;
+//   - the noted process is on this machine, with the same pid and the same start time: the agent is open. The session is running when
+//     its last request has not ended or something it may have started still runs, and forget refuses; otherwise it is idle, and forget
+//     goes on (forget_idle.go);
 //   - the noted process is not there, or the pid belongs to a process that started later: the agent has ended, and forget goes on;
 //   - no process can be compared (none was noted: a record of an older shikii, or the hook found no agent; or it was noted on another
 //     machine; or this machine's process table could not be read): shikii cannot tell, so it goes by the time of the newest record of
@@ -38,8 +40,18 @@ func processNow(p *agentProcess) (state processState, why string) {
 		return processUnknown, "the process table of this machine could not be read"
 	case state == processFound && row.Start == p.Start:
 		return processFound, ""
+	case state == processAbsent && !processShowsItself(ctx):
+		// a /proc that is empty or of another pid namespace says "not there" of every pid
+		return processUnknown, "the process table of this machine does not show this very process, so it cannot say that another one has ended"
 	}
 	return processAbsent, "" // not there, or another process with the same pid
+}
+
+// processShowsItself says whether the process table shows the process that asks, with its start time: a table that does not cannot be
+// believed when it says that another process is not there.
+func processShowsItself(ctx context.Context) bool {
+	row, state := readProcess(ctx, thisPID())
+	return state == processFound && row.Start != ""
 }
 
 // processOfSession is the agent process the record of a session names, read from its file: the record of a session that is not one of
@@ -56,13 +68,13 @@ func (r *forgetRun) processOfSession(session string) *agentProcess {
 	return agentProcessOf(doc)
 }
 
-// stillRunning says why the id may still be running, or "" when it has ended or has been quiet for forgetUnknownQuiet with nothing
-// to tell the process by.
+// stillRunning says why the id may still be running, or "" when it has ended, is idle in an agent that is still open, or has been quiet
+// for forgetUnknownQuiet with nothing to tell the process by.
 func (r *forgetRun) stillRunning(id string) string {
-	subject := id
+	subject, session := id, id
 	var p *agentProcess
 	if parent, only := r.childOnly[id]; only {
-		subject = id + " (a subagent that ran under the session " + parent + ")"
+		subject, session = id+" (a subagent that ran under the session "+parent+")", parent
 		p = r.processOfSession(parent)
 	} else {
 		p = r.procs[id]
@@ -70,7 +82,7 @@ func (r *forgetRun) stillRunning(id string) string {
 	state, why := processNow(p)
 	switch state {
 	case processFound:
-		return fmt.Sprintf("%s is still running: its agent process (%s, pid %d) is alive, however long its records have been quiet; end that agent, then try again", subject, p.Name, p.PID)
+		return r.aliveWhy(subject, session, p)
 	case processAbsent:
 		return ""
 	}

@@ -222,8 +222,8 @@ type hookSession struct {
 	// GuardTurn is the stretch a slash command opened, until the next request: not a request (nothing is asked, delivered or judged),
 	// only the person's guards compare the present with the working tree and HEAD kept when it began. The request's own record above is left as it is
 	GuardTurn *guardTurn `json:"guard_turn,omitempty"`
-	// Process is the agent's process that runs this session, noted at each hook event (agent_process.go): shikii forget refuses a
-	// session while that process is alive
+	// Process is the agent's process that runs this session, noted at each hook event (agent_process.go): shikii forget goes by it, and
+	// refuses a session while that process is alive and the session is at work
 	Process *agentProcess `json:"process,omitempty"`
 	At      time.Time     `json:"at"`
 }

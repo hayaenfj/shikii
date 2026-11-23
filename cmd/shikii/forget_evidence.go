@@ -53,9 +53,12 @@ type forgetRun struct {
 	parts       map[string]string    // what each step added to the plan the last time it was only listed (see runStep)
 	first, last time.Time
 
-	procs map[string]*agentProcess // the agent process each session's record names (see stillRunning)
-	idle  map[string]bool          // a step that the last listing found nothing to remove in: an application does not take its lock or run it
-	ran   []string                 // the steps that finished in the last application (see stepsLeft)
+	procs    map[string]*agentProcess // the agent process each session's record names (see stillRunning)
+	list     []processEntry           // the processes of this machine, read once for each pass (see processList)
+	listErr  error
+	listRead bool
+	idle     map[string]bool // a step that the last listing found nothing to remove in: an application does not take its lock or run it
+	ran      []string        // the steps that finished in the last application (see stepsLeft)
 }
 
 func forgetSet(ids []string) map[string]bool {
@@ -292,6 +295,7 @@ func (r *forgetRun) gather() error {
 	r.deliveries, r.children, r.want, r.newest = map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]time.Time{}
 	r.reasoning, r.first, r.last = nil, time.Time{}, time.Time{}
 	r.procs = map[string]*agentProcess{}
+	r.list, r.listErr, r.listRead = nil, nil, false
 	ids := forgetSet(r.ids)
 	for _, id := range r.ids {
 		r.hashes[store.CoverageSession(id)] = true

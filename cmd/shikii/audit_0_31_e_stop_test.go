@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
@@ -85,7 +86,7 @@ func TestAuditEStopOutsideWithBrokenState(t *testing.T) {
 	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning2", "cwd": t.TempDir(), "prompt": "<task-notification>\n<status>completed</status>\n</task-notification>"})
 	runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning2", "cwd": t.TempDir(), "last_assistant_message": "Done."})
 	stateAfter, _, _ := readSessionLatest("planning")
-	if s := loadSession(f.root, "planning"); s.endedTurnForTest() != endedBefore || stateAfter != stateBefore {
+	if s := loadSession(f.root, "planning"); s.endedTurnForTest() != endedBefore || !reflect.DeepEqual(stateAfter, stateBefore) { // by value: InTurn is a pointer
 		t.Errorf("another session's events changed this session's turn: %+v -> %+v", stateBefore, stateAfter)
 	}
 	if _, err := os.Stat(sessionPath(f.root, "planning2")); err == nil {

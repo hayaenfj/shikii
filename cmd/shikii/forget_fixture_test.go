@@ -136,8 +136,8 @@ func newForgetWorld(t *testing.T) *forgetWorld {
 	w.table = useProcessTable(t, nil)
 	host := thisMachine(t)
 	w.process = map[string]map[string]any{
-		w.A: {"pid": fxPidA, "start": "started-a", "host": host, "name": "claude"},
-		w.B: {"pid": fxPidB, "start": "started-b", "host": host, "name": "claude"},
+		w.A: {"pid": fxPidA, "start": "started-a", "host": host, "name": "claude", "noted": w.old.UTC()},
+		w.B: {"pid": fxPidB, "start": "started-b", "host": host, "name": "claude", "noted": w.old.UTC()},
 	}
 	w.name = store.StoreName(root, scope)
 	covA, covB := store.CoverageSession(w.A), store.CoverageSession(w.B)
@@ -276,6 +276,19 @@ func (w *forgetWorld) runs(id string) {
 	w.t.Helper()
 	p := w.process[id]
 	w.table.set(p["pid"].(int), processRow{Parent: 1, Start: p["start"].(string), Name: p["name"].(string)})
+}
+
+// endsRequest ends the last turn of the session the way the hook does at a Stop that lets the turn end, so the session is idle (its
+// agent, if it runs, only waits for the person). The state keeps the age of the session's other records.
+func (w *forgetWorld) endsRequest(id string) {
+	w.t.Helper()
+	sessionTurnEvent("stop", &hookInput{SessionID: id}, sessionTurnAt(id), false)
+	latest, known, err := readSessionLatest(id)
+	if err != nil || !known || !latest.Ended || latest.InTurn == nil || *latest.InTurn {
+		w.t.Fatalf("precondition: the Stop ended the turn of %s: %+v %v %v", id, latest, known, err)
+	}
+	home, _ := os.UserHomeDir()
+	w.must(os.Chtimes(filepath.Join(home, ".shikii", "agent", "latest", id+".json"), w.old, w.old))
 }
 
 // noProcess takes the agent process out of the session's record, as in a record of a shikii that did not note one.

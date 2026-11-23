@@ -17,6 +17,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -162,26 +163,57 @@ func (r *forgetRun) execute(apply bool, expect string) error {
 		return err
 	}
 	if err := r.pass(true); err != nil {
-		return &forgetStopped{err: err, dir: r.f.Dir, left: r.stepsLeft()}
+		stopped := &forgetStopped{err: err, dir: r.f.Dir, left: r.stepsLeft(), moved: r.movedAnything()}
+		if !stopped.moved {
+			r.discardFolder() // it holds only the plan: nothing was changed, and no folder is left for a run that changed nothing
+		}
+		return stopped
 	}
 	r.plan.Done = true
 	if err := r.savePlan(); err != nil {
-		return &forgetStopped{err: err, dir: r.f.Dir}
+		return &forgetStopped{err: err, dir: r.f.Dir, moved: true} // every step ran: only the note that it is done was not written
 	}
 	return nil
 }
 
 // forgetStopped is the error of an application that stopped after it had begun: the folder that keeps what it removes was made, and the
-// steps before the one that stopped have run, so something has changed. Running it again removes the rest. left names the steps that
-// did not finish (the one that stopped and those after it).
+// steps before the one that stopped have run. Running it again removes the rest. left names the steps that did not finish (the one that
+// stopped and those after it). moved says whether anything was moved before it stopped: when it was not, nothing has changed.
 type forgetStopped struct {
-	err  error
-	dir  string
-	left []string
+	err   error
+	dir   string
+	left  []string
+	moved bool
 }
 
 func (e *forgetStopped) Error() string {
+	if !e.moved {
+		return fmt.Sprintf("%v; nothing was removed, and running the same command again tries again", e.err)
+	}
 	return fmt.Sprintf("%v; what was already removed is in %s, and running the same command again removes the rest", e.err, e.dir)
+}
+
+// movedAnything says whether the run's folder holds anything but the plan: what a step removes is kept there first. A folder that cannot
+// be read is taken to hold something.
+func (r *forgetRun) movedAnything() bool {
+	found := false
+	err := filepath.WalkDir(r.f.Dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.Type().IsRegular() && path != filepath.Join(r.f.Dir, "plan.json") {
+			found = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return found || err != nil
+}
+
+// discardFolder removes the run's folder when it holds nothing but its plan (best effort: a folder that is left is harmless).
+func (r *forgetRun) discardFolder() {
+	_ = os.Remove(filepath.Join(r.f.Dir, "plan.json"))
+	_ = os.Remove(r.f.Dir)
 }
 
 func (e *forgetStopped) Unwrap() error { return e.err }

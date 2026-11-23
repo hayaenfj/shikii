@@ -96,6 +96,10 @@ func (c *mcpConn) forget(call json.RawMessage, target http.Handler, args json.Ra
 		var stopped *forgetStopped
 		switch {
 		case errors.As(err, &stopped):
+			if !stopped.moved {
+				message := fmt.Sprintf("the person agreed, but the removal stopped before it removed anything (%v), so nothing was changed. Send the same call again to try again; shikii asks the person again", stopped.err)
+				return forgetReply("failed", message, nil, true), true
+			}
 			return forgetPartialReply(stopped, r.plan), true
 		case errors.Is(err, errForgetPlanChanged):
 			return forgetReply("changed", err.Error(), nil, true), true
