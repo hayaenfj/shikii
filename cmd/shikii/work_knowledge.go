@@ -291,6 +291,14 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 			reply["found_alone"] = alone
 		}
 		closeMissedSearch(book, query, view)
+		// A query "lesson:<id>" returns the article whatever its state; one a work withdrew or a person deleted is not handed out.
+		var notRead []string
+		if view.Lessons, e = keepHandedOut(book, view.Lessons, &notRead); e != nil {
+			return nil, e
+		}
+		if note := notReadNotice(notRead); note != "" {
+			reply["context_notice"] = note
+		}
 		for _, p := range view.Lessons {
 			if e = add(p); e != nil {
 				return nil, e

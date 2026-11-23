@@ -577,6 +577,14 @@ func prepareWork(root, scope string, req workRequest) (out any, err error) {
 			return nil, e
 		}
 		w.candidateCursor = after
+		// A query "lesson:<id>" returns the article whatever its state; one a work withdrew or a person deleted is not handed out.
+		var notRead []string
+		if view.Lessons, e = keepHandedOut(book, view.Lessons, &notRead); e != nil {
+			return nil, e
+		}
+		if note := notReadNotice(notRead); note != "" {
+			planningContext = note
+		}
 		view.Lookup, e = book.RecordLookup(req.Query, view.Lessons)
 		if e != nil {
 			return nil, e

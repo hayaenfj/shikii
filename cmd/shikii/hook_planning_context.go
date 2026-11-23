@@ -75,12 +75,17 @@ func addPlanningContext(scope string, previous *hookSession, f *planningFrame) {
 	}
 }
 
-// The agent that read the skill picks the search words. The program does not guess the topic or the agreement.
-func planningWikiSources(root, scope, query string, sources map[string]string) ([]notebook.Page, string) {
+// The agent that read the skill picks the search words. The program does not guess the topic or the agreement. What the query finds
+// goes through keepHandedOut: a withdrawn or deleted article it names is left out and added to notRead.
+func planningWikiSources(root, scope, query string, sources map[string]string, notRead *[]string) ([]notebook.Page, string) {
 	if strings.TrimSpace(query) == "" {
 		return nil, ""
 	}
-	view, err := (notebook.Book{Root: root, Scope: scope}).Query(query)
+	book := notebook.Book{Root: root, Scope: scope}
+	view, err := book.Query(query)
+	if err == nil {
+		view.Lessons, err = keepHandedOut(book, view.Lessons, notRead)
+	}
 	if err != nil {
 		return nil, "Cannot read the wiki references. Do not fill in unknown conditions; put the current request first."
 	}

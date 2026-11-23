@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -43,7 +44,8 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 		return "", nil, err
 	}
 	context := &store.KnowledgeContext{Query: req.Query, Available: available, Candidates: []store.KnowledgeReference{}, Read: []store.KnowledgeReference{}, Used: []store.KnowledgeCitation{}, At: started.UTC()}
-	pages, notice := planningWikiSources(root, scope, req.Query, sources)
+	notRead := []string{}
+	pages, notice := planningWikiSources(root, scope, req.Query, sources, &notRead)
 	for _, page := range pages {
 		ref := store.KnowledgeReference{ID: page.ID, Revision: page.Revision}
 		found := false
@@ -94,7 +96,6 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 		}
 	}
 	seen := map[string]bool{}
-	notRead := []string{}
 	for _, id := range readPages {
 		if len(id) != 16 || seen[id] {
 			return "", nil, errors.New("give page IDs without duplicates")
@@ -104,12 +105,14 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 		if err != nil || len(view.Lessons) != 1 {
 			return "", nil, errors.New("cannot read the body of a page in the same project")
 		}
-		page := view.Lessons[0]
-		// A query by id still shows a withdrawn or deleted article, but it is not handed out: say it was not read instead of giving its body.
-		if page.Gone() {
-			notRead = append(notRead, page.ID+" is "+page.Status)
+		kept, err := keepHandedOut(book, view.Lessons, &notRead)
+		if err != nil {
+			return "", nil, err
+		}
+		if len(kept) == 0 {
 			continue
 		}
+		page := kept[0]
 		ref := store.KnowledgeReference{ID: page.ID, Revision: page.Revision}
 		found := false
 		for _, known := range available {
@@ -138,10 +141,41 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 		}
 	}
 	context.LookupMilliseconds = float64(time.Since(started).Nanoseconds()) / 1e6
-	if len(notRead) > 0 {
-		notice = strings.TrimSpace(notice + " Not read: " + strings.Join(notRead, ", ") + ". A withdrawn or deleted article is not handed out; a person decides on a withdrawn one on the Knowledge page.")
+	return strings.TrimSpace(notice + " " + notReadNotice(notRead)), context, nil
+}
+
+// keepHandedOut is the one test of which articles may be handed out to a decision or a work, whichever way they were named: in pages,
+// or found by a query (a query "lesson:<id>" returns the article whatever its state, and "lesson:<id>@<revision>" an older text of it
+// that still says it is live). A withdrawn or deleted article is not handed out, not even its summary: its id and its state now go
+// to notRead (once) and the rest come back.
+func keepHandedOut(book notebook.Book, pages []notebook.Page, notRead *[]string) ([]notebook.Page, error) {
+	kept := make([]notebook.Page, 0, len(pages))
+	for _, page := range pages {
+		state := page
+		if !page.Gone() {
+			current, ok, err := book.CurrentPage(page.ID)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				state = current
+			}
+		}
+		if !state.Gone() {
+			kept = append(kept, page)
+		} else if note := page.ID + " is " + state.Status; !slices.Contains(*notRead, note) {
+			*notRead = append(*notRead, note)
+		}
 	}
-	return notice, context, nil
+	return kept, nil
+}
+
+// notReadNotice is the sentence of context_notice for the articles keepHandedOut left out ("" when there are none).
+func notReadNotice(notRead []string) string {
+	if len(notRead) == 0 {
+		return ""
+	}
+	return "Not read: " + strings.Join(notRead, ", ") + ". A withdrawn or deleted article is not handed out; a person decides on a withdrawn one on the Knowledge page."
 }
 
 func planningArticleSource(page notebook.Page) string {

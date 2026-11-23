@@ -283,3 +283,29 @@ func TestAWithdrawnArticleIsNotReplacedBeforeAPersonDecides(t *testing.T) {
 		t.Fatalf("a restored article is replaced like any live one: %+v %v", res, err)
 	}
 }
+
+// A person has decided on a deleted article, so naming it in replaces takes nothing from anyone: such a lesson is saved as it always
+// was, for a new lesson and for an update of a live one. Only a withdrawn article, which still waits for a person, is refused.
+func TestADeletedArticleCanStillBeNamedInReplaces(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	_, gone := withdrawnArticle(t, b, "Deleted by a person", []string{workSource(t, b, "agent", 1)})
+	deleted, err := b.Manage(Change{ID: gone.ID, Revision: gone.Revision, Action: "delete"})
+	if err != nil || deleted.Status != "deleted" {
+		t.Fatalf("the person deleted it: %+v %v", deleted, err)
+	}
+	other := workSource(t, b, "agent", 2)
+	fresh := draft(other, "A new lesson that names the deleted one")
+	fresh.Replaces = []string{deleted.ID}
+	if res, err := b.Ingest(fresh); err != nil || len(res.Page.Replaces) != 1 || res.Page.Replaces[0] != deleted.ID {
+		t.Fatalf("a new lesson may name a deleted article in replaces: %+v %v", res, err)
+	}
+	live, err := b.Ingest(draft(other, "A live lesson that is updated later"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	update := draft(other, "A live lesson that is updated later")
+	update.ID, update.Replaces = live.Page.ID, []string{deleted.ID}
+	if res, err := b.Ingest(update); err != nil || len(res.Page.Replaces) != 1 {
+		t.Fatalf("an update of a live lesson may name a deleted article in replaces: %+v %v", res, err)
+	}
+}
