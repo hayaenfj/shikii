@@ -38,6 +38,9 @@ type notebookRequest struct {
 	Maintenance  *notebook.MaintenanceReview `json:"maintenance,omitempty"`
 	Path         string                      `json:"path,omitempty"`    // path of a work record (handoff_*), relative to .shikii/handoff/
 	Content      string                      `json:"content,omitempty"` // body to write to a work record (handoff_write / handoff_append)
+	// session is missSession of the session of the command that asked, which only the command line knows (commandMissSession). It has
+	// no JSON name, so an MCP or HTTP request can neither carry nor name one: it is not part of the request an agent sends.
+	session string
 }
 
 // sourceIDQuery is the one rule by which a query reads saved sources instead of searching words: its text is one or more
@@ -115,7 +118,7 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 		if err != nil {
 			return view, err
 		}
-		view.EarlierSearch = noteMissedSearch(b, req.Query, req.Cursor, "", view) // a wiki query carries no session
+		view.EarlierSearch = noteMissedSearch(b, req.Query, req.Cursor, req.session, view) // the session of a command run by an agent (the command line); none over MCP and HTTP
 		view.FoundAlone = noteFoundAlone(b, req.Query, req.Cursor, view)
 		if req.Query == "" && req.Cursor == "" { // the maintenance listing carries the searches that still find nothing
 			view.MissedSearches = listedMissedSearches(b)
@@ -252,6 +255,7 @@ func cmdNotebook(args []string) error {
 			args = args[:len(args)-1]
 		}
 		req.Query = strings.Join(args[1:], " ") // runNotebook reads it as sources when every word is a source id
+		req.session = commandMissSession(root)
 	} else if len(args) != 1 {
 		return errors.New("wiki lint takes no arguments")
 	}

@@ -37,7 +37,8 @@ func TestRecordTiesOnlyTheNamedMissesItsResultSpeaksOf(t *testing.T) {
 	}
 }
 
-// A wiki query carries no session, so the records of two works that were open then both name its misses. Each result is tied to the
+// A wiki query that knows no session (over MCP or HTTP, or from a command whose session the hook kept no state for) carries none,
+// so the records of two works that were open then both name its misses. Each result is tied to the
 // words it speaks of, whichever work records first, and the later record does not take the words of the earlier one.
 func TestTwoRecordsOfAWikiQueryTieEachWordsToTheResultThatSpeaksOfThem(t *testing.T) {
 	for _, firstRecordsFirst := range []bool{true, false} {

@@ -470,9 +470,9 @@ func TestTheSameWordsMissingAgainAreToldWhereTheEarlierResultIs(t *testing.T) {
 }
 
 // The note does not say that the work whose result it names searched the words: it names the work that was open when the words
-// missed and then recorded a result. A wiki query carries no session, so when several sessions of one project run side by side the
-// words it missed are tied to the result of a work that was open then, whichever searched (a search through a receipt is tied to
-// its own session: TestARecordNamesAndTiesOnlyTheMissesOfItsOwnSession).
+// missed and then recorded a result. A wiki query that knows no session (over MCP or HTTP) carries none, so when several sessions
+// of one project run side by side the words it missed are tied to the result of a work that was open then, whichever searched (a
+// search through a receipt is tied to its own session: TestARecordNamesAndTiesOnlyTheMissesOfItsOwnSession).
 func TestEarlierSearchNoteDoesNotSayTheWorkThatSearched(t *testing.T) {
 	f := newMissedFlow(t)
 	f.prepare("export audit", "")

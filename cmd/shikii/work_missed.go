@@ -28,8 +28,11 @@ import (
 //
 // A search of a prepare with a receipt is the search of a session, and the miss remembers it (missSession): only the records of
 // that session name and tie it, so a work of another session that was open at the time does not report words it never searched. A
-// wiki query carries no session; the words it missed are named by a work that was open then, whichever it is, and tied by the one
-// whose result speaks of them, so several works that were open then each take the words their own result speaks of.
+// wiki query run as a command knows its session when the agent put it in the command's environment and the hook kept a state for
+// it in this project (commandMissSession), and is the search of that session the same way. One that cannot be sure of its session
+// carries none, and so does every wiki query over MCP or HTTP (the process that serves them was started earlier, so its
+// environment is not the asking session's); the words it missed are named by a work that was open then, whichever it is, and tied
+// by the one whose result speaks of them, so several works that were open then each take the words their own result speaks of.
 
 // workMissedSearchesShown is how many open misses a record names; wikiMissedSearchesListed is how many the wordless query lists.
 const (
@@ -77,7 +80,7 @@ func missSession(sessionID string) string {
 
 // noteMissedSearch keeps the words of a public word search that found no candidate, and returns earlier_search when an earlier work
 // searched the same words, found none and recorded a result (nil otherwise). session is missSession of the work that searched, or
-// empty for a wiki query. It is best effort: a journal that cannot be written must not fail the search that was answered. The
+// empty when the entrance does not know it (a wiki query whose session is not certain). It is best effort: a journal that cannot be written must not fail the search that was answered. The
 // memory-upgrade queries are the work's own commands, not words searched.
 func noteMissedSearch(book notebook.Book, query, cursor, session string, view notebook.View) *notebook.EarlierSearch {
 	if isMemoryUpgradeQuery(strings.TrimSpace(query)) {

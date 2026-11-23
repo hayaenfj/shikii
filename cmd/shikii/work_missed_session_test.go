@@ -44,8 +44,9 @@ func TestARecordNamesAndTiesOnlyTheMissesOfItsOwnSession(t *testing.T) {
 	}
 }
 
-// A wiki query carries no session, so the words it missed are named and tied by a work that was open then, as before; and when
-// another session misses the same words through its receipt, the words become that session's.
+// A wiki query that knows no session (over MCP or HTTP, or from a command whose session the hook kept no state for) carries none,
+// so the words it missed are named and tied by a work that was open then, as before; and when another session misses the same words
+// through its receipt, the words become that session's (a command run in a session the hook kept a state for carries it: wiki_query_session_test.go).
 func TestAMissWithoutASessionIsNamedByAnOpenWorkUntilASessionMissesTheWords(t *testing.T) {
 	f := newMissedFlow(t)
 	first := f.prepare("export audit", "")

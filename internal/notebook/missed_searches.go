@@ -34,8 +34,9 @@ const (
 // of it collapsed to one space and its characters composed (normalizeMissQuery); At is when the search last found nothing. Result is the id of the saved result of the work that had the miss open when it
 // recorded its result (NoteMissResult), or empty: the report of that work, never an answer the wiki holds. Session is the session of
 // the search that last found nothing, as 16 hexadecimal digits the caller derives from the session id (never the id itself), or
-// empty when the entrance knows no session (a wiki query): a miss with a session is named and tied by the records of that session
-// only, so a work of another session that was open at the time does not take it for its own.
+// empty when the entrance knows no session (a wiki query over MCP or HTTP, or from a command whose session the hook kept no state
+// for): a miss with a session is named and tied by the records of that session only, so a work of another session that was open at
+// the time does not take it for its own.
 type Miss struct {
 	Query   string    `json:"query"`
 	At      time.Time `json:"at"`

@@ -39,8 +39,8 @@ checklist to read in full on every request.
 
 A complete record that carries a result can reply with `missed_searches`: words
 searched in this project's wiki since the work was prepared that found no
-article (words another session searched through its own receipt are not
-listed). If this work found the answer with evidence, the next search of those
+article (words another session searched are not listed: through its own receipt,
+or by a `shikii wiki query` run in that session). If this work found the answer with evidence, the next search of those
 words misses again: add a short note (the answer, or where it is written) in a
 work record with the same receipt. Otherwise leave it as it is. It is not an
 instruction to search again.
