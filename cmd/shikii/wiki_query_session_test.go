@@ -62,10 +62,19 @@ func keepHookState(t *testing.T, root, scope, session string) {
 }
 
 // An agent that runs the tests holds its own session in the environment (agentSessionVariables), and a command of a test would
-// take it as the session that asked. TestMain removes every variable of the list, so a test that wants one sets it itself; a
-// variable added to the list without being removed there shows up here when an agent runs the tests.
+// take it as the session that asked. TestMain removes every variable of the list (testUnsetVariables), so a test that wants one
+// sets it itself. The list is compared directly, so a variable added to agentSessionVariables without being added to
+// testUnsetVariables fails here whatever the environment the tests run in holds (CI and a terminal with no agent hold none); what
+// the environment holds after TestMain is checked as well.
 func TestTheTestEnvironmentHoldsNoSessionOfTheAgentThatRunsIt(t *testing.T) {
+	removed := map[string]bool{}
+	for _, variable := range testUnsetVariables {
+		removed[variable] = true
+	}
 	for _, variable := range agentSessionVariables {
+		if !removed[variable] {
+			t.Errorf("%s is read as a session (agentSessionVariables) but TestMain does not remove it: add it to testUnsetVariables (main_test.go)", variable)
+		}
 		if got := os.Getenv(variable); got != "" {
 			t.Errorf("%s holds %q: TestMain (main_test.go) removes it before the tests", variable, got)
 		}

@@ -172,16 +172,21 @@ var shippedModelURL = hookLocalURL
 // closedModelURL is the model's address every test starts with: a port nothing listens on.
 const closedModelURL = "http://127.0.0.1:1"
 
+// testUnsetVariables are the environment variables TestMain removes before the tests. It is a package variable so that a test can
+// compare it with what the package reads (TestTheTestEnvironmentHoldsNoSessionOfTheAgentThatRunsIt), whatever the environment the tests run in holds.
+//
+// XDG_CONFIG_HOME moves where shikii puts OpenCode's plugin (opencode_plugin.go): a test that installs under a temporary HOME
+// must not write into this machine's real config folder. A test that wants it set sets it (t.Setenv) to a temporary folder.
+// CLAUDE_CODE_SESSION_ID, CODEX_THREAD_ID and OPENCODE_SESSION_ID are the id of the session this test run was started from, when
+// an agent runs it: a wiki query takes them as its session (wiki_query_session.go), so a test that wants one sets it (t.Setenv).
+var testUnsetVariables = []string{"TYPESAFE_API_KEY", "DECISIONS_API_KEY", "SHIKII_MODEL", "XDG_CONFIG_HOME", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "OPENCODE_SESSION_ID"}
+
 // TestMain removes the developer's keys (TYPESAFE_API_KEY / DECISIONS_API_KEY) and SHIKII_MODEL before the tests.
 // Otherwise tests that assume the local fake model send requests to the real api.typesafe.ai,
 // and the store's records, calibrations and bands change and the tests fail (2026-10-23: 6 failed right after the key was put in an environment variable).
 // Tests that try Jev (hook_hosted_test.go) call t.Setenv themselves.
 func TestMain(m *testing.M) {
-	// XDG_CONFIG_HOME moves where shikii puts OpenCode's plugin (opencode_plugin.go): a test that installs under a temporary HOME
-	// must not write into this machine's real config folder. A test that wants it set sets it (t.Setenv) to a temporary folder.
-	// CLAUDE_CODE_SESSION_ID, CODEX_THREAD_ID and OPENCODE_SESSION_ID are the id of the session this test run was started from, when
-	// an agent runs it: a wiki query takes them as its session (wiki_query_session.go), so a test that wants one sets it (t.Setenv).
-	for _, k := range []string{"TYPESAFE_API_KEY", "DECISIONS_API_KEY", "SHIKII_MODEL", "XDG_CONFIG_HOME", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "OPENCODE_SESSION_ID"} {
+	for _, k := range testUnsetVariables {
 		os.Unsetenv(k)
 	}
 	// A test's temporary folder under a TMPDIR that sits inside a Git working tree would be found by git as part of that repository, and
