@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/hayaenfj/shikii/internal/store"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -128,6 +130,8 @@ func guardRecordsWritable(root string) error {
 	return os.Remove(probe.Name())
 }
 
+// appendGuardRecords appends under records/guards.jsonl.lock, the lock every other records file's writers take, so shikii forget can
+// rewrite the file without losing a line a Stop appends meanwhile.
 func appendGuardRecords(root string, recs []guardRecord) error {
 	if len(recs) == 0 {
 		return nil
@@ -135,21 +139,23 @@ func appendGuardRecords(root string, recs []guardRecord) error {
 	if err := os.MkdirAll(filepath.Dir(guardRecordsPath(root)), 0o700); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(guardRecordsPath(root), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	for _, r := range recs {
-		b, err := json.Marshal(r)
+	return (store.Store{Dir: root}).WithAppendLock(guardRecordsPath(root), func() error {
+		f, err := os.OpenFile(guardRecordsPath(root), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 		if err != nil {
 			return err
 		}
-		if _, err := f.Write(append(b, '\n')); err != nil {
-			return err
+		defer f.Close()
+		for _, r := range recs {
+			b, err := json.Marshal(r)
+			if err != nil {
+				return err
+			}
+			if _, err := f.Write(append(b, '\n')); err != nil {
+				return err
+			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 func readGuardRecords(root string) []guardRecord {

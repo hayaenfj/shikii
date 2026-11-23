@@ -54,6 +54,8 @@ func main() {
 		err = cmdPage(os.Args[2:])
 	case "gc":
 		err = cmdGC(os.Args[2:])
+	case "forget":
+		err = cmdForget(os.Args[2:])
 	case "wiki":
 		err = cmdWiki(os.Args[2:])
 	case "handoff":
@@ -152,6 +154,8 @@ func usageText() string {
   shikii bias      <spec.yaml> [--rows K] [--permutations N] [--store DIR] [--labeled file] [--local URL] [--hosted URL]
                    Measure whether the answer changes with the order of the options. Texts come from the same saved truths as calibrate (store, or --labeled)
   shikii gc        [spec.yaml...] [--older-than 30d] [--apply] [--store DIR]
+  shikii forget    <session id>... [--apply]
+                   Remove what finished agent sessions (trial runs, a session started by mistake) left in this project's .shikii/: their records, work states and sources that no article cites. Without --apply it only lists what would go and what stays; with it, the removed records are kept in .shikii/records/forgotten/ first. A person runs it; an agent does not remove records on its own
   shikii hash      <spec.yaml>
 `
 }

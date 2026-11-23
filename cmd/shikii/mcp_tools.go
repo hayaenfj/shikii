@@ -158,10 +158,18 @@ func mcpWikiRefusal(operation string) string {
 		return ""
 	case mcpWikiCLIOnly[operation] != "":
 		return mcpWikiCLIOnly[operation]
+	case mcpWikiPersonOnly[operation] != "":
+		return mcpWikiPersonOnly[operation]
 	case operation == "":
 		return "shikii_wiki needs operation, one of " + strings.Join(enum, " / ")
 	}
 	return "operation " + strconv.Quote(cut(operation, 64)) + " is not on MCP; shikii_wiki takes " + strings.Join(enum, " / ")
+}
+
+// mcpWikiPersonOnly are the operations that remove records, which only a person runs (the CLI, not HTTP either): an agent asked for one is
+// told so and what the person runs. A removal is never decided by the agent whose session it may be.
+var mcpWikiPersonOnly = map[string]string{
+	"forget": `forget is not on MCP, and an agent does not remove records on its own: a person runs shikii forget <session id> in the project's folder (without --apply it only lists what would go; with --apply it moves the records into .shikii/records/forgotten/ first). Show the person the session ids to give it`,
 }
 
 // mcpWikiCLIOnly are the wiki operations shikii_wiki's MCP definition leaves out (mcp_wiki_surface_test.go has the measurements),

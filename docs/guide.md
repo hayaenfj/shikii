@@ -74,7 +74,7 @@ What is inside `.shikii/`:
 | `wiki/` | Lessons, conditions, earlier revisions | Yes |
 | `guards/` | Guards made from people's corrections | Yes |
 | `labels/` | Truths given by people and by results (an asset that survives a change of model) | Yes |
-| `records/` | Results of conversations, decisions, assessments, deliveries, observations and guards. Grows with every decision | Optional (`shikii gc` removes old records without truths) |
+| `records/` | Results of conversations, decisions, assessments, deliveries, observations and guards. Grows with every decision | Optional (`shikii gc` removes old records without truths; `shikii forget` removes a finished session's records and keeps them in `records/forgotten/`) |
 | `sessions/` | Per-session notes (lessons delivered, notices given, files changed) | No |
 | `handoff/` | Work records (audit reports, release steps, diffs, screenshots) | Only what you want to keep (`shikii gc` never touches it) |
 
@@ -508,6 +508,21 @@ Files are written in the same directory and then replaced by rename, so the orig
 
 `make status` / `make drift` / `make check` / `make gc` / `make install` / `make server` are also available (`Makefile`).
 
+### Removing what a finished session left: `shikii forget`
+
+A trial run of an agent, or a session started by mistake, leaves records in `.shikii/`: its work state, the deliveries of lessons it was given, the sources it captured, the decisions it caused. `shikii forget` finds them by what each record names (a field that holds the session id, or an id the session's own records carry: its turns, its deliveries, its decisions, its sources) and never by searching the id as text. A person runs it in the project's folder; the MCP tool refuses it and says so (an agent does not remove records on its own).
+
+```sh
+shikii forget ses_a1b2c3                  # list: what would be removed, what stays and why, what only might belong (nothing changes)
+shikii forget ses_a1b2c3 agent_9f --apply # remove them: a session id, and the subagent ids that ran under it
+```
+
+Without `--apply` nothing changes, not even a lock file. With it, everything that goes is first moved into `.shikii/records/forgotten/<UTC time>-<short id>/` (a file under its own path in the store; a removed line appended to the file of its path; a removed element of the search or delivery journal kept as it was), and `plan.json` there says what was removed, why it was sure to belong to the session, and what was left and why. Nothing is deleted from that folder by shikii.
+
+What stays, listed with its reason: a source an article or one of its revisions cites, or that an assignment, another session's work state or reasoning history, or the search records that remain still name; a decision (with all its labels) that a person labeled, whereas a machine's labels (`outcome`, `replay`, `context`, `judge`, `agreed`) go with their decision; the sessions of other ids, even when one starts with the id you gave. Records that only a word or a time connects to the session (an observation or an article that says the id in its text, an observation made while the session ran) are listed as candidates and never removed; `hook.log` and the assignments, which hold nothing that says whose they are, are not touched. The open rows of the coverage ledger that the removed results had closed are open again.
+
+It refuses, and changes nothing, when the id is the session the command runs in (`CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, `OPENCODE_SESSION_ID`), when the session's record was written to in the last 10 minutes, when its lock is held (it may still be running), when two ids share one file name, and when an id is a subagent that ran under several sessions (give the session id too). A run that stops in the middle (a full disk) is finished by running the same command again: what a step goes by is removed after that step, so the second run finds the rest.
+
 ## Every command
 
 In the same order as `shikii --help`. For all the flags, run `shikii <command> --help`.
@@ -544,6 +559,7 @@ In the same order as `shikii --help`. For all the flags, run `shikii <command> -
 | `shikii drift <spec> --model M` | Checks whether a line has worsened on recent truths |
 | `shikii bias <spec>` | Measures whether the order of options changes the answer |
 | `shikii gc` | Cleans up old records without truths (`--apply` removes them) |
+| `shikii forget <session id>...` | Lists, and with `--apply` removes, what finished sessions left in `.shikii/`; what goes is kept in `records/forgotten/` first |
 | `shikii hash <spec>` | The hash of the spec that keys calibration |
 | `shikii version` | Prints the version |
 
