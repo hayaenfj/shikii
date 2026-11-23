@@ -17,25 +17,37 @@ var pageParses atomic.Uint64
 // PageParses returns how many times this process parsed and verified an article (tests hold a request to one pass per article).
 func PageParses() uint64 { return pageParses.Load() }
 
-// ReadView shares validated parsing within one request. Every access still
-// opens and reads the regular file, compares all bytes, and rechecks sources and
-// watched premises (a loop over several pages reads a source that several of them
-// cite once for the loop: see sourceCheck). It is neither a filesystem snapshot nor
-// a persistent cache.
+// ReadView shares validated parsing and the reads of sources within one request. Every access still opens and reads the regular file
+// of an article, compares all bytes, and rechecks watched premises, but a source that articles cite and that could be read is read once
+// for the whole view: its record and its archived original are hashed the first time any step of the request checks an article that
+// cites it, and every later check in the view, by any article and in any step, takes that result (see sourceCheck). A source that is
+// removed, changed or restored after the view read it is therefore seen as the view first read it, so one reply does not contradict
+// itself, and the next view sees the change. A source that could not be read (it, its archived original or the sources folder is
+// missing or unreadable) is not kept: sources are written once and never rewritten, so a read that worked stays true, and one that did
+// not may be saved a moment later in the same request, which the next step then sees. It is neither a filesystem snapshot nor a
+// persistent cache: the view is the request, and a caller that keeps one beyond its request keeps what it read.
 func (b Book) ReadView() Book {
 	b.name = ""
 	b.snapshot = nil
-	b.read = &readView{pages: map[string]readPage{}}
+	b.read = newReadView()
 	return b
+}
+
+// newReadView is a view of one request: it shares the parsing of the articles and the reads of the sources.
+func newReadView() *readView {
+	return &readView{pages: map[string]readPage{}, sources: newKeptSources()}
 }
 
 // sharingParses is b with one parse-and-verify pass shared by every read made on it afterwards, which is what a request that reads the
 // wiki in several steps takes (a query: the ranking, then the observations, the maintenance and the list of unclassified articles).
 // A Book that already shares one (a ReadView or a snapshot of the caller) is returned as it is, so the caller's view is the one used.
-// Like ReadView, it shares only the pass: each read still opens the file and compares all its bytes.
+// Like ReadView, it shares the reads of the sources too: each source record and archived original that could be read is read once for
+// the request, and a source that changes in the middle of the request is seen by the next request, not by a later step of this one,
+// while a source that could not be read is tried again by the next step. Each read of an article still opens the file and compares all
+// its bytes.
 func (b Book) sharingParses() Book {
 	if b.read == nil {
-		b.read = &readView{pages: map[string]readPage{}}
+		b.read = newReadView()
 	}
 	return b
 }
@@ -78,6 +90,10 @@ type readView struct {
 	mu    sync.Mutex
 	bytes int
 	pages map[string]readPage
+	// sources is what this view has read of the sources the articles cite, the reads that succeeded. It is nil in the view the
+	// preparations of the process share (preparedReadPages): what lasts as long as the process must not remember a source, and a
+	// preparation checks its sources through its snapshot, which ValidateRead checks again.
+	sources *keptSources
 }
 
 func (b Book) readPage(path string, raw []byte) (Page, error) {

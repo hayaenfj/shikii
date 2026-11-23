@@ -43,7 +43,8 @@ type readSnapshot struct {
 }
 
 // Only validated parsing is shared across preparations in this process. File
-// bytes, source validity and premises are still freshly checked per preparation.
+// bytes, source validity and premises are still freshly checked per preparation:
+// this view has no keptSources, so it remembers nothing of a source.
 var preparedReadPages = &readView{pages: map[string]readPage{}}
 
 // PrepareReadSnapshot establishes the fixed article layout before freezing

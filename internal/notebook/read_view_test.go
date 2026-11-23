@@ -34,13 +34,18 @@ func readViewFixture(t *testing.T) (Book, Page, string) {
 	return b.ReadView(), *saved.Page, o.ID
 }
 
+// A view rechecks the bytes of an article and its watched premises on every access. The sources an article cites are read once for the
+// view (sourceCheck): a source that changes after the view read it is seen by the next view, and the view keeps what it first read.
 func TestReadViewRechecksBytesSourcesAndPremises(t *testing.T) {
 	b, p, source := readViewFixture(t)
 	pageDir, _ := b.directory(false, "pages")
 	sourceDir, _ := b.directory(false, "sources")
-	for _, tc := range []struct{ name, path, old, next string }{
-		{"article", filepath.Join(pageDir, p.ID+".md"), "The owner choice stays unresolved.", "The owner choice stays determined."},
-		{"source", filepath.Join(sourceDir, source+".json"), "Source fixture", "Source changed"},
+	for _, tc := range []struct {
+		name, path, old, next string
+		sourceOfTheView       bool // the change is to a source, which the view has read and keeps as it read it
+	}{
+		{"article", filepath.Join(pageDir, p.ID+".md"), "The owner choice stays unresolved.", "The owner choice stays determined.", false},
+		{"source", filepath.Join(sourceDir, source+".json"), "Source fixture", "Source changed", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, ok, e := b.CurrentPage(p.ID); e != nil || !ok {
@@ -61,7 +66,14 @@ func TestReadViewRechecksBytesSourcesAndPremises(t *testing.T) {
 			if err = os.Chtimes(tc.path, info.ModTime(), info.ModTime()); err != nil {
 				t.Fatal(err)
 			}
-			if _, ok, e := b.CurrentPage(p.ID); e != nil || ok {
+			if tc.sourceOfTheView {
+				if _, ok, e := b.CurrentPage(p.ID); e != nil || !ok {
+					t.Fatal("the view keeps the source as it first read it", ok, e)
+				}
+				if _, ok, e := b.ReadView().CurrentPage(p.ID); e != nil || ok {
+					t.Fatal("the next view must see the changed source", ok, e)
+				}
+			} else if _, ok, e := b.CurrentPage(p.ID); e != nil || ok {
 				t.Fatal("cached parsing must not hide changed bytes", ok, e)
 			}
 			if err = os.WriteFile(tc.path, raw, 0600); err != nil {
@@ -69,6 +81,9 @@ func TestReadViewRechecksBytesSourcesAndPremises(t *testing.T) {
 			}
 			if _, ok, e := b.CurrentPage(p.ID); e != nil || !ok {
 				t.Fatal("restored original remains readable", ok, e)
+			}
+			if _, ok, e := b.ReadView().CurrentPage(p.ID); e != nil || !ok {
+				t.Fatal("the next view reads the restored original", ok, e)
 			}
 		})
 	}

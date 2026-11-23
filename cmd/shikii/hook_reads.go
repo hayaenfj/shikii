@@ -5,8 +5,10 @@ import "github.com/hayaenfj/shikii/internal/notebook"
 // eventPages is the validated-parsing view of the hook event in progress (nil outside one). One event reads the wiki in several
 // steps (delivery, reflection, classification, the memory upgrade, the checks at Stop), and each step used to parse and verify
 // every article again. Sharing the view parses an article once per event while it stays byte-identical: every step still opens and
-// reads the file, compares all its bytes, and rechecks sources and watched premises (notebook.Book.ReadView). It is dropped when the
-// event ends, so a long-running process (serve, mcp) never keeps it between requests.
+// reads the file, compares all its bytes, and rechecks watched premises, while each source an article cites that could be read is read
+// once for the event (notebook.Book.ReadView): a source that changes in the middle of an event is seen by the next one, and one that
+// could not be read is tried again by the next step. It is dropped when the event ends, so a long-running process (serve, mcp) never
+// keeps it between requests.
 var eventPages *notebook.Book
 
 // beginEventReads starts the shared view for one hook event and returns the function that ends it.
