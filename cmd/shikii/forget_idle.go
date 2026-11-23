@@ -77,7 +77,7 @@ func (r *forgetRun) aliveWhy(subject string, p *agentProcess, t turnRead) string
 	case t.err != nil:
 		return r.cannotTell(subject, agent, "the state of its last turn could not be read: "+t.err.Error())
 	case !t.known:
-		return r.cannotTell(subject, agent, "no state of its last turn is kept: it is from an older shikii")
+		return r.cannotTell(subject, agent, fmt.Sprintf("no state of its last turn is kept (an earlier shikii wrote none, or shikii removed it %d days after the last event of the session)", hookSessionTTL/(24*time.Hour)))
 	case latest.InTurn == nil:
 		return r.cannotTell(subject, agent, "its last turn was kept by an older shikii, which did not note whether it ended")
 	case *latest.InTurn:
@@ -102,11 +102,11 @@ func (r *forgetRun) aliveWhy(subject string, p *agentProcess, t turnRead) string
 		subject, agent, processName(started.Name), started.PID, started.Started.UTC().Format(time.RFC3339))
 }
 
-// openSubagent is the oldest subagent the state says began after the agent was noted and has not ended ("" when there is none). One that
+// openSubagent is the oldest subagent the state says began at or after the agent was noted and has not ended ("" when there is none). One that
 // began before belongs to an earlier process of the agent (the session was resumed): its end was never going to be told to this one.
 func openSubagent(latest sessionLatest, noted time.Time) (id string, at time.Time) {
 	for sub, began := range latest.Subagents {
-		if began.After(noted) && (id == "" || began.Before(at) || began.Equal(at) && sub < id) {
+		if !began.Before(noted) && (id == "" || began.Before(at) || began.Equal(at) && sub < id) {
 			id, at = sub, began
 		}
 	}

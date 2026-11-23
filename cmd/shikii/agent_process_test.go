@@ -292,7 +292,8 @@ func TestTheHookWritesTheProcessOnlyWhenItChanged(t *testing.T) {
 	}
 	table := useProcessTable(t, agentFamily("claude"))
 	useParent(t, 500)
-	noteAgentProcess(root, "ses_resumed")
+	began := time.Now()
+	noteAgentProcess(root, "ses_resumed", began)
 	firstNoted := hookProcessOf(t, root, "ses_resumed").Noted
 	if firstNoted.IsZero() {
 		t.Fatalf("the first event did not note the time")
@@ -301,13 +302,13 @@ func TestTheHookWritesTheProcessOnlyWhenItChanged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the first event did not write the record: %v", err)
 	}
-	noteAgentProcess(root, "ses_resumed")
+	noteAgentProcess(root, "ses_resumed", began.Add(time.Second))
 	if again, _ := os.ReadFile(sessionPath(root, "ses_resumed")); !bytes.Equal(first, again) {
 		t.Errorf("an event of the same process wrote the record again:\n%s\n%s", first, again)
 	}
 	// the agent is started again with the same session: another pid, another start time
 	table.set(200, processRow{Parent: 100, Start: "Mon Nov 23 09:00:00 2026", Name: "claude"})
-	noteAgentProcess(root, "ses_resumed")
+	noteAgentProcess(root, "ses_resumed", began.Add(time.Minute))
 	got := hookProcessOf(t, root, "ses_resumed")
 	if got == nil || got.Start != "Mon Nov 23 09:00:00 2026" {
 		t.Fatalf("the record keeps the process of the agent that was started before: %+v", got)
@@ -329,7 +330,7 @@ func TestTheHookGivesNoTimeToAProcessAnEarlierShikiiNoted(t *testing.T) {
 	}
 	useProcessTable(t, agentFamily("claude"))
 	useParent(t, 500)
-	noteAgentProcess(root, "ses_before")
+	noteAgentProcess(root, "ses_before", time.Now())
 	s, err := readSession(root, "ses_before")
 	if err != nil {
 		t.Fatal(err)
@@ -338,7 +339,7 @@ func TestTheHookGivesNoTimeToAProcessAnEarlierShikiiNoted(t *testing.T) {
 	if err := saveSession(root, "ses_before", s); err != nil {
 		t.Fatal(err)
 	}
-	noteAgentProcess(root, "ses_before")
+	noteAgentProcess(root, "ses_before", time.Now())
 	if got := hookProcessOf(t, root, "ses_before"); got == nil || !got.Noted.IsZero() {
 		t.Errorf("a record with a process and no time was given a time: %+v", got)
 	}
@@ -356,20 +357,20 @@ func TestTheHookNotesNothingWhenItFindsNoAgent(t *testing.T) {
 	useParent(t, 500)
 	table.state = processUnknown
 	table.drop(500)
-	noteAgentProcess(root, "ses_none")
+	noteAgentProcess(root, "ses_none", time.Now())
 	if _, err := os.Stat(sessionPath(root, "ses_none")); !os.IsNotExist(err) {
 		t.Errorf("a record was made though no agent was found: %v", err)
 	}
 	table.state = processAbsent
 	table.set(500, agentFamily("claude")[500])
-	noteAgentProcess(root, "ses_none")
+	noteAgentProcess(root, "ses_none", time.Now())
 	table.drop(500)
 	table.state = processUnknown
-	noteAgentProcess(root, "ses_none")
+	noteAgentProcess(root, "ses_none", time.Now())
 	if got := hookProcessOf(t, root, "ses_none"); got == nil || got.PID != 200 {
 		t.Errorf("a hook that found no agent took the process out of the record: %+v", got)
 	}
-	noteAgentProcess(root, "")
+	noteAgentProcess(root, "", time.Now())
 }
 
 // The process table of Linux (/proc/<pid>/stat): the name may hold spaces and brackets, the boot's id comes before the start time, a

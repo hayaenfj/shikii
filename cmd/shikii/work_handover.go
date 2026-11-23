@@ -245,17 +245,27 @@ func sessionActivity(event string, in *hookInput) {
 		if at.After(latest.EventAt) {
 			latest.EventAt, changed = at, true
 		}
+		// The message the turn is of, said before the request hook's slow work: a hook the agent stops for its time never writes the
+		// request, and the Stop of this message would be taken for the Stop of the request before (it names another message).
+		if event == "user-prompt-submit" && in.AgentID == "" && in.TurnKey != "" && latest.Key != in.TurnKey {
+			latest.Key, changed = in.TurnKey, true
+		}
 		_, open := latest.Subagents[in.AgentID]
 		switch {
 		case in.AgentID == "":
-		case event == "subagent-start" && !open:
+		case event == "subagent-stop":
+			if open {
+				delete(latest.Subagents, in.AgentID)
+				changed = true
+			}
+		case !open:
+			// A subagent begins at its SubagentStart, and at any other event that carries its id: one the agent continued (Claude Code's
+			// SendMessage) is not known to have a SubagentStart, and its own tool calls are then the only thing that says it works.
+			// Only its end closes it, so a late event of one that ended opens it again, and forget asks again, which is the safe side.
 			if latest.Subagents == nil {
 				latest.Subagents = map[string]time.Time{}
 			}
 			latest.Subagents[in.AgentID], changed = at, true
-		case event == "subagent-stop" && open:
-			delete(latest.Subagents, in.AgentID)
-			changed = true
 		}
 		return changed
 	})

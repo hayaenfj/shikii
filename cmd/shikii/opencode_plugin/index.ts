@@ -152,10 +152,17 @@ export default Plugin.define({
 
     // The start of a subagent goes to shikii hook subagent-start under the parent's session (as Claude Code's SubagentStart does), with
     // its task, and what shikii gives (the rules for every request and how to report) goes on the task's message. Only the first message of a subagent's session is its task; a later one (the
-    // parent steering it) starts another turn of the same subagent, whose end is reported again.
+    // parent continuing it) starts another turn of the same subagent, whose end is reported again, so its start is told again too (shikii
+    // keeps a subagent open from its start to its end, and nothing else tells the parent's session that the subagent thinks again): that
+    // start carries no task, and what shikii answers is not used, as the subagent has what it was given. A message that joins a turn that
+    // is running is no new turn.
     const subagentPrompt = async (sessionID: string, sub: { parent: string; agent: string }, e: any) => {
+      const began = !working.has(sessionID)
       working.add(sessionID)
-      if (briefed.has(sessionID)) return
+      if (briefed.has(sessionID)) {
+        if (began) await hook("subagent-start", sub.parent, { agent_id: sessionID, agent_type: sub.agent })
+        return
+      }
       briefed.add(sessionID)
       const given: string = e.prompt?.text ?? ""
       const task = given.startsWith(SUBAGENT_PREFACE) ? given.slice(SUBAGENT_PREFACE.length) : given

@@ -95,11 +95,12 @@ func TestForgetLooksAtTheSubagentsOfTheSession(t *testing.T) {
 func TestForgetRefusesASessionWhoseTurnWentOnAfterItsStop(t *testing.T) {
 	for _, c := range []struct {
 		name, event, agent string
+		opensASubagent     bool // the event carries the id of a subagent no end was told of: it is open until its end
 	}{
-		{"a tool call", "tool-lesson", ""},
-		{"a tool call of a subagent", "tool-lesson", "agent-x"},
-		{"a subagent ending", "subagent-stop", "agent-x"},
-		{"the end of a subagent no id is told of", "subagent-stop", ""},
+		{"a tool call", "tool-lesson", "", false},
+		{"a tool call of a subagent", "tool-lesson", "agent-x", true},
+		{"a subagent ending", "subagent-stop", "agent-x", false},
+		{"the end of a subagent no id is told of", "subagent-stop", "", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			w := newForgetWorld(t)
@@ -107,6 +108,11 @@ func TestForgetRefusesASessionWhoseTurnWentOnAfterItsStop(t *testing.T) {
 			w.hears(w.A, c.event, c.agent)
 			w.refuses(w.A, "ses_fx_a1 is still running: its agent process (claude, pid 910001) is alive and its last turn has not ended")
 			w.turnEnds(w.A)
+			if c.opensASubagent {
+				w.refuses(w.A, "a subagent it started is still open ("+c.agent+", begun ")
+				w.hears(w.A, "subagent-stop", c.agent)
+				w.turnEnds(w.A)
+			}
 			w.takes(w.A)
 		})
 	}

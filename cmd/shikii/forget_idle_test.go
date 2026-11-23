@@ -136,9 +136,9 @@ func TestForgetRefusesWhenTheEndOfTheLastRequestIsNotKnown(t *testing.T) {
 		{"a state with the end of the request but not whether a turn is open", func(t *testing.T, w *forgetWorld) {
 			w.must(os.WriteFile(latest(w.A), []byte(`{"root":`+strconv.Quote(w.root)+`,"turn":"`+w.tA+`","ended":true}`), 0o600))
 		}, "its last turn was kept by an older shikii, which did not note whether it ended"},
-		{"no state of the turn at all", func(t *testing.T, w *forgetWorld) {
+		{"no state of the turn at all (an earlier shikii wrote none, or shikii removed it after 7 days)", func(t *testing.T, w *forgetWorld) {
 			w.must(os.Remove(latest(w.A)))
-		}, "no state of its last turn is kept: it is from an older shikii"},
+		}, "no state of its last turn is kept (an earlier shikii wrote none, or shikii removed it 7 days after the last event of the session)"},
 		{"a state that cannot be read", func(t *testing.T, w *forgetWorld) {
 			w.must(os.WriteFile(latest(w.A), []byte(`{"root":`), 0o600))
 		}, "the state of its last turn could not be read"},
