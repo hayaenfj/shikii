@@ -93,11 +93,14 @@ func (c *mcpConn) forget(call json.RawMessage, target http.Handler, args json.Ra
 	}
 	// a yes: the records are read again under the locks, and what is removed is what the person was shown or nothing
 	if err := r.execute(true, shown); err != nil {
-		status := "failed"
-		if errors.Is(err, errForgetPlanChanged) {
-			status = "changed"
+		var stopped *forgetStopped
+		switch {
+		case errors.As(err, &stopped):
+			return forgetPartialReply(stopped, r.plan), true
+		case errors.Is(err, errForgetPlanChanged):
+			return forgetReply("changed", err.Error(), nil, true), true
 		}
-		return forgetReply(status, err.Error(), nil, true), true
+		return forgetReply("failed", err.Error(), nil, true), true
 	}
 	done := r.plan
 	reply := forgetReply("removed", "the person agreed, and what was removed is kept in "+r.f.Dir+" (plan.json there says what and why)", &done, false)
@@ -106,9 +109,24 @@ func (c *mcpConn) forget(call json.RawMessage, target http.Handler, args json.Ra
 
 // forgetReply is the tool result of forget: what became of the request, whether anything was changed, and the plan in a short form.
 func forgetReply(status, message string, plan *forgetPlan, failed bool) map[string]any {
-	body := map[string]any{"operation": "forget", "status": status, "changed": status == "removed", "message": message}
+	return forgetReplyWith(status, message, plan, failed, nil)
+}
+
+// forgetPartialReply is the reply to an application that stopped after it had begun: what was moved is kept, so something has changed
+// (status partial, changed true), and sending the same call again, which asks the person again, removes the rest. The plan in it is what
+// the steps that finished removed; steps_left names the others.
+func forgetPartialReply(stopped *forgetStopped, done forgetPlan) map[string]any {
+	message := fmt.Sprintf("the person agreed, and the removal stopped part-way (%v), so some of the records are already removed: they are kept in %s (plan.json there says what and why). Send the same call again to remove the rest; shikii asks the person again", stopped.err, stopped.dir)
+	return forgetReplyWith("partial", message, &done, true, map[string]any{"steps_left": stopped.left, "kept_in": stopped.dir})
+}
+
+func forgetReplyWith(status, message string, plan *forgetPlan, failed bool, extra map[string]any) map[string]any {
+	body := map[string]any{"operation": "forget", "status": status, "changed": status == "removed" || status == "partial", "message": message}
 	if plan != nil {
 		body["plan"] = plan.view()
+	}
+	for k, v := range extra {
+		body[k] = v
 	}
 	b, _ := json.Marshal(body)
 	code := http.StatusOK

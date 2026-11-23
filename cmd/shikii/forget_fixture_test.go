@@ -37,6 +37,8 @@ type forgetWorld struct {
 	tr           map[string]string // the label of a decision and its trace
 	del          map[string]string // the label of a delivery and its id
 	page         notebook.Page
+	table        *fakeProcessTable
+	process      map[string]map[string]any // the agent process the record of each session names
 	old          time.Time
 	mustNotStay  []string // what names A and nothing else: not found anywhere after forget (outside the folder it keeps them in)
 	mayNameAOnly []string // files that name A on purpose and stay: a cited source, a source only a text of it names A
@@ -52,6 +54,8 @@ const (
 	fxRevision   = "e2e2e2e2e2e2e2e2"
 	fxLessonKey  = "lesson:" + fxLesson + ":" + fxRevision
 	fxObservedAt = "2026-11-20T00:00:00Z"
+	fxPidA       = 910001
+	fxPidB       = 910002
 )
 
 func forgetHexName(label string) string {
@@ -126,7 +130,15 @@ func newForgetWorld(t *testing.T) *forgetWorld {
 	}
 	w := &forgetWorld{t: t, repo: repo, root: root, scope: scope, st: store.Store{Dir: root}, book: notebook.Book{Root: root, Scope: scope},
 		A: fxA, B: fxB, childA: fxChildA, childB: fxChildB, tA: fxTA, tA0: fxTA0, tB: fxTB,
-		src: map[string]string{}, tr: map[string]string{}, del: map[string]string{}, old: time.Now().Add(-time.Hour)}
+		src: map[string]string{}, tr: map[string]string{}, del: map[string]string{}, old: time.Now().Add(-2 * forgetUnknownQuiet)}
+	// the sessions of the world have ended: their records name an agent process that the table does not have (a test that wants a
+	// session running gives its process a row, see runningSession)
+	w.table = useProcessTable(t, nil)
+	host := thisMachine(t)
+	w.process = map[string]map[string]any{
+		w.A: {"pid": fxPidA, "start": "started-a", "host": host, "name": "claude"},
+		w.B: {"pid": fxPidB, "start": "started-b", "host": host, "name": "claude"},
+	}
 	w.name = store.StoreName(root, scope)
 	covA, covB := store.CoverageSession(w.A), store.CoverageSession(w.B)
 
@@ -198,7 +210,7 @@ func newForgetWorld(t *testing.T) *forgetWorld {
 
 	// the guards, the reasoning history, the search journal, the delivery journal
 	now := time.Now().UTC()
-	then := w.old.UTC() // what the sessions wrote is as old as their records: a record written a minute ago says the session may still run
+	then := w.old.UTC() // what the sessions wrote is as old as their records: with no process to go by, a record written lately says the session may still run
 	w.must(appendGuardRecords(root, []guardRecord{{At: then, Session: w.A, Turn: w.tA0, Guard: "g", Pass: true}, {At: then, Session: w.B, Turn: w.tB, Guard: "g", Pass: true}, {At: then, Session: w.A, Turn: w.tA, Guard: "g", Pass: false, Reason: "stopped"}}))
 	for _, h := range []struct{ session, turn, source, key string }{{w.A, w.tA0, w.src["a5"], "a"}, {w.B, w.tB, w.src["b1"], "b"}} {
 		w.writeJSON("records/work-reasoning-"+workHash([]string{w.name, h.session, h.turn, h.key})+".json", map[string]any{"store": w.name, "session": h.session, "turn": h.turn, "entry": map[string]any{"key": h.key, "source": h.source, "at": then}})
@@ -231,13 +243,13 @@ func newForgetWorld(t *testing.T) *forgetWorld {
 	work := func(captures, saved map[string]any, sources map[string]string, reports map[string]bool, result string) map[string]any {
 		return map[string]any{"captures": captures, "saved": saved, "sources": sources, "reports": reports, "result": map[string]any{"source": result}, "coverage_left": []string{result}, "query": "q"}
 	}
-	w.writeJSON("sessions/"+w.A+".json", map[string]any{"request": "ra", "turn_id": w.tA, "scope": scope, "at": now,
+	w.writeJSON("sessions/"+w.A+".json", map[string]any{"request": "ra", "turn_id": w.tA, "scope": scope, "at": now, "process": w.process[w.A],
 		"planning": map[string]any{"turn_id": w.tA, "at": now, "source_material": map[string]string{}, "work": work(
 			map[string]any{"h1": map[string]any{"ref": "observed1", "id": w.src["a1"]}, "h4": map[string]any{"ref": "observed4", "id": w.src["a4"]}, "h6": map[string]any{"ref": "observed6", "id": w.src["a6"]}},
 			map[string]any{"s2": map[string]any{"ref": "note", "kind": "note", "id": w.src["a2"]}},
 			map[string]string{"source1": w.src["read"], "observed1": w.src["a1"]}, map[string]bool{w.src["a3"]: true}, w.src["a3"])},
 		"pending": []any{map[string]any{"trace": w.tr["pend"], "tree": "t", "at": now}}, "reasoning": map[string]any{"turn_id": w.tA, "session_id": w.A}})
-	w.writeJSON("sessions/"+w.B+".json", map[string]any{"request": "rb", "turn_id": w.tB, "scope": scope, "at": now,
+	w.writeJSON("sessions/"+w.B+".json", map[string]any{"request": "rb", "turn_id": w.tB, "scope": scope, "at": now, "process": w.process[w.B],
 		"planning": map[string]any{"turn_id": w.tB, "at": now, "source_material": map[string]string{}, "work": work(
 			map[string]any{"h1": map[string]any{"ref": "observed1", "id": w.src["b1"]}}, map[string]any{},
 			map[string]string{"evidence1": w.src["a4"]}, map[string]bool{}, w.src["b1"])}})
@@ -257,6 +269,38 @@ func newForgetWorld(t *testing.T) *forgetWorld {
 	w.mustNotStay = []string{hex.EncodeToString(told[:8]), w.A, w.tA, w.tA0, w.tr["fb"], w.tr["pend"], w.tr["la1"], w.src["a1"], w.src["a3"], w.src["a5"], "d1d1d1d1d1d1d1d1", "d2d2d2d2d2d2d2d2", "d3d3d3d3d3d3d3d3", w.childA, "agent_old", covA, workA}
 	w.mayNameAOnly = []string{w.src["a2"], w.src["mention"]}
 	return w
+}
+
+// runs makes the session run: its agent process, as its record names it, has a row in the table.
+func (w *forgetWorld) runs(id string) {
+	w.t.Helper()
+	p := w.process[id]
+	w.table.set(p["pid"].(int), processRow{Parent: 1, Start: p["start"].(string), Name: p["name"].(string)})
+}
+
+// noProcess takes the agent process out of the session's record, as in a record of a shikii that did not note one.
+func (w *forgetWorld) noProcess(id string) {
+	w.t.Helper()
+	w.setProcess(id, nil)
+}
+
+// setProcess writes the agent process of the session's record (none when p is nil), keeping the record's time of writing.
+func (w *forgetWorld) setProcess(id string, p map[string]any) {
+	w.t.Helper()
+	path := filepath.Join(w.root, "sessions", id+".json")
+	info, err := os.Stat(path)
+	w.must(err)
+	var doc map[string]any
+	w.must(json.Unmarshal(forgetRead(w.t, path), &doc))
+	if p == nil {
+		delete(doc, "process")
+	} else {
+		doc["process"] = p
+	}
+	b, err := json.Marshal(doc)
+	w.must(err)
+	w.must(os.WriteFile(path, b, 0o600))
+	w.must(os.Chtimes(path, info.ModTime(), info.ModTime()))
 }
 
 var forgetAtField = regexp.MustCompile(`"at":"[^"]*"`)

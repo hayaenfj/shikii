@@ -42,12 +42,13 @@ var directLimitFiles = map[string]int{
 
 // namedLimits are the names of the package that hold a time and may be a limit, and what each is for.
 var namedLimits = map[string]string{
-	"hookGitTimeout":    "every question the hook asks git (the one limit; 2 times it where a step asks several)",
-	"hookDecideTimeout": "the decision the model gives a hook",
-	"mcpAskLimit":       "how long shikii waits for the person to answer a question the MCP client shows (forget)",
-	"pageLockRetry":     "how long a start of the page tries the lock of its file",
-	"replayLimit":       "the replay of the truths against the model",
-	"tuneRunLimit":      "one run of the wording search",
+	"hookGitTimeout":     "every question the hook asks git (the one limit; 2 times it where a step asks several)",
+	"hookDecideTimeout":  "the decision the model gives a hook",
+	"hookProcessTimeout": "every question about a process (the agent's, noted by the hook and looked for by forget)",
+	"mcpAskLimit":        "how long shikii waits for the person to answer a question the MCP client shows (forget)",
+	"pageLockRetry":      "how long a start of the page tries the lock of its file",
+	"replayLimit":        "the replay of the truths against the model",
+	"tuneRunLimit":       "one run of the wording search",
 }
 
 // limitUse is one limit found in the code.

@@ -28,8 +28,9 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// forgetQuiet is how long a session's record must have been left alone before forget takes it: a session may still be running.
-const forgetQuiet = 10 * time.Minute
+// forgetUnknownQuiet is how long the records of a session must have been left alone before forget takes it when no agent process says
+// whether it still runs (forget_running.go). Where a process is noted, no time is used.
+const forgetUnknownQuiet = 24 * time.Hour
 
 // forgetSessionVariables are the environment variables an agent passes the id of its own session in: forget never removes that one.
 var forgetSessionVariables = []string{"CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "OPENCODE_SESSION_ID"}
@@ -161,10 +162,39 @@ func (r *forgetRun) execute(apply bool, expect string) error {
 		return err
 	}
 	if err := r.pass(true); err != nil {
-		return fmt.Errorf("%w; what was already removed is in %s, and running the same command again removes the rest", err, r.f.Dir)
+		return &forgetStopped{err: err, dir: r.f.Dir, left: r.stepsLeft()}
 	}
 	r.plan.Done = true
-	return r.savePlan()
+	if err := r.savePlan(); err != nil {
+		return &forgetStopped{err: err, dir: r.f.Dir}
+	}
+	return nil
+}
+
+// forgetStopped is the error of an application that stopped after it had begun: the folder that keeps what it removes was made, and the
+// steps before the one that stopped have run, so something has changed. Running it again removes the rest. left names the steps that
+// did not finish (the one that stopped and those after it).
+type forgetStopped struct {
+	err  error
+	dir  string
+	left []string
+}
+
+func (e *forgetStopped) Error() string {
+	return fmt.Sprintf("%v; what was already removed is in %s, and running the same command again removes the rest", e.err, e.dir)
+}
+
+func (e *forgetStopped) Unwrap() error { return e.err }
+
+// stepsLeft names the steps that did not finish in the last application: those after the ones that ran.
+func (r *forgetRun) stepsLeft() []string {
+	var left []string
+	for i, s := range r.steps() {
+		if i >= len(r.ran) {
+			left = append(left, s.name)
+		}
+	}
+	return left
 }
 
 // digest is what a person agrees to when they agree to a plan: what goes, what stays and what only might belong, in an order that
@@ -225,8 +255,9 @@ func (r *forgetRun) savePlan() error {
 func (r *forgetRun) pass(apply bool) error {
 	r.applying = apply
 	if r.parts == nil {
-		r.parts = map[string]string{}
+		r.parts, r.idle = map[string]string{}, map[string]bool{}
 	}
+	r.ran = nil
 	if err := r.gather(); err != nil {
 		return err
 	}
@@ -235,6 +266,7 @@ func (r *forgetRun) pass(apply bool) error {
 			return fmt.Errorf("%s: %w", s.name, err)
 		}
 		if apply {
+			r.ran = append(r.ran, s.name)
 			if err := forgetAfterStep(s.name); err != nil {
 				return fmt.Errorf("%s: %w", s.name, err)
 			}
@@ -271,7 +303,18 @@ func (r *forgetRun) runStep(s forgetStep, apply bool) error {
 			return err
 		}
 		r.parts[s.name] = r.part(m)
+		r.idle[s.name] = len(r.plan.Remove) == m.remove
 		return nil
+	}
+	if r.idle[s.name] {
+		// The plan removes nothing here, so there is nothing to protect with a lock, and a record that appeared since the plan was made is
+		// not what the person agreed to: the step only says what it keeps, and a busy lock cannot stop a step that changes nothing.
+		m := r.mark()
+		r.applying = false
+		err := s.run()
+		r.applying = true
+		r.plan.Remove = r.plan.Remove[:m.remove]
+		return err
 	}
 	if s.lock != nil {
 		unlock, err := s.lock()

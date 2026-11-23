@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -210,6 +211,9 @@ func TestMain(m *testing.M) {
 	openBrowser = func(url string) { opened = append(opened, url) }
 	stopProcess = func(int) error { return nil } // uninstall never signals a real process from tests (0.9.3)
 	processCommand = func(int) string { return "" }
+	// No test reads this machine's process table: the agent process a hook notes, and the one forget looks for, come from a table the
+	// test gives (processTable in agent_process_test.go). Without one, the table cannot say, and no process is noted.
+	readProcess = func(context.Context, int) (processRow, processState) { return processRow{}, processUnknown }
 	// Writing files out to the disk (on macOS a flush of the disk's cache) made the eight test groups wait on each other: a test that
 	// takes 0.3 s alone took 1 to 2 s. Tests do not need the data to survive a power cut.
 	store.SyncTemp = func(*os.File) error { return nil }

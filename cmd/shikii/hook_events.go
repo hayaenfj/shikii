@@ -59,6 +59,7 @@ func runHookEvent(event string) error {
 		}
 		return err
 	}
+	noteAgentProcess(agent, in.SessionID) // which agent process runs the session, for shikii forget; written only when the record has another
 	if event != "agent-task" && event != "tool-lesson" && event != "subagent-stop" {
 		ensureModel(common, agent) // start it in the background if missing (this turn just gets no record; do not wait). Not started by the retired agent-task, nor when matching a lesson to a tool call
 	}

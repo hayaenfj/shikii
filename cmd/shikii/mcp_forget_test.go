@@ -409,7 +409,7 @@ func TestHTTPRefusesForget(t *testing.T) {
 }
 
 // The conditions are shikii forget's: the session that asks is never removed, whatever the environment of the server says; a session
-// that was written to within ten minutes, or that nothing names, is refused; none of them is asked about.
+// whose agent process is alive, or that nothing names, is refused; none of them is asked about.
 func TestMCPForgetRefusesWhatTheCommandRefuses(t *testing.T) {
 	t.Run("the session that asks", func(t *testing.T) {
 		w := newForgetWorld(t)
@@ -426,19 +426,16 @@ func TestMCPForgetRefusesWhatTheCommandRefuses(t *testing.T) {
 			t.Errorf("the project changed: %v", forgetDiff(before, after))
 		}
 	})
-	t.Run("a session written to a minute ago", func(t *testing.T) {
+	t.Run("a session whose agent process is alive", func(t *testing.T) {
 		w := newForgetWorld(t)
-		now := time.Now()
-		if err := os.Chtimes(filepath.Join(w.root, "sessions", w.A+".json"), now, now); err != nil {
-			t.Fatal(err)
-		}
+		w.runs(w.A)
 		before := w.snapshot()
 		c := newLiveMCP(t, w.mcpHandler())
 		c.initialize(map[string]any{"elicitation": map[string]any{}})
 		c.callForget(2, forgetArgs(w, nil))
 		failed, body := c.reply(2)
-		if !failed || body["status"] != "refused" || !strings.Contains(body["message"].(string), "may still be running") {
-			t.Errorf("a session that may be running was not refused: %v", body)
+		if !failed || body["status"] != "refused" || !strings.Contains(body["message"].(string), "is still running: its agent process") {
+			t.Errorf("a session whose agent is alive was not refused: %v", body)
 		}
 		c.finish()
 		if after := w.snapshot(); !reflect.DeepEqual(before, after) {

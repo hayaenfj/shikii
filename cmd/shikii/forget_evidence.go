@@ -52,6 +52,10 @@ type forgetRun struct {
 	newest      map[string]time.Time // the newest time any record of the id was written at (see touch)
 	parts       map[string]string    // what each step added to the plan the last time it was only listed (see runStep)
 	first, last time.Time
+
+	procs map[string]*agentProcess // the agent process each session's record names (see stillRunning)
+	idle  map[string]bool          // a step that the last listing found nothing to remove in: an application does not take its lock or run it
+	ran   []string                 // the steps that finished in the last application (see stepsLeft)
 }
 
 func forgetSet(ids []string) map[string]bool {
@@ -95,8 +99,9 @@ func (r *forgetRun) turn(id string) {
 	}
 }
 
-// touch notes that a record of the id was written at the time. The newest of these says whether the session may still be running:
-// the record of the session is not the only thing a live session writes, and a session whose own record is gone leaves the others.
+// touch notes that a record of the id was written at the time. The newest of these says whether the session may still be running when
+// no agent process does (stillRunning): the record of the session is not the only thing a live session writes, and a session whose own
+// record is gone leaves the others.
 func (r *forgetRun) touch(id string, at time.Time) {
 	if id != "" && at.After(r.newest[id]) {
 		r.newest[id] = at
@@ -286,6 +291,7 @@ func (r *forgetRun) gather() error {
 	r.turns, r.made, r.sessTraces, r.quoteTraces, r.read = map[string]bool{}, map[string]string{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
 	r.deliveries, r.children, r.want, r.newest = map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]time.Time{}
 	r.reasoning, r.first, r.last = nil, time.Time{}, time.Time{}
+	r.procs = map[string]*agentProcess{}
 	ids := forgetSet(r.ids)
 	for _, id := range r.ids {
 		r.hashes[store.CoverageSession(id)] = true
@@ -320,6 +326,7 @@ func (r *forgetRun) gatherSessions(ids map[string]bool) error {
 			r.plan.Refusals = append(r.plan.Refusals, fmt.Sprintf("%s holds the record of the session %s (two ids share one file name)", filepath.Base(path), owner))
 		}
 		r.parents[id] = true
+		r.procs[id] = agentProcessOf(doc)
 		r.collectSession(doc)
 		if info, err := os.Lstat(path); err == nil {
 			r.touch(id, info.ModTime())
@@ -472,9 +479,8 @@ func (r *forgetRun) classify() error {
 		for _, why := range r.ownSession(id) {
 			r.plan.Refusals = append(r.plan.Refusals, fmt.Sprintf("%s is %s", id, why))
 		}
-		if at, ok := r.newest[id]; ok && time.Since(at) < forgetQuiet {
-			wait := (forgetQuiet - time.Since(at)).Round(time.Minute)
-			r.plan.Refusals = append(r.plan.Refusals, fmt.Sprintf("a record of %s was written %s ago, so the session may still be running; try again in about %s", id, time.Since(at).Round(time.Second), wait))
+		if why := r.stillRunning(id); why != "" {
+			r.plan.Refusals = append(r.plan.Refusals, why)
 		}
 	}
 	return nil

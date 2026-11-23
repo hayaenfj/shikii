@@ -251,10 +251,10 @@ func TestMCPForgetKeepsAskingWhenTheCancelledCallIsAnother(t *testing.T) {
 	}
 }
 
-// A session may still be running when any record of it was written within ten minutes, not only its own record: its guard lines, the
-// deliveries to it and to its subagents, its conversations, the reasoning history and the state of its last turn are written as it
-// works. A session whose own record is gone leaves only those.
-func TestForgetRefusesASessionAnyOfWhoseRecordsWasWrittenLately(t *testing.T) {
+// When no agent process is noted for a session, it may still be running if any record of it was written within a day, not only its own
+// record: its guard lines, the deliveries to it and to its subagents, its conversations, the reasoning history and the state of its last
+// turn are written as it works. A session whose own record is gone leaves only those.
+func TestForgetRefusesASessionWithNoProcessAnyOfWhoseRecordsWasWrittenLately(t *testing.T) {
 	now := time.Now().UTC()
 	for _, tc := range []struct {
 		name  string
@@ -290,6 +290,7 @@ func TestForgetRefusesASessionAnyOfWhoseRecordsWasWrittenLately(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := newForgetWorld(t)
+			w.noProcess(w.A)
 			tc.touch(w)
 			id := w.A
 			if tc.id != nil {
@@ -297,7 +298,7 @@ func TestForgetRefusesASessionAnyOfWhoseRecordsWasWrittenLately(t *testing.T) {
 			}
 			before := w.snapshot()
 			out, err := forgetCommand(t, id, "--apply")
-			if err == nil || !strings.Contains(err.Error(), "may still be running") {
+			if err == nil || !strings.Contains(err.Error(), "shikii cannot tell whether the session is still running") {
 				t.Fatalf("a session with a record written a moment ago was not refused: %v\n%s", err, out)
 			}
 			if after := w.snapshot(); !reflect.DeepEqual(before, after) {

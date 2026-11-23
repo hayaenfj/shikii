@@ -175,13 +175,15 @@ func TestForgetRefusesWithoutChangingAnything(t *testing.T) {
 		{"the session this command runs in (Claude Code)", func(t *testing.T, w *forgetWorld) func() { t.Setenv("CLAUDE_CODE_SESSION_ID", w.A); return nil }, true, "is the session this command runs in (CLAUDE_CODE_SESSION_ID)"},
 		{"the session this command runs in (Codex)", func(t *testing.T, w *forgetWorld) func() { t.Setenv("CODEX_THREAD_ID", w.A); return nil }, true, "(CODEX_THREAD_ID)"},
 		{"the session this command runs in (OpenCode)", func(t *testing.T, w *forgetWorld) func() { t.Setenv("OPENCODE_SESSION_ID", w.A); return nil }, true, "(OPENCODE_SESSION_ID)"},
-		{"a session written to a moment ago", func(t *testing.T, w *forgetWorld) func() {
+		{"a session whose agent process is alive", func(t *testing.T, w *forgetWorld) func() { w.runs(w.A); return nil }, true, "is still running: its agent process (claude, pid 910001) is alive"},
+		{"a session with no agent process noted that was written to a moment ago", func(t *testing.T, w *forgetWorld) func() {
+			w.noProcess(w.A)
 			now := time.Now()
 			if err := os.Chtimes(filepath.Join(w.root, "sessions", w.A+".json"), now, now); err != nil {
 				t.Fatal(err)
 			}
 			return nil
-		}, true, "may still be running"},
+		}, true, "shikii cannot tell whether the session is still running (no agent process is noted for it"},
 		{"a session whose work lock is held", func(t *testing.T, w *forgetWorld) func() {
 			unlock, ok := lockPathWithin(filepath.Join(w.root, "sessions", w.A+".json.work.lock"), 0, nil)
 			if !ok {
