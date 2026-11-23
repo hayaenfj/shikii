@@ -338,7 +338,7 @@ export async function checkManageArticle(target) {
 export async function checkWithdrawnArticles(target) {
   localStorage.removeItem('shikii.scene');
   const make = (n, title) => ({ id: '000000000000000' + n, revision: '00000000000000a' + n, status: 'withdrawn', title, lesson: 'Summary ' + title, applies_to: 'Docs', kind: 'howto', scene: 'Docs', sources: [{ id: 'a' }, { id: 'b' }], change_reason: 'withdrawn by the work that made it: gone', withdrawal: { reason: 'the request of ' + title + ' was deleted', work: ['Work record ' + title] } });
-  const first = make(1, 'First article'), second = make(2, 'Second article');
+  const first = make(1, 'First article'), second = make(2, 'Second article'), third = make(3, 'Third article');
   const realFetch = globalThis.fetch;
   const sent = [], changed = [];
   let fail = false;
@@ -347,29 +347,35 @@ export async function checkWithdrawnArticles(target) {
     const body = JSON.parse(opts.body); sent.push(body);
     return fail ? { ok: false, status: 409, json: async () => ({ error: 'changed' }) } : { ok: true, json: async () => ({ ...first, id: body.id, status: body.action === 'delete' ? 'deleted' : 'hypothesis' }) };
   };
-  const app = mount(Lessons, { target, props: { wiki: { lessons: [], withdrawn: [first, second] }, onchange: p => changed.push(p) } }); flushSync();
+  const app = mount(Lessons, { target, props: { wiki: { lessons: [], withdrawn: [first, second, third] }, onchange: p => changed.push(p) } }); flushSync();
   const settle = async () => { await new Promise(r => setTimeout(r, 0)); flushSync(); };
   const click = selector => { target.querySelector(selector)?.click(); flushSync(); };
   const items = () => target.querySelectorAll('[data-withdrawn-item]').length;
   try {
-    const listed = items() === 2 && target.querySelector('[data-withdrawn]')?.textContent.includes('First article') && target.querySelector('[data-withdrawn]')?.textContent.includes('the request of Second article was deleted');
+    const listed = items() === 3 && target.querySelector('[data-withdrawn]')?.textContent.includes('First article') && target.querySelector('[data-withdrawn]')?.textContent.includes('the request of Second article was deleted');
     click('[data-withdrawn-item="' + first.id + '"] [data-withdrawn-delete]');
     const dialog = target.querySelector('[data-withdrawn-delete-dialog]');
     const shown = !!dialog && ['First article', 'the request of First article was deleted', 'Work record First article', '2'].every(text => dialog.textContent.includes(text)) && !!target.querySelector('[data-withdrawn-delete-warn]');
     const notYet = sent.length === 0 && changed.length === 0;
     click('[data-withdrawn-delete-cancel]');
-    const cancelled = sent.length === 0 && changed.length === 0 && !target.querySelector('[data-withdrawn-delete-dialog]') && items() === 2;
+    const cancelled = sent.length === 0 && changed.length === 0 && !target.querySelector('[data-withdrawn-delete-dialog]') && items() === 3;
     click('[data-withdrawn-item="' + first.id + '"] [data-withdrawn-delete]');
     fail = true; click('[data-withdrawn-delete-confirm]'); await settle();
     const refused = !!target.querySelector('[data-withdrawn-delete-error]') && !!target.querySelector('[data-withdrawn-delete-dialog]') && changed.length === 0 && sent.length === 1;
     fail = false; click('[data-withdrawn-delete-confirm]'); await settle();
     const deleted = sent.length === 2 && sent[1].id === first.id && sent[1].revision === first.revision && sent[1].action === 'delete' && changed[0]?.status === 'deleted' && !target.querySelector('[data-withdrawn-delete-dialog]');
-    click('[data-withdrawn-item="' + second.id + '"] [data-withdrawn-restore]');
+    // The check belongs to the article whose delete was pressed: the second one's check shows the second article and sends the second article's id and revision.
+    click('[data-withdrawn-item="' + second.id + '"] [data-withdrawn-delete]');
+    const otherDialog = target.querySelector('[data-withdrawn-delete-dialog]');
+    const otherShown = !!otherDialog && otherDialog.textContent.includes('Second article') && otherDialog.textContent.includes('Work record Second article') && !otherDialog.textContent.includes('First article');
+    click('[data-withdrawn-delete-confirm]'); await settle();
+    const otherDeleted = otherShown && sent.length === 3 && sent[2].id === second.id && sent[2].revision === second.revision && sent[2].action === 'delete' && changed[1]?.status === 'deleted' && !target.querySelector('[data-withdrawn-delete-dialog]');
+    click('[data-withdrawn-item="' + third.id + '"] [data-withdrawn-restore]');
     const noCheck = !target.querySelector('[data-withdrawn-delete-dialog]');
     await settle();
-    const restored = sent.length === 3 && sent[2].id === second.id && sent[2].revision === second.revision && sent[2].action === 'restore' && changed[1]?.status === 'hypothesis' && noCheck;
-    const ok = listed && shown && notYet && cancelled && refused && deleted && restored;
-    console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (withdrawn articles: listed=' + listed + ', check shows what goes=' + shown + ', first press sends nothing=' + notYet + ', cancel changes nothing=' + cancelled + ', a refused delete stays open=' + refused + ', delete after the check=' + deleted + ', restore without a check=' + restored + ')');
+    const restored = sent.length === 4 && sent[3].id === third.id && sent[3].revision === third.revision && sent[3].action === 'restore' && changed[2]?.status === 'hypothesis' && noCheck;
+    const ok = listed && shown && notYet && cancelled && refused && deleted && otherDeleted && restored;
+    console.log((ok ? 'check-ui: ok' : 'check-ui: FAIL') + ' (withdrawn articles: listed=' + listed + ', check shows what goes=' + shown + ', first press sends nothing=' + notYet + ', cancel changes nothing=' + cancelled + ', a refused delete stays open=' + refused + ', delete after the check=' + deleted + ', the check of another article is that article=' + otherDeleted + ', restore without a check=' + restored + ')');
     return ok;
   } finally { unmount(app); globalThis.fetch = realFetch; }
 }

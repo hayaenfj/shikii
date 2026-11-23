@@ -250,3 +250,36 @@ func TestADeliveryInventoryNamesAWithdrawnArticleAsWithdrawn(t *testing.T) {
 		t.Fatalf("a withdrawn entry is skipped when a case is compared: %v", err)
 	}
 }
+
+// A withdrawn article waits for a person to restore or delete it. Naming it in replaces would retire it behind the person's back: it
+// would leave the Knowledge page's list, and neither restore nor delete could take it. So no lesson, new or updated, replaces it; a
+// person restores it first, and then it can be replaced like any live article.
+func TestAWithdrawnArticleIsNotReplacedBeforeAPersonDecides(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	_, got := withdrawnArticle(t, b, "Waiting for a person", []string{workSource(t, b, "agent", 1)})
+	other := workSource(t, b, "agent", 2)
+	fresh := draft(other, "A new lesson that wants the withdrawn one gone")
+	fresh.Replaces = []string{got.ID}
+	live, err := b.Ingest(draft(other, "A live lesson that is updated later"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	update := draft(other, "A live lesson that is updated later")
+	update.ID, update.Replaces = live.Page.ID, []string{got.ID}
+	for name, d := range map[string]Draft{"new lesson": fresh, "update of a live lesson": update} {
+		_, err := b.Ingest(d)
+		if !errors.Is(err, ErrArticleConflict) || !strings.Contains(err.Error(), "Knowledge page") {
+			t.Fatalf("%s: replacing a withdrawn article is refused with the way out: %v", name, err)
+		}
+	}
+	if list, err := b.Withdrawn(); err != nil || len(list) != 1 || list[0].ID != got.ID {
+		t.Fatalf("the refused lessons leave the article waiting for a person: %+v %v", list, err)
+	}
+	restored, err := b.Manage(Change{ID: got.ID, Revision: got.Revision, Action: "restore"})
+	if err != nil || restored.Status != "hypothesis" {
+		t.Fatalf("the person can still restore it: %+v %v", restored, err)
+	}
+	if res, err := b.Ingest(fresh); err != nil || len(res.Page.Replaces) != 1 {
+		t.Fatalf("a restored article is replaced like any live one: %+v %v", res, err)
+	}
+}

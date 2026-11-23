@@ -94,6 +94,7 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 		}
 	}
 	seen := map[string]bool{}
+	notRead := []string{}
 	for _, id := range readPages {
 		if len(id) != 16 || seen[id] {
 			return "", nil, errors.New("give page IDs without duplicates")
@@ -104,6 +105,11 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 			return "", nil, errors.New("cannot read the body of a page in the same project")
 		}
 		page := view.Lessons[0]
+		// A query by id still shows a withdrawn or deleted article, but it is not handed out: say it was not read instead of giving its body.
+		if page.Gone() {
+			notRead = append(notRead, page.ID+" is "+page.Status)
+			continue
+		}
 		ref := store.KnowledgeReference{ID: page.ID, Revision: page.Revision}
 		found := false
 		for _, known := range available {
@@ -132,6 +138,9 @@ func preparePlanningKnowledge(root, scope string, req planningRequest, sources m
 		}
 	}
 	context.LookupMilliseconds = float64(time.Since(started).Nanoseconds()) / 1e6
+	if len(notRead) > 0 {
+		notice = strings.TrimSpace(notice + " Not read: " + strings.Join(notRead, ", ") + ". A withdrawn or deleted article is not handed out; a person decides on a withdrawn one on the Knowledge page.")
+	}
 	return notice, context, nil
 }
 

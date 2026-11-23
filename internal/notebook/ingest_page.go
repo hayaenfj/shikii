@@ -78,6 +78,11 @@ func (b Book) buildIngestPage(d Draft, body, sourceDir string, pages []Page, ref
 			if _, ok := byID[replaced]; !ok || replaced == id {
 				return nil, errors.New("a replaced lesson must be another page in this project")
 			}
+			// A replaced article leaves the list of withdrawn articles, and neither restore nor delete takes it. Naming a withdrawn
+			// article here would settle what only a person decides.
+			if byID[replaced].Status == StatusWithdrawn {
+				return nil, fmt.Errorf("%w: article %s was withdrawn and waits for a person; the person restores or deletes it on the Knowledge page first, and a restored article can then be replaced", ErrArticleConflict, replaced)
+			}
 		}
 		p := Page{ID: id, Title: d.Title, Lesson: d.Lesson, AppliesTo: d.AppliesTo, Status: "hypothesis", Sources: refs, Replaces: d.Replaces, Correction: d.Correction, Body: body, Related: d.Related, Kind: d.Kind, Scene: d.Scene}
 		p.Rationale, p.Premises = byID[id].Rationale, byID[id].Premises

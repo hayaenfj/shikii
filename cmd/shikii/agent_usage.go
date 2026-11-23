@@ -77,7 +77,7 @@ var agentUsages = map[string]agentUsage{
 			"kind of a source: human, agent, code, test or release. kind of a lesson: rule, howto, criteria, fact or history.",
 			"patch, maintain, consult, reuse, organize, reconcile, diagnose and compare also read one JSON object from standard input: patch takes the patch object, maintain {page_id, revision, key, reason}, the others the arguments of shikii_wiki of the MCP server.",
 			"classify <page id> <kind> <scene> and verify [pattern.md ...] read no standard input; lint takes no arguments.",
-			"withdraw {id, revision, sources, reason} takes an article out of delivery, when the work it came from was deleted, if every source it cites is one you name and it holds no correction. The article is not deleted: it stays as a withdrawn article, and only a person restores or deletes it, on the Knowledge page. It runs from the command line only.",
+			"withdraw {id, revision, sources, reason} takes an article out of delivery, when the work it came from was deleted, if every source it cites is one you name and it holds no correction. The article is not deleted: it stays as a withdrawn article, and a person restores or deletes it on the Knowledge page; the command line and MCP have no operation for either. It runs from the command line only.",
 		},
 	},
 	"handoff": {

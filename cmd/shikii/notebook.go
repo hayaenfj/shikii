@@ -323,8 +323,8 @@ func (s *server) handleNotebook(w http.ResponseWriter, r *http.Request) {
 }
 
 // cmdWikiWithdraw is shikii wiki withdraw: a program that saved an article's sources from its own work (chiten, for a task that reached
-// its goal) deletes the article when the person deletes that work. It runs from the command line only: runNotebook, which HTTP and MCP
-// call, does not know it, so neither an agent's tool call nor the page can withdraw an article.
+// its goal) withdraws the article when the person deletes that work. It runs from the command line only: runNotebook, which HTTP and MCP
+// call, does not know it, and the page's article request refuses a withdrawal, so neither an MCP tool call nor the page can withdraw an article.
 func cmdWikiWithdraw(args []string) error {
 	if len(args) != 1 {
 		return usageRefusal("wiki", "wiki withdraw reads one JSON object from standard input, not from arguments", "wiki withdraw")

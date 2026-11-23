@@ -19,7 +19,10 @@ const withdrawalTitle = "Withdrawn by the work that made it"
 // (chiten, for a task that reached its goal) withdraws the article when the person deletes that work, so later work is not handed it.
 // The article is not deleted: it stays withdrawn, with its text, history and sources, and the person restores it or deletes it on the
 // Knowledge page. Naming the sources does not show the article is the caller's (a query prints the sources of every article, and the
-// kind of a source is whatever its saver wrote), which is why a withdrawal can always be undone by a person and never by an agent.
+// kind of a source is whatever its saver wrote), which is why a withdrawal can always be undone by a person. The command line and MCP
+// have no operation that restores or deletes a withdrawn article. The page's HTTP request does, with the same guard as editing or
+// deleting any article: it stops a request from another site's page, but not a program on this machine that sends one without an
+// Origin header.
 type Withdrawal struct {
 	ID       string   `json:"id"`
 	Revision string   `json:"revision"`
