@@ -158,9 +158,13 @@ func TestOnlyQuestionsWithoutAnAnswerUseUpTheTimeAnEventMayWait(t *testing.T) {
 // two questions that ask alone are asked as before: that is an answer, and it costs the event no time. A git that does not answer them
 // is waited for in the time of the event, once: the second of the two is not asked when the first waited the whole of it. (The place is
 // asked first by itself, so that the limit HEAD is given starts whole; a limit that began before the place was answered is shorter by what
-// that took, and the exclude file may then be asked in the rest.)
+// that took, and the exclude file may then be asked in the rest.) The place question is not what is judged, and the speed of a real git is
+// not either: its answer is waited for with patientGit's limit, and the stub that gives it comes after more than the whole limit a real
+// hook has (found on 2026-11-23: under make test the real git was slow, the place got no answer in the three seconds, that used up the
+// whole time of the event, and HEAD was not asked).
 func TestWhereGitSaysThereIsNoWorkingTreeTheTwoQuestionsAreAskedAlone(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	lateAnswer := shippedHookGitTimeout + 500*time.Millisecond // a git so slow that the limit of a real hook is over before it says where the repository is
 	base := t.TempDir()
 	src, bare := filepath.Join(base, "src"), filepath.Join(base, "bare.git")
 	newRepoAt(t, src)
@@ -172,6 +176,8 @@ func TestWhereGitSaysThereIsNoWorkingTreeTheTwoQuestionsAreAskedAlone(t *testing
 	}
 	const excluded = "\n/.shikii/\n"
 	t.Run("answered", func(t *testing.T) {
+		patientGit(t)
+		slowFirstPlaceGit(t, lateAnswer)
 		calls := gitCallLog(t)
 		var got string
 		var err error
@@ -190,13 +196,13 @@ func TestWhereGitSaysThereIsNoWorkingTreeTheTwoQuestionsAreAskedAlone(t *testing
 		}
 	})
 	t.Run("not answered", func(t *testing.T) {
-		old := hookGitTimeout
-		t.Cleanup(func() { hookGitTimeout = old })
+		patientGit(t) // its cleanup puts the real value back after the limit of a real hook is set below
+		slowFirstPlaceGit(t, lateAnswer)
 		stillRunning := hangingGit(t, "--show-toplevel") // the place is answered (no), nothing asked alone is
 		calls := gitCallLog(t)
 		event(func() {
-			// the place is answered, "no", before the limit is cut (the real git is slow at times): the limit of the questions after it
-			// then starts whole
+			// the place is answered, "no", before the limit of a real hook is set (the real git is slow at times, and the stub above is
+			// slower than that limit): the limit of the questions after it then starts whole
 			gitPlaceAt(context.Background(), bare)
 			hookGitTimeout = shippedHookGitTimeout
 			gitHead(bare)
