@@ -2,6 +2,17 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.40.1 — Faster wiki searches, and old memory moves into the wiki up to 10 articles at a time
+
+### Changes
+
+- When shikii asks an agent to move its own memory files into the wiki, the agent now checks up to 10 articles in one request instead of up to 2, so the move takes fewer requests.
+
+### Fixes
+
+- Wiki searches are faster, most of all when a search finds nothing and when you list the wiki without a search term.
+- When `shikii wiki query` finds nothing, shikii now records which session searched, in Claude Code and Codex. Until now the search was linked to no session, so its words could be shown to another session's work as words that found nothing. Searches through MCP and the HTTP API are still not linked to a session.
+
 ## 0.40.0 — Each project chooses whether Jev or the local model answers, and tools can ask whether a passage supports a claim
 
 ### Changes
