@@ -510,7 +510,7 @@ Files are written in the same directory and then replaced by rename, so the orig
 
 ### Removing what a finished session left: `shikii forget`
 
-A trial run of an agent, or a session started by mistake, leaves records in `.shikii/`: its work state, the deliveries of lessons it was given, the sources it captured, the decisions it caused. `shikii forget` finds them by what each record names (a field that holds the session id, or an id the session's own records carry: its turns, its deliveries, its decisions, its sources) and never by searching the id as text. A person runs it in the project's folder; the MCP tool refuses it and says so (an agent does not remove records on its own).
+A trial run of an agent, or a session started by mistake, leaves records in `.shikii/`: its work state, the deliveries of lessons it was given, the sources it captured, the decisions it caused. `shikii forget` finds them by what each record names (a field that holds the session id, or an id the session's own records carry: its turns, its deliveries, its decisions, its sources) and never by searching the id as text. A person runs it in the project's folder. An agent can call `shikii_wiki` with `operation: "forget"` and `sessions`, but it removes nothing by itself: shikii asks the person in the client (see below).
 
 ```sh
 shikii forget ses_a1b2c3                  # list: what would be removed, what stays and why, what only might belong (nothing changes)
@@ -522,6 +522,8 @@ Without `--apply` nothing changes, not even a lock file. With it, everything tha
 What stays, listed with its reason: a source an article or one of its revisions cites, or that an assignment, another session's work state or reasoning history, or the search records that remain still name; a decision (with all its labels) that a person labeled, whereas a machine's labels (`outcome`, `replay`, `context`, `judge`, `agreed`) go with their decision; the sessions of other ids, even when one starts with the id you gave. Records that only a word or a time connects to the session (an observation or an article that says the id in its text, an observation made while the session ran) are listed as candidates and never removed; `hook.log` and the assignments, which hold nothing that says whose they are, are not touched. The open rows of the coverage ledger that the removed results had closed are open again.
 
 It refuses, and changes nothing, when the id is the session the command runs in (`CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, `OPENCODE_SESSION_ID`), when the session's record was written to in the last 10 minutes, when its lock is held (it may still be running), when two ids share one file name, and when an id is a subagent that ran under several sessions (give the session id too). A run that stops in the middle (a full disk) is finished by running the same command again: what a step goes by is removed after that step, so the second run finds the rest.
+
+Over MCP the same plan is shown to the person by the client, as a question (MCP elicitation: `elicitation/create`, a form with one yes or no that starts as no), and shikii removes only when the answer is accept with the box checked. The answer comes through the client, never through the arguments of the tool, so an agent cannot give it. Decline, dismiss, an unchecked box, an answer that is not that form, an answer that does not come within 10 minutes, or records that changed while the person decided (the plan is read again under the locks and must be the plan they saw) change nothing, and the reply says which (`status`: `removed`, `declined`, `dismissed`, `not_confirmed`, `unanswered`, `changed`, `refused`, `needs_person`). The same conditions apply, except that the session that asks is the one the call names (`work.session_id`), because the environment of an MCP server is the one of whoever started it, not of the session that calls now; a session that does not name itself is still protected by the 10 minutes. While a question is open the server answers a ping and tells any other request that it is busy. A client that does not say it can ask the person (no `elicitation` capability, or only the `url` mode) gets the list and the same refusal as before: a person runs `shikii forget`. `shikii serve` (HTTP) has no forget.
 
 ## Every command
 
@@ -559,7 +561,7 @@ In the same order as `shikii --help`. For all the flags, run `shikii <command> -
 | `shikii drift <spec> --model M` | Checks whether a line has worsened on recent truths |
 | `shikii bias <spec>` | Measures whether the order of options changes the answer |
 | `shikii gc` | Cleans up old records without truths (`--apply` removes them) |
-| `shikii forget <session id>...` | Lists, and with `--apply` removes, what finished sessions left in `.shikii/`; what goes is kept in `records/forgotten/` first |
+| `shikii forget <session id>...` | Lists, and with `--apply` removes, what finished sessions left in `.shikii/`; what goes is kept in `records/forgotten/` first. Over MCP (`shikii_wiki` `forget`) shikii asks the person in the client before it removes anything |
 | `shikii hash <spec>` | The hash of the spec that keys calibration |
 | `shikii version` | Prints the version |
 

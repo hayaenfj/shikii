@@ -196,6 +196,9 @@ type rpcRequest struct {
 	ID      json.RawMessage `json:"id,omitempty"`
 	Method  string          `json:"method"`
 	Params  json.RawMessage `json:"params,omitempty"`
+	// Result and Error are set by an answer to a request the server sent (a question to the person, mcp_conn.go), not by a request.
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  json.RawMessage `json:"error,omitempty"`
 }
 
 type rpcError struct {
@@ -205,31 +208,50 @@ type rpcError struct {
 
 const mcpProtocol = "2025-03-26"
 
-// runMCP reads JSON-RPC one message per line and writes the answers. Notifications (no id) get no answer.
+// runMCP reads JSON-RPC one message per line and writes the answers. Notifications (no id) get no answer. One message is handled
+// at a time; a tool that has to ask the person (forget) sends its question and reads on from the same stream while it waits (mcp_conn.go).
 func runMCP(r *bufio.Reader, w io.Writer, h http.Handler) error {
-	enc := json.NewEncoder(w)
-	for {
-		line, err := r.ReadBytes('\n')
-		if len(bytes.TrimSpace(line)) > 0 {
-			var req rpcRequest
-			if jerr := json.Unmarshal(line, &req); jerr != nil {
-				_ = enc.Encode(map[string]any{"jsonrpc": "2.0", "id": nil, "error": rpcError{-32700, "parse error: " + jerr.Error()}})
-			} else if resp := handleRPC(req, h); resp != nil {
-				if err := enc.Encode(resp); err != nil {
-					return err
-				}
+	lines := make(chan mcpLine)
+	done := make(chan struct{})
+	defer close(done)
+	go func() { // the one reader of r, so that a wait for an answer can end on a time limit without a read left behind
+		defer close(lines)
+		for {
+			data, err := r.ReadBytes('\n')
+			select {
+			case lines <- mcpLine{data, err}:
+			case <-done:
+				return
+			}
+			if err != nil {
+				return
 			}
 		}
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
+	}()
+	c := &mcpConn{lines: lines, enc: json.NewEncoder(w)}
+	for l := range lines {
+		if err := c.serve(l.data, h); err != nil {
 			return err
 		}
+		if c.ended { // the wait for an answer met the end of the stream
+			return c.endErr
+		}
+		if l.err == io.EOF {
+			return nil
+		}
+		if l.err != nil {
+			return l.err
+		}
 	}
+	return nil
 }
 
+// handleRPC answers one request without a stream to ask the person on (a client that cannot be asked, and the tests of the tools).
 func handleRPC(req rpcRequest, h http.Handler) map[string]any {
+	return (&mcpConn{}).handle(req, h)
+}
+
+func (c *mcpConn) handle(req rpcRequest, h http.Handler) map[string]any {
 	isNotification := len(req.ID) == 0 || string(req.ID) == "null"
 	reply := func(result any) map[string]any {
 		if isNotification {
@@ -247,8 +269,12 @@ func handleRPC(req rpcRequest, h http.Handler) map[string]any {
 	case "initialize":
 		var p struct {
 			ProtocolVersion string `json:"protocolVersion"`
+			Capabilities    struct {
+				Elicitation json.RawMessage `json:"elicitation"`
+			} `json:"capabilities"`
 		}
 		_ = json.Unmarshal(req.Params, &p)
+		c.elicit = canElicit(p.Capabilities.Elicitation)
 		v := mcpProtocol
 		if p.ProtocolVersion != "" {
 			v = p.ProtocolVersion
@@ -286,6 +312,7 @@ func handleRPC(req rpcRequest, h http.Handler) map[string]any {
 		if perr != nil {
 			return reply(toolError(perr))
 		}
+		forgetting := false
 		if p.Name == "shikii_wiki" {
 			// only the operations the definition lists run; arguments that do not decode name no operation and are refused too
 			var call struct {
@@ -295,6 +322,7 @@ func handleRPC(req rpcRequest, h http.Handler) map[string]any {
 			if refusal := mcpWikiRefusal(call.Operation); refusal != "" {
 				return reply(toolError(errors.New(refusal)))
 			}
+			forgetting = call.Operation == "forget"
 		}
 		rt, ok := h.(*mcpRouter)
 		if !ok {
@@ -303,6 +331,14 @@ func handleRPC(req rpcRequest, h http.Handler) map[string]any {
 		target, herr := rt.handler(project, named)
 		if herr != nil {
 			return reply(toolError(herr))
+		}
+		if forgetting {
+			// not the HTTP handler (shikii serve refuses forget): forget asks the person through this connection
+			answer, answered := c.forget(req.ID, target, args)
+			if !answered {
+				return nil // the client cancelled the call: it waits for no answer
+			}
+			return reply(answer)
 		}
 		code, body, err := callTool(target, p.Name, args, func(value any) int {
 			data, _ := json.Marshal(value)

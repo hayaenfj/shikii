@@ -29,9 +29,13 @@ type forgetRun struct {
 	st          store.Store
 	book        notebook.Book
 	ids         []string
-	applying    bool
-	f           *store.Forgotten
-	plan        forgetPlan
+	// asked is true when the removal was asked for over MCP: the server's own environment is the one of whoever started it, long before
+	// the session that asks now, so it is never read, and the session of the call (callerIDs, the ones it names) is the one that stays.
+	asked     bool
+	callerIDs []string
+	applying  bool
+	f         *store.Forgotten
+	plan      forgetPlan
 
 	parents     map[string]bool   // the ids that are sessions of this project
 	childOnly   map[string]string // an id that is only a subagent's: the session its deliveries ran under
@@ -445,10 +449,8 @@ func (r *forgetRun) classify() error {
 		return fmt.Errorf("nothing in this project's .shikii/ names %s (check the id; run this in the project's folder)", strings.Join(unknown, ", "))
 	}
 	for _, id := range r.ids {
-		for _, name := range forgetSessionVariables {
-			if os.Getenv(name) == id {
-				r.plan.Refusals = append(r.plan.Refusals, fmt.Sprintf("%s is the session this command runs in (%s)", id, name))
-			}
+		for _, why := range r.ownSession(id) {
+			r.plan.Refusals = append(r.plan.Refusals, fmt.Sprintf("%s is %s", id, why))
 		}
 		if at, ok := r.updated[id]; ok && time.Since(at) < forgetQuiet {
 			wait := (forgetQuiet - time.Since(at)).Round(time.Minute)
@@ -456,6 +458,26 @@ func (r *forgetRun) classify() error {
 		}
 	}
 	return nil
+}
+
+// ownSession says why the session id is the one that must stay: the session this command runs in (the command line, by the variables an
+// agent passes its session in) or the session that asked for the removal over MCP (the one the call names).
+func (r *forgetRun) ownSession(id string) []string {
+	var why []string
+	if r.asked {
+		for _, own := range r.callerIDs {
+			if own == id {
+				why = append(why, "the session that asked for this removal")
+			}
+		}
+		return why
+	}
+	for _, name := range forgetSessionVariables {
+		if os.Getenv(name) == id {
+			why = append(why, "the session this command runs in ("+name+")")
+		}
+	}
+	return why
 }
 
 // gatherLinked reads what the deliveries and the records of the sessions lead to: the decisions they made and the deliveries

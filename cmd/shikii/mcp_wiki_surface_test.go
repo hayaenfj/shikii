@@ -182,6 +182,9 @@ func TestMCPRunsOnlyTheWikiOperationsItsDefinitionLists(t *testing.T) {
 
 	enum := mcpWikiOperations(t)
 	for _, op := range enum {
+		if op == "forget" {
+			continue // asks the person on the MCP connection and runs no HTTP handler: mcp_forget_test.go
+		}
 		ran = nil
 		if refused, text := call(everything, `{"operation":"`+op+`"}`); refused || !slices.Equal(ran, []string{op}) {
 			t.Errorf("MCP does not run %s, which its definition lists: ran %v, %s", op, ran, text)

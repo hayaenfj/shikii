@@ -457,36 +457,6 @@ func TestGuardRecordsAreAppendedUnderTheFilesLock(t *testing.T) {
 	}
 }
 
-// An agent asked to forget over MCP is told a person runs it; nothing runs, and the definition of the tool stays as it was (it names
-// no forget).
-func TestMCPRefusesForgetAndNamesWhatAPersonRuns(t *testing.T) {
-	send, _ := mcpSession(t, "true", map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0})
-	result(t, send(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"}))
-	got := result(t, send(map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "shikii_wiki", "arguments": map[string]any{"operation": "forget"}}}))
-	text := got["content"].([]any)[0].(map[string]any)["text"].(string)
-	var refusal struct {
-		Error string `json:"error"`
-	}
-	if got["isError"] != true || json.Unmarshal([]byte(text), &refusal) != nil {
-		t.Fatalf("MCP runs forget: %s", text)
-	}
-	for _, want := range []string{"a person runs shikii forget", "<session id>", "--apply", ".shikii/records/forgotten/"} {
-		if !strings.Contains(refusal.Error, want) {
-			t.Errorf("the refusal does not say %q: %s", want, refusal.Error)
-		}
-	}
-	for _, op := range mcpWikiOperations(t) {
-		if op == "forget" {
-			t.Errorf("forget is in the MCP definition")
-		}
-	}
-	for _, tool := range mcpTools {
-		if b, _ := json.Marshal(tool); strings.Contains(string(b), "forget") {
-			t.Errorf("the definition of %v names forget", tool["name"])
-		}
-	}
-}
-
 func TestUsageListsForget(t *testing.T) {
 	entry := helpEntry(t, "shikii forget")
 	for _, want := range []string{"<session id>...", "--apply", ".shikii/records/forgotten/", "an agent does not remove records on its own"} {

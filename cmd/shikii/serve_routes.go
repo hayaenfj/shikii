@@ -14,6 +14,13 @@ func newServerState(o serveOpts) *server {
 	return &server{o: o, st: store.Store{Dir: o.storeDir}, lastCal: map[string]calibrationReport{}, tuning: map[string]bool{}, tuneErr: map[string]string{}}
 }
 
+// storeMux is the server's routes with the store they serve. An operation that does not go through HTTP (forget over MCP, which asks
+// the person on the MCP connection) finds the store of the call from it, as the routes do.
+type storeMux struct {
+	*http.ServeMux
+	root, scope string
+}
+
 func (s *server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleUI)
@@ -40,5 +47,5 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("/v1/handoff/file", s.handleHandoffFile)
 	mux.HandleFunc("/v1/review", s.handleReview)
 	mux.HandleFunc("/v1/reflect", s.handleReflect)
-	return mux
+	return &storeMux{ServeMux: mux, root: s.o.storeDir, scope: s.o.projectScope}
 }

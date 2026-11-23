@@ -11,6 +11,8 @@ package main
 // listed as candidates. What shikii forget removes is never chosen by searching the id as text.
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -76,16 +78,9 @@ func cmdForget(args []string) error {
 	if len(ids) == 0 {
 		return errors.New(strings.TrimSpace(forgetUsage))
 	}
-	seen := map[string]bool{}
-	var unique []string
-	for _, id := range ids {
-		if !forgetIDShape.MatchString(id) {
-			return fmt.Errorf("%q is not a session id (letters, digits, - and _ only)", id)
-		}
-		if !seen[id] {
-			seen[id] = true
-			unique = append(unique, id)
-		}
+	unique, err := forgetUniqueIDs(ids)
+	if err != nil {
+		return err
 	}
 	root, scope, err := currentProjectStore()
 	if err != nil {
@@ -95,13 +90,42 @@ func cmdForget(args []string) error {
 	return r.run(*apply)
 }
 
+// forgetUniqueIDs checks the shape of each session id and drops repeats, keeping the order.
+func forgetUniqueIDs(ids []string) ([]string, error) {
+	seen := map[string]bool{}
+	var unique []string
+	for _, id := range ids {
+		if !forgetIDShape.MatchString(id) {
+			return nil, fmt.Errorf("%q is not a session id (letters, digits, - and _ only)", id)
+		}
+		if !seen[id] {
+			seen[id] = true
+			unique = append(unique, id)
+		}
+	}
+	return unique, nil
+}
+
 func (r *forgetRun) run(apply bool) error {
+	if err := r.execute(apply, ""); err != nil {
+		return err
+	}
+	r.print(apply)
+	return nil
+}
+
+// errForgetPlanChanged is why an application stops when the records are no longer what the person was shown.
+var errForgetPlanChanged = errors.New("what would be removed changed after the plan was made, so nothing was changed; list it again")
+
+// execute makes the plan and, with apply, moves what it lists away. It prints nothing (over MCP stdout is the protocol's channel).
+// expect, when it is not empty, is the digest of the plan a person agreed to: the plan read again under the locks must be that
+// plan, or nothing is changed.
+func (r *forgetRun) execute(apply bool, expect string) error {
 	// Nothing is locked or written until the plan is known and nothing in it is refused: a refusal changes nothing, not even a lock file.
 	if err := r.pass(false); err != nil {
 		return err
 	}
 	if !apply {
-		r.print(false)
 		return nil
 	}
 	if err := r.refused(); err != nil {
@@ -119,6 +143,9 @@ func (r *forgetRun) run(apply bool) error {
 	if err := r.refused(); err != nil {
 		return err
 	}
+	if expect != "" && r.digest() != expect {
+		return errForgetPlanChanged
+	}
 	r.f, err = r.st.NewForgotten(time.Now(), r.short())
 	if err != nil {
 		return err
@@ -130,11 +157,35 @@ func (r *forgetRun) run(apply bool) error {
 		return fmt.Errorf("%w; what was already removed is in %s, and running the same command again removes the rest", err, r.f.Dir)
 	}
 	r.plan.Done = true
-	if err := r.savePlan(); err != nil {
-		return err
+	return r.savePlan()
+}
+
+// digest is what a person agrees to when they agree to a plan: what goes, what stays and what only might belong, in an order that
+// does not depend on how the records were read. The time, the refusals (a plan with one is never applied) and Done are not in it.
+func (r *forgetRun) digest() string {
+	p := r.plan
+	canon := func(v any) string {
+		out := []string{}
+		switch items := v.(type) {
+		case []forgetItem:
+			for _, item := range items {
+				if item.Place == "sessions" && item.What == "lock files" {
+					continue // the locks taken to apply the plan make empty lock files of their own, which is no change of what goes
+				}
+				b, _ := json.Marshal(item)
+				out = append(out, string(b))
+			}
+		case []forgetNote:
+			for _, item := range items {
+				b, _ := json.Marshal(item)
+				out = append(out, string(b))
+			}
+		}
+		sort.Strings(out)
+		return strings.Join(out, "\n")
 	}
-	r.print(true)
-	return nil
+	sum := sha256.Sum256([]byte(strings.Join([]string{strings.Join(p.Sessions, ","), strings.Join(p.Children, ","), strings.Join(p.Turns, ","), canon(p.Remove), canon(p.Keep), canon(p.Candidates)}, "\n--\n")))
+	return hex.EncodeToString(sum[:])
 }
 
 func (r *forgetRun) refused() error {

@@ -94,6 +94,7 @@ var jsonEntries = []jsonEntry{
 	{"POST /v1/wiki/notebook (the MCP tool shikii_wiki)", "handleNotebook", httpJSONEntry("/v1/wiki/notebook")},
 	{"POST /v1/reflect (the MCP tool shikii_reflect)", "decodeReflect", httpJSONEntry("/v1/reflect")},
 	{"POST /v1/review (the MCP tool shikii_review)", "decodeReview", httpJSONEntry("/v1/review")},
+	{"the MCP tool shikii_wiki forget (not HTTP: it asks the person on the connection)", "forget", mcpForgetJSONEntry},
 }
 
 // readerCallers lists the functions of the given Go sources that call the reader of an agent's JSON.
