@@ -431,7 +431,8 @@ func TestOpenCodePluginBodyWrapsEveryHookAndMarksItsOwnTurns(t *testing.T) {
 		`out?.decision === "block"`,             //
 		`stdio: ["pipe", "pipe", "ignore"]`,     // no shell
 		`session_id: sessionID, cwd: cwd()`,     // the keys hookInput reads
-		`{ prompt: e.prompt?.text ?? "" }`,
+		`prompt: e.prompt?.text ?? ""`,
+		`turn_key: key`, // the stop says which request's message it is of
 		`last_assistant_message: reply`,
 		`"session.inbox.enqueued"`, // a subagent's report wakes the parent
 		`"session.compaction.ended"`,

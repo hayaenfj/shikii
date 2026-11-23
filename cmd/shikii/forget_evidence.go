@@ -54,6 +54,7 @@ type forgetRun struct {
 	first, last time.Time
 
 	procs    map[string]*agentProcess // the agent process each session's record names (see stillRunning)
+	turnSeen map[string]string        // the state of each session's last turn when the plan was made (see readTurn, turnChanged)
 	list     []processEntry           // the processes of this machine, read once for each pass (see processList)
 	listErr  error
 	listRead bool

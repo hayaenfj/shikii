@@ -2,7 +2,9 @@
 //
 // OpenCode 2.x has no JSON hook settings, so this plugin calls the same `shikii hook <event>` commands Claude Code and Codex call,
 // with the same JSON on stdin:
-//   - the person's request          -> shikii hook user-prompt-submit (its additionalContext goes on the request's message)
+//   - the person's request          -> shikii hook user-prompt-submit (its additionalContext goes on the request's message). turn_key is the
+//     id of that message, and the stop that ends the turn names the same one: a stop that reaches shikii after the next request was
+//     noted is not taken for the end of the new turn
 //   - the first request of a session, and right after a summary of the conversation (compaction) -> shikii hook session-start
 //   - the end of a turn             -> shikii hook stop (a block makes OpenCode continue the turn with the reason). It runs in OpenCode's
 //     experimental.idle hook, inside the execution: opencode run exits as soon as the execution ends, and ends the private server it
@@ -10,7 +12,8 @@
 //   - a subagent's task             -> shikii hook subagent-start, with the parent's session, the subagent's own session as agent_id and
 //     the task as prompt (its additionalContext goes on the task's message)
 //   - a subagent going idle         -> shikii hook subagent-stop, with its last message: shikii reads what the subagent says it did with
-//     the lessons it was given. Its answer is not read and the subagent is never continued
+//     the lessons it was given. Its answer is not read and the subagent is never continued. The end of a subagent is told also when there
+//     is no new message to read (or the turn failed), and when its report wakes the parent: shikii keeps a subagent open until then
 // A turn is what this plugin saw start: the person's request, a continuation it sent itself, or a subagent's report that wakes the
 // session. An execution that no turn of those started (a summary the person asked for) runs no stop, and neither does a turn that was
 // interrupted or failed (Claude Code runs no Stop for those); a turn the person interrupts while its stop runs is not continued. One
@@ -77,6 +80,7 @@ export default Plugin.define({
     // moved drops its answer (it is for a turn that is over)
     const generation = new Map<string, number>()
     const running = new Set<string>() // sessionIDs with a turn this instance saw start and has not stopped yet
+    const wakes = new Map<string, Promise<unknown>>() // sessionID -> the hook that told shikii a subagent's report woke the session
     const seen = new Set<string>() // sessionIDs this instance saw a request of
     // what ctx.session.get said (parent: the session a subagent's session was started from; busy: a turn runs); forgotten when the session moves
     const sessions = new Map<string, { child: boolean; parent?: string; agent?: string; dir?: string; busy: boolean }>()
@@ -181,9 +185,20 @@ export default Plugin.define({
         // assistant message here carries one, "msg_…". Were there none, the words would tell, and a summary that drops earlier
         // messages changes nothing)
         const said = String(last?.id ?? "") + "\n" + reply
-        if (!reply || reported.get(sessionID) === said) return
-        reported.set(sessionID, said)
-        await hook("subagent-stop", sub.parent, { agent_id: sessionID, agent_type: sub.agent, last_assistant_message: reply })
+        // the end is told every time (shikii keeps a subagent open until then); the report only when there is a new one
+        const fresh = Boolean(reply) && reported.get(sessionID) !== said
+        if (fresh) reported.set(sessionID, said)
+        await hook("subagent-stop", sub.parent, { agent_id: sessionID, agent_type: sub.agent, ...(fresh ? { last_assistant_message: reply } : {}) })
+      } catch {
+        // add nothing
+      }
+    }
+
+    // a subagent's turn that did not succeed: shikii is told it ended, with nothing to report
+    const subagentEnded = async (sessionID: string) => {
+      try {
+        const sub = await subagentOf(sessionID)
+        if (sub) await hook("subagent-stop", sub.parent, { agent_id: sessionID, agent_type: sub.agent })
       } catch {
         // add nothing
       }
@@ -209,7 +224,7 @@ export default Plugin.define({
         // both at once: one after the other would add session-start's time to the first request (shikii's writes for the two are the
         // same and safe to run side by side, as they run for two conversations of one project)
         const first = brief.has(sessionID) ? undefined : hook("session-start", sessionID)
-        const [started, prepared] = await Promise.all([first, hook("user-prompt-submit", sessionID, { prompt: e.prompt?.text ?? "" })])
+        const [started, prepared] = await Promise.all([first, hook("user-prompt-submit", sessionID, { prompt: e.prompt?.text ?? "", turn_key: typeof e.messageID === "string" ? e.messageID : "" })])
         if (first) brief.set(sessionID, additional(started))
         const id = typeof e.messageID === "string" ? e.messageID : ""
         current.set(sessionID, id)
@@ -268,6 +283,7 @@ export default Plugin.define({
       try {
         if (!sessionID || !running.delete(sessionID)) return // not a turn this instance saw start (a summary alone, another folder's session)
         const started = turnNumber(sessionID)
+        const key = current.get(sessionID) ?? "" // the message of the request this stop is of, read before anything is waited for
         // not asked again where the session is: running was only set for a session of this folder, and a session moved while its turn
         // ran still ends the turn here, in the folder that prepared the request (the instance of the new folder never saw it start)
         const messages: any = await ctx.session.context({ sessionID })
@@ -280,9 +296,13 @@ export default Plugin.define({
         const kept = texts.get(sessionID)
         texts.delete(sessionID)
         if (!reply && kept) reply = [...kept.byOrdinal.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1]).join("\n")
+        await wakes.get(sessionID) // the hook that told shikii a report woke the turn comes before the stop that ends that turn
+        // the person's next request came while the conversation was read: this stop is of a turn that is over, and shikii would take it for
+        // the end of the new one
+        if (turnNumber(sessionID) !== started) return
         const active = continued.get(sessionID) === true
         continued.set(sessionID, false) // read once: a continuation this stop sends sets it again when its prompt arrives
-        const out = await hook("stop", sessionID, { last_assistant_message: reply, stop_hook_active: active })
+        const out = await hook("stop", sessionID, { last_assistant_message: reply, stop_hook_active: active, turn_key: key })
         // the person's next request came while stop ran, or the person interrupted the execution waiting on stop in the idle hook (OpenCode
         // stops waiting for the hook and ends the execution as interrupted): its answer does not continue a turn that is over
         if (turnNumber(sessionID) !== started) return
@@ -317,10 +337,16 @@ export default Plugin.define({
     // a subagent that finished puts its report into the parent session, and that wakes the parent for a turn the person did not ask for
     // (no prompt hook runs): like Claude Code's notification of a finished task, its stop is not stop_hook_active. The event reaches the
     // plugin of every folder, so only a session this instance saw a request of is woken.
-    const woken = async (sessionID: string) => {
+    const woken = async (sessionID: string, report: any) => {
       if (!sessionID || inherited.has(sessionID) || !seen.has(sessionID) || running.has(sessionID) || !(await mine(sessionID)) || running.has(sessionID)) return
       running.add(sessionID)
       continued.set(sessionID, false) // the number of the person's requests is not moved: a stop that runs now still has its answer heard
+      // no hook runs for this turn, so shikii is told what woke it (the end of that subagent, with no report to read): the session works
+      // again after the stop that came before, and it is not idle until the stop of this turn
+      const child = typeof report?.childID === "string" ? report.childID : undefined
+      const told = hook("subagent-stop", sessionID, { agent_id: child, agent_type: typeof report?.agent === "string" ? report.agent : undefined })
+      wakes.set(sessionID, told)
+      await told
     }
 
     // a turn that ended without succeeding gets no stop (Claude Code runs no Stop when the person interrupts a turn or the model fails),
@@ -328,14 +354,14 @@ export default Plugin.define({
     // alone, the prompt hook of that message may already have marked the new turn.
     const ended = (sessionID: string) => {
       running.delete(sessionID) // continued is read at the next stop only: the next request and a woken turn set it again
-      working.delete(sessionID) // a subagent's turn that did not succeed reports nothing
+      if (working.delete(sessionID)) void subagentEnded(sessionID) // a subagent's turn that did not succeed reports nothing, but it has ended
       texts.delete(sessionID) // the reply of a turn that did not succeed is no turn's reply
       bump(sessionID) // a stop still running in the idle hook does not continue the turn the person stopped
     }
 
     // a deleted session is gone for good: nothing of it is kept, so the tables do not grow with every session the server ever had
     const forget = (sessionID: string) => {
-      for (const table of [brief, notes, current, continued, chain, generation, sessions, ends, texts]) table.delete(sessionID)
+      for (const table of [brief, notes, current, continued, chain, generation, sessions, ends, texts, wakes]) table.delete(sessionID)
       for (const set of [running, seen, inherited, briefed, working, reported]) set.delete(sessionID)
     }
 
@@ -353,7 +379,7 @@ export default Plugin.define({
           await stop(sid)
         }
         else if (ev.type === "session.execution.failed" || (ev.type === "session.execution.interrupted" && ev.data?.reason !== "superseded")) ended(sid)
-        else if (ev.type === "session.inbox.enqueued" && ev.data?.item?.type === "synthetic" && ev.data.item.payload?.metadata?.source === "subagent") await woken(sid)
+        else if (ev.type === "session.inbox.enqueued" && ev.data?.item?.type === "synthetic" && ev.data.item.payload?.metadata?.source === "subagent") await woken(sid, ev.data.item.payload?.metadata)
         else if (ev.type === "session.moved") {
           const endsBefore = ends.get(sid) ?? 0
           sessions.delete(sid) // ask again where it is now

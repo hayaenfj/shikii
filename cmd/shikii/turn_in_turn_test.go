@@ -36,10 +36,6 @@ func TestTheTurnIsOpenedByAnyMessageAndClosedByAStopThatLetsItEnd(t *testing.T) 
 	}
 	// a slash command is no request: the request stays ended, and the agent works on the command until its Stop
 	slash := &hookInput{SessionID: "s1", Prompt: "/commit fix the docs"}
-	sessionTurnEvent("user-prompt-submit", &hookInput{SessionID: "s1", AgentID: "child", Prompt: slash.Prompt}, "", false)
-	if _, open := inTurnOf(t, "s1"); open {
-		t.Errorf("a subagent's message opened the turn")
-	}
 	sessionTurnEvent("user-prompt-submit", slash, "", false)
 	if latest, open := inTurnOf(t, "s1"); !open || !latest.Ended || latest.Turn != "turn-1" {
 		t.Errorf("a slash command did not open the turn, or changed the request: %+v", latest)

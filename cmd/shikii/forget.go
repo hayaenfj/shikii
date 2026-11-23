@@ -40,6 +40,14 @@ var forgetSessionVariables = []string{"CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID
 // the middle, and one looks at what another process can take between two steps).
 var forgetAfterStep = func(step string) error { return nil }
 
+// errForgetTurnChanged is why an application stops when a session began something after the plan was made: a request, a subagent, a
+// tool call of the agent.
+var errForgetTurnChanged = errors.New("a session began something after the plan was made")
+
+// forgetBeforeStep runs before each step of an application, before the state of the sessions is looked at again (a test starts a request
+// of a session here, to see that the step is not run).
+var forgetBeforeStep = func(step string) {}
+
 var forgetIDShape = regexp.MustCompile(`^[A-Za-z0-9_-]{1,200}$`)
 
 type forgetItem struct {
@@ -190,6 +198,9 @@ func (e *forgetStopped) Error() string {
 	if !e.moved {
 		return fmt.Sprintf("%v; nothing was removed, and running the same command again tries again", e.err)
 	}
+	if errors.Is(e.err, errForgetTurnChanged) {
+		return fmt.Sprintf("%v; what was already removed is in %s. When the session is idle again, running the same command again removes the rest", e.err, e.dir)
+	}
 	return fmt.Sprintf("%v; what was already removed is in %s, and running the same command again removes the rest", e.err, e.dir)
 }
 
@@ -287,13 +298,23 @@ func (r *forgetRun) savePlan() error {
 func (r *forgetRun) pass(apply bool) error {
 	r.applying = apply
 	if r.parts == nil {
-		r.parts, r.idle = map[string]string{}, map[string]bool{}
+		r.parts, r.idle, r.turnSeen = map[string]string{}, map[string]bool{}, map[string]string{}
 	}
 	r.ran = nil
 	if err := r.gather(); err != nil {
 		return err
 	}
-	for _, s := range r.steps() {
+	steps := r.steps()
+	for i, s := range steps {
+		if apply {
+			forgetBeforeStep(s.name)
+			// the last step looks again under the lock that holds the state of the turn, when it has taken it (stepSessions)
+			if i < len(steps)-1 {
+				if err := r.turnChanged(); err != nil {
+					return fmt.Errorf("%s: %w", s.name, err)
+				}
+			}
+		}
 		if err := r.runStep(s, apply); err != nil {
 			return fmt.Errorf("%s: %w", s.name, err)
 		}

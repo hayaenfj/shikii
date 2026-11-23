@@ -19,7 +19,11 @@ func runHookEvent(event string) error {
 	}
 	defer beginEventReads()() // the wiki reads of this event share validated parsing (hook_reads.go)
 	defer beginEventGit()()   // and git is asked once where the repository is (hook_git_place.go)
-	stopTurn := ""            // the request a Stop ends: the session's turn when the Stop came (a request that comes since is left open)
+	in.at = time.Now().UTC().Round(0)
+	// The agent works: said first, before anything of this event that can take long (the processes, git, the models). The agent stops a hook
+	// that takes over its time (hookTimeout) without letting it write, and a turn a Stop had closed would stay closed through work that goes on.
+	sessionActivity(event, &in)
+	stopTurn := "" // the request a Stop ends: the session's turn when the Stop came (a request that comes since is left open)
 	if event == "stop" {
 		stopTurn = sessionTurnAt(in.SessionID)
 	}
@@ -35,8 +39,8 @@ func runHookEvent(event string) error {
 	if errors.Is(err, errProjectInactive) {
 		// in an uninitialized place, do not save, change Git or start the model. Only when this .shikii was copied from a project still in place, say so
 		if event == "user-prompt-submit" {
-			if prompt := strings.TrimSpace(in.Prompt); prompt != "" && in.AgentID == "" && !isNotification(prompt) && !isSlashCommand(prompt) {
-				noteSessionRequest(in.SessionID, "", "") // a request outside every project: no request of a project goes on (work_handover.go)
+			if in.AgentID == "" && isPlainRequest(in.Prompt) {
+				noteSessionRequestKeyed(in.SessionID, "", "", in.TurnKey) // a request outside every project: no request of a project goes on (work_handover.go)
 				in.stateNoted = true
 			}
 			notice := copiedNotice(in.CWD)

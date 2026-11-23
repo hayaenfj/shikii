@@ -57,8 +57,18 @@ func TestAudit036ConfirmPluginDoesNotReportAgainAfterASummary(t *testing.T) {
 				{"op": "prompt", "sid": "child", "text": "one more thing"},
 				{"op": "idle", "sid": "child"},
 			}})
-		if n := countCalls(calls, "subagent-stop"); n != 1 {
-			t.Errorf("ids=%v: the turn after the summary added no message, so the subagent is reported once, got %d", ids, n)
+		// the end of each turn is told to shikii, and the report goes once
+		ends, reports := 0, 0
+		for _, c := range calls {
+			if c.Event == "subagent-stop" {
+				ends++
+				if _, said := c.Stdin["last_assistant_message"]; said {
+					reports++
+				}
+			}
+		}
+		if ends != 2 || reports != 1 {
+			t.Errorf("ids=%v: the turn after the summary added no message, so the subagent is reported once; got %d reports in %d ends", ids, reports, ends)
 		}
 	}
 }

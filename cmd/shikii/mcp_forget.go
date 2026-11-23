@@ -120,7 +120,11 @@ func forgetReply(status, message string, plan *forgetPlan, failed bool) map[stri
 // (status partial, changed true), and sending the same call again, which asks the person again, removes the rest. The plan in it is what
 // the steps that finished removed; steps_left names the others.
 func forgetPartialReply(stopped *forgetStopped, done forgetPlan) map[string]any {
-	message := fmt.Sprintf("the person agreed, and the removal stopped part-way (%v), so some of the records are already removed: they are kept in %s (plan.json there says what and why). Send the same call again to remove the rest; shikii asks the person again", stopped.err, stopped.dir)
+	again := "Send the same call again to remove the rest; shikii asks the person again"
+	if errors.Is(stopped.err, errForgetTurnChanged) {
+		again = "The session is at work again: send the same call again to remove the rest once it is idle; shikii asks the person again"
+	}
+	message := fmt.Sprintf("the person agreed, and the removal stopped part-way (%v), so some of the records are already removed: they are kept in %s (plan.json there says what and why). %s", stopped.err, stopped.dir, again)
 	return forgetReplyWith("partial", message, &done, true, map[string]any{"steps_left": stopped.left, "kept_in": stopped.dir})
 }
 

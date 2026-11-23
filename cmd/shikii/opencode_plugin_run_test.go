@@ -82,6 +82,8 @@ async function settle() {
   }
 }
 
+const held = {} // sessionID -> the calls of ctx.session.context that wait (holdContext)
+const released = {} // sessionID -> true once a "releaseContext" step let them go (and the later calls through)
 const prompts = []
 const contexts = [] // per model call: the system texts, then every text the plugin added to the messages
 const requests = [] // per model call: the system texts and every message's texts, as the model would get them
@@ -109,7 +111,11 @@ for (const [name, dir] of Object.entries(locations)) {
         hooks[n] = fn
       },
       get: ({ sessionID }) => track(async () => sessions[sessionID] ?? { id: sessionID }),
-      context: ({ sessionID }) => track(async () => scenario.messages?.[sessionID] ?? []),
+      // holdContext: the sessions whose ctx.session.context waits until a "releaseContext" step (a person's message can arrive meanwhile)
+      context: ({ sessionID }) => track(async () => {
+        if ((scenario.holdContext ?? []).includes(sessionID) && !released[sessionID]) await new Promise((resolve) => { (held[sessionID] ??= []).push(resolve) })
+        return scenario.messages?.[sessionID] ?? []
+      }),
       prompt: (arg) => track(async () => {
         prompts.push(arg)
         const id = newID()
@@ -196,10 +202,23 @@ for (const step of scenario.steps) {
       ;((scenario.messages ??= {})[step.sid] ??= []).push({ ...(step.id ? { id: step.id } : {}), type: "assistant", content: [{ type: "text", text: step.text }] })
     } else if (step.op === "drop") {
       ;(scenario.messages?.[step.sid] ?? []).shift() // a summary: the earliest message leaves the context
+    } else if (step.op === "releaseContext") {
+      released[step.sid] = true
+      for (const resolve of held[step.sid] ?? []) resolve()
+      await settle()
     } else if (step.op === "settle") {
       await settle()
     } else if (step.op === "release") {
       fs.writeFileSync(stateDir + "/release-" + step.event + "-" + step.n, "")
+    } else if (step.op === "noMoreCalls") {
+      // for step.within milliseconds the fake shikii must not be started step.count times for step.event (a call that is held back by
+      // something the plugin waits for does not start; the wait only costs time, and it cannot fail a plugin that waits)
+      const until = Date.now() + (step.within ?? 500)
+      while (Date.now() < until) {
+        const lines = fs.existsSync(stateDir + "/calls.jsonl") ? fs.readFileSync(stateDir + "/calls.jsonl", "utf8").split("\n").filter((l) => l.includes('"event":"' + step.event + '"')) : []
+        if (lines.length >= step.count) throw new Error("the fake shikii was started " + lines.length + " times for " + step.event + ", but it must wait")
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      }
     } else if (step.op === "waitCalls") {
       // wait until the fake shikii has been started step.count times for step.event (it writes its line when it starts), for at most
       // step.within milliseconds (10 seconds when not given)
@@ -686,6 +705,43 @@ func TestOpenCodePluginGivesASubagentItsLessonsAndReportsItsLastMessage(t *testi
 	}
 }
 
+// The person's next message can arrive while the plugin reads the conversation for the stop of the turn before it (the stop starts
+// shikii only after that). That stop is of a turn that is over: shikii would take it for the end of the new one, so the plugin does not
+// start it. The requests and the stop that does run say which message they are of (turn_key), so that shikii can tell them apart when
+// a stop does reach it late.
+func TestOpenCodePluginDoesNotStopATurnTheNextMessageReplacedAndNamesTheMessageOfEachTurn(t *testing.T) {
+	b := newPluginBox(t)
+	run, calls := b.play(t, map[string]any{
+		"holdContext": []string{"s1"},
+		"messages":    map[string]any{"s1": []map[string]any{{"type": "assistant", "content": []map[string]any{{"type": "text", "text": "Done."}}}}},
+		"steps": []map[string]any{
+			{"op": "prompt", "sid": "s1", "text": "the first request"},  // message msg-1
+			{"op": "idleStart", "sid": "s1"},                            // its stop begins, and waits for the conversation
+			{"op": "prompt", "sid": "s1", "text": "the second request"}, // message msg-2, while the stop waits
+			{"op": "releaseContext", "sid": "s1"},                       // the conversation is read: the first request's stop is for a turn that is over
+			{"op": "idle", "sid": "s1"},                                 // the second request's own stop
+		}})
+	if len(run.Errors) != 0 {
+		t.Fatalf("the steps ran: %v", run.Errors)
+	}
+	var keys []any
+	for _, c := range calls {
+		if c.Event == "user-prompt-submit" {
+			keys = append(keys, c.Stdin["turn_key"])
+		}
+	}
+	if len(keys) != 2 || keys[0] != "msg-1" || keys[1] != "msg-2" {
+		t.Errorf("each request says which message it is: %v", keys)
+	}
+	stops := stopsOf(calls)
+	if len(stops) != 1 {
+		t.Fatalf("the stop of the replaced turn is not started: %d stops %+v", len(stops), stops)
+	}
+	if stops[0].Stdin["turn_key"] != "msg-2" {
+		t.Errorf("the stop that runs is of the second request's message: %v", stops[0].Stdin)
+	}
+}
+
 // A subagent's turn that did not succeed reports nothing, a subagent of another folder's session belongs to that folder's instance,
 // and a subagent with nothing to say (no last message) is not reported.
 func TestOpenCodePluginReportsNoSubagentThatFailedOrIsNotItsOwn(t *testing.T) {
@@ -712,9 +768,14 @@ func TestOpenCodePluginReportsNoSubagentThatFailedOrIsNotItsOwn(t *testing.T) {
 	var events []string
 	for _, c := range calls {
 		events = append(events, c.Event+":"+fmt.Sprint(c.Stdin["agent_id"]))
+		if _, reported := c.Stdin["last_assistant_message"]; reported {
+			t.Errorf("a subagent that failed, or had nothing to say, reports nothing: %+v", c)
+		}
 	}
-	if want := []string{"subagent-start:failed", "subagent-start:silent"}; !slices.Equal(events, want) {
-		t.Fatalf("shikii is started for %v, got %v", want, events)
+	// every subagent that began is told to shikii as ended (shikii keeps it open until then), with nothing to report; the one of
+	// another folder is not this instance's
+	if want := []string{"subagent-start:failed", "subagent-stop:failed", "subagent-start:silent", "subagent-stop:silent"}; !slices.Equal(events, want) {
+		t.Fatalf("shikii is told of %v, got %v", want, events)
 	}
 }
 
@@ -761,8 +822,17 @@ func TestOpenCodePluginReportsNoSubagentTurnThatAddedNoMessage(t *testing.T) {
 			{"op": "prompt", "sid": "child", "text": "one more thing"},
 			{"op": "idle", "sid": "child"},
 		}})
-	if n := countCalls(calls, "subagent-stop"); n != 1 {
-		t.Fatalf("the second turn added no message, so the subagent is reported once, got %d: %+v", n, calls)
+	n, reports := 0, 0
+	for _, c := range calls {
+		if c.Event == "subagent-stop" {
+			n++
+			if c.Stdin["last_assistant_message"] == "Done." {
+				reports++
+			}
+		}
+	}
+	if reports != 1 || n != 2 {
+		t.Fatalf("the second turn added no message: its end is told, and the subagent is reported once; got %d ends, %d reports: %+v", n, reports, calls)
 	}
 }
 
@@ -1017,6 +1087,57 @@ func TestOpenCodePluginASubagentsReportWakesTheParentForATurnOfItsOwn(t *testing
 	if n := countCalls(calls, "user-prompt-submit"); n != 1 {
 		t.Errorf("a subagent's report is no request of the person: %d", n)
 	}
+	// shikii is told, once for each report that woke the parent (the first report came while a turn ran, and woke nothing), that
+	// the subagent ended: the parent works again after the stop that came before it
+	var told []int
+	for i, c := range calls {
+		if c.Event == "subagent-stop" && c.Stdin["session_id"] == "s1" && c.Stdin["agent_id"] == "child" {
+			told = append(told, i)
+			if _, reported := c.Stdin["last_assistant_message"]; reported {
+				t.Errorf("the hook for a woken turn carries no report: %+v", c)
+			}
+		}
+	}
+	if len(told) != 1 {
+		t.Fatalf("shikii is told once that the report woke the parent, got %d: %+v", len(told), calls)
+	}
+	if last := stopsOf(calls); len(last) != 3 || told[0] > indexOfCall(calls, last[2]) || told[0] < indexOfCall(calls, last[1]) {
+		t.Errorf("the hook comes after the stop before the woken turn and before the stop that ends it: %d in %+v", told[0], calls)
+	}
+}
+
+// The stop of a turn that a report woke runs in the idle hook, beside the events: it must not start before shikii was told that the
+// report woke the turn (that call may be slow), or shikii would take the turn for one that already ended.
+func TestOpenCodePluginTheStopOfAWokenTurnWaitsForTheHookThatToldItWoke(t *testing.T) {
+	b := newPluginBox(t)
+	b.hold(t, "subagent-stop", 1)
+	run, calls := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "a request"},
+		{"op": "idle", "sid": "s1"}, // stop 1
+		{"op": "subagent", "sid": "s1", "nowait": true},
+		{"op": "waitCalls", "event": "subagent-stop", "count": 1}, // the hook that tells the report woke the turn starts and is held
+		{"op": "idleStart", "sid": "s1"},                          // the stop of the woken turn starts beside it
+		{"op": "noMoreCalls", "event": "stop", "count": 2, "within": 500},
+		{"op": "release", "event": "subagent-stop", "n": 1},
+		{"op": "settle"},
+	}})
+	if len(run.Errors) != 0 {
+		t.Fatalf("the stop of the woken turn started before the hook that told it woke ended: %v", run.Errors)
+	}
+	stops := stopsOf(calls)
+	if len(stops) != 2 || indexOfCall(calls, stops[1]) < indexOfCall(calls, pluginCall{Event: "subagent-stop", N: 1}) {
+		t.Errorf("the stop of the woken turn runs after the hook that told it woke: %+v", calls)
+	}
+}
+
+// indexOfCall is the place of a call in the list of calls (by its event and its number).
+func indexOfCall(calls []pluginCall, want pluginCall) int {
+	for i, c := range calls {
+		if c.Event == want.Event && c.N == want.N {
+			return i
+		}
+	}
+	return -1
 }
 
 // The "superseded" order below was never seen on 2.3.0: no place that sends it was found, and a message sent while a turn runs joined

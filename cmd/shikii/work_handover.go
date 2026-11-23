@@ -94,6 +94,17 @@ type sessionLatest struct {
 	// (forget_idle.go), not by Ended, which a slash command leaves as it was. It is a pointer so that a state from before the field was
 	// written (nil) is told from one that says the turn has ended (false): that one is unknown, and forget refuses it.
 	InTurn *bool `json:"in_turn,omitempty"`
+	// Subagents are the subagents that began under the session and whose end the hook has not seen: the id of each, and when the hook
+	// saw it begin. A subagent that works in the background thinks inside the agent's own process, so a Stop of the session says
+	// nothing of it: forget refuses the session while one is open.
+	Subagents map[string]time.Time `json:"subagents,omitempty"`
+	// EventAt is when the newest event of the session that is not a Stop reached the hook; ClosedAt is when the Stop that closed the
+	// turn began. An event after the Stop began means the turn went on (a Stop closes nothing an event overtook).
+	EventAt  time.Time `json:"event_at,omitzero"`
+	ClosedAt time.Time `json:"closed_at,omitzero"`
+	// Key is the id the agent gave the message that began the turn (OpenCode's message id), when it gives one: a Stop that names
+	// another turn's key is not this turn's end.
+	Key string `json:"key,omitempty"`
 }
 
 // turnFlag is a value for InTurn.
@@ -186,28 +197,96 @@ func updateSessionLatest(sessionID string, change func(latest *sessionLatest, kn
 
 // noteSessionRequest notes the person's request: the session's turn is on it now (root "" outside every project).
 func noteSessionRequest(sessionID, root, turn string) {
+	noteSessionRequestKeyed(sessionID, root, turn, "")
+}
+
+// noteSessionRequestKeyed is noteSessionRequest for an agent that names the message that began the turn (key). The subagents that
+// have not ended stay: a request does not end what runs in the background.
+func noteSessionRequestKeyed(sessionID, root, turn, key string) {
+	now := time.Now().UTC().Round(0)
 	updateSessionLatest(sessionID, func(latest *sessionLatest, _ bool) bool {
-		*latest = sessionLatest{Root: root, Turn: turn, InTurn: turnFlag(true)}
+		*latest = sessionLatest{Root: root, Turn: turn, InTurn: turnFlag(true), Subagents: latest.Subagents, EventAt: now, Key: key}
 		return true
 	})
 }
 
-// sessionTurnEvent changes the state of the session's turn by an event, wherever the agent's shell stands: a Stop that lets the
-// turn end ends the request it saw (turn, read when the Stop came; a request that came since is left as it is), and a completion
-// notice reopens the session's last request (the agent works on). A slash command, or a message with no text, is no request and changes
-// nothing of the request, but the agent works on it until its Stop: only InTurn says so. A Stop a check stopped, and an event of a subagent, change nothing.
+// isPlainRequest says whether a message of the person is a request: not empty, not the notice of finished work, not a slash command.
+func isPlainRequest(prompt string) bool {
+	p := strings.TrimSpace(prompt)
+	return p != "" && !isNotification(p) && !isSlashCommand(p)
+}
+
+// eventAt is when the hook of the event began; a test that gives no time gets now.
+func (in *hookInput) eventAt() time.Time {
+	if in.at.IsZero() {
+		return time.Now().UTC().Round(0)
+	}
+	return in.at
+}
+
+// sessionActivity notes an event of the session that is not a Stop: the agent works, so the turn is open again if a Stop had closed it,
+// the time of the event is kept, and a subagent that begins or ends is kept or dropped. A Stop closes the turn it began at and no event
+// came after (sessionTurnEvent), so the events say that a turn goes on whatever Stop was first: another Stop hook that asked for more,
+// the report of a subagent that woke the agent, a tool call. The events of a subagent are the session's own work too. A session with no
+// state is given none.
+func sessionActivity(event string, in *hookInput) {
+	if in.SessionID == "" || event == "stop" {
+		return
+	}
+	at := in.eventAt()
+	updateSessionLatest(in.SessionID, func(latest *sessionLatest, known bool) bool {
+		if !known {
+			return false
+		}
+		changed := false
+		if latest.InTurn == nil || !*latest.InTurn {
+			latest.InTurn, changed = turnFlag(true), true
+		}
+		if at.After(latest.EventAt) {
+			latest.EventAt, changed = at, true
+		}
+		_, open := latest.Subagents[in.AgentID]
+		switch {
+		case in.AgentID == "":
+		case event == "subagent-start" && !open:
+			if latest.Subagents == nil {
+				latest.Subagents = map[string]time.Time{}
+			}
+			latest.Subagents[in.AgentID], changed = at, true
+		case event == "subagent-stop" && open:
+			delete(latest.Subagents, in.AgentID)
+			changed = true
+		}
+		return changed
+	})
+}
+
+// sessionTurnEvent changes the state of the session's turn by an event, wherever the agent's shell stands. An event that is not a Stop
+// opens the turn (sessionActivity), except the message of the person that is a request: the request hook notes it (noteSessionRequest).
+// A Stop that lets the turn end ends the request it saw (turn, read when the Stop came; a request that came since is left as it is),
+// unless an event came after the Stop began or the Stop names the message of another turn (in.TurnKey). A completion notice reopens the
+// session's last request (the agent works on). A slash command, or a message with no text, is no request and changes nothing of the
+// request, but the agent works on it until its Stop: only InTurn says so. A Stop a check stopped, and the Stop of a subagent, change
+// nothing.
 func sessionTurnEvent(event string, in *hookInput, turn string, blocked bool) {
-	if in.AgentID != "" || in.SessionID == "" {
+	if in.SessionID == "" {
+		return
+	}
+	if event != "stop" && !(event == "user-prompt-submit" && in.AgentID == "" && isPlainRequest(in.Prompt)) {
+		sessionActivity(event, in)
+	}
+	if in.AgentID != "" {
 		return
 	}
 	switch {
 	case event == "stop" && !blocked:
+		at := in.eventAt()
 		updateSessionLatest(in.SessionID, func(latest *sessionLatest, known bool) bool {
-			if !known || latest.Turn != turn {
+			if !known || latest.Turn != turn || latest.EventAt.After(at) || in.TurnKey != "" && in.TurnKey != latest.Key {
 				return false
 			}
-			changed := !latest.Ended || latest.InTurn == nil || *latest.InTurn
-			latest.Ended, latest.InTurn = true, turnFlag(false)
+			changed := !latest.Ended || latest.InTurn == nil || *latest.InTurn || !latest.ClosedAt.Equal(at)
+			latest.Ended, latest.InTurn, latest.ClosedAt = true, turnFlag(false), at
 			return changed
 		})
 	case event == "user-prompt-submit" && isNotification(in.Prompt):
@@ -219,14 +298,6 @@ func sessionTurnEvent(event string, in *hookInput, turn string, blocked bool) {
 			latest.Ended, latest.InTurn = false, turnFlag(true)
 			return changed
 		})
-	case event == "user-prompt-submit" && (isSlashCommand(in.Prompt) || strings.TrimSpace(in.Prompt) == ""):
-		updateSessionLatest(in.SessionID, func(latest *sessionLatest, known bool) bool {
-			if !known || latest.InTurn != nil && *latest.InTurn {
-				return false
-			}
-			latest.InTurn = turnFlag(true)
-			return true
-		})
 	}
 }
 
@@ -237,9 +308,8 @@ func sessionTurnOnExit(event string, in *hookInput, stopTurn string) {
 	if in.stateNoted || in.AgentID != "" || in.SessionID == "" {
 		return
 	}
-	prompt := strings.TrimSpace(in.Prompt)
-	if event == "user-prompt-submit" && prompt != "" && !isNotification(prompt) && !isSlashCommand(prompt) {
-		noteSessionRequest(in.SessionID, "", "")
+	if event == "user-prompt-submit" && isPlainRequest(in.Prompt) {
+		noteSessionRequestKeyed(in.SessionID, "", "", in.TurnKey)
 		return
 	}
 	sessionTurnEvent(event, in, stopTurn, false)

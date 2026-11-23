@@ -114,6 +114,9 @@ type hookInput struct {
 	LastAssistantMessage string          `json:"last_assistant_message"`
 	ToolName             string          `json:"tool_name"`  // PreToolUse: the tool about to be used (the edit tools and Bash for tool-lesson)
 	ToolInput            json.RawMessage `json:"tool_input"` // PreToolUse: that tool's input (file_path, notebook_path or command)
+	TurnKey              string          `json:"turn_key"`   // OpenCode's plugin: the id of the message that began the turn this event is of (the request, and the Stop that ends it)
+	// at is when the hook of this event began (set once, before the work of the event): the time every note of the event carries.
+	at time.Time
 	// stopRecords, when set, collects what a Stop would write to records/guards.jsonl (the routine check, the person's guards) until
 	// the session record is committed: a Stop the next request overtook writes none of it (keepStopRecords).
 	stopRecords *[]guardRecord

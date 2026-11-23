@@ -249,6 +249,12 @@ func (r *forgetRun) stepSessions() error {
 		}
 		defer unlock()
 	}
+	if r.applying {
+		// under the lock that holds the state of the turn nothing begins: what is moved below is what the plan went by
+		if err := r.turnChanged(); err != nil {
+			return err
+		}
+	}
 	var data, locks []string
 	for _, id := range r.ids {
 		if !r.parents[id] {

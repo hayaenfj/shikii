@@ -4,8 +4,8 @@ package main
 // event (agent_process.go), and that decides, whatever the time since the last record:
 //
 //   - the noted process is on this machine, with the same pid and the same start time: the agent is open. The session is running when
-//     its last request has not ended or something it may have started still runs, and forget refuses; otherwise it is idle, and forget
-//     goes on (forget_idle.go);
+//     its last turn has not ended, a subagent it started is still open, or something it may have started still runs, and forget refuses;
+//     otherwise it is idle, and forget goes on (forget_idle.go);
 //   - the noted process is not there, or the pid belongs to a process that started later: the agent has ended, and forget goes on;
 //   - no process can be compared (none was noted: a record of an older shikii, or the hook found no agent; or it was noted on another
 //     machine; or this machine's process table could not be read): shikii cannot tell, so it goes by the time of the newest record of
@@ -79,10 +79,11 @@ func (r *forgetRun) stillRunning(id string) string {
 	} else {
 		p = r.procs[id]
 	}
+	t := r.readTurn(session) // also of a session whose agent is gone: it may be resumed while forget runs
 	state, why := processNow(p)
 	switch state {
 	case processFound:
-		return r.aliveWhy(subject, session, p)
+		return r.aliveWhy(subject, p, t)
 	case processAbsent:
 		return ""
 	}

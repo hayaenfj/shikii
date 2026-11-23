@@ -1,36 +1,82 @@
 package main
 
 // A session whose agent process is alive is not always at work: the agent stays open after a request ends. forget takes such a session
-// when both of these are so, and refuses otherwise:
+// when all of these are so, and refuses otherwise:
 //
-//   - it is not in the middle of a turn: the state of the session's turn (sessionLatest.InTurn) is opened by any message of the person
-//     that reached the hook, a slash command that is no request among them, and closed by a Stop that lets the turn end. A person who
-//     interrupts a turn may leave no Stop, and a command of the agent's app that calls the hook (/clear) may leave none; that
-//     session is refused until its agent is closed.
+//   - it is not in the middle of a turn: the state of the session's turn (sessionLatest.InTurn) is opened by any event of the session
+//     that reached the hook (a message of the person, a tool call, a subagent beginning or ending: sessionActivity) and closed by a Stop
+//     that lets the turn end and that no event came after. A person who interrupts a turn may leave no Stop, and a command of the agent's
+//     app that calls the hook (/clear) may leave none; that session is refused until its agent is closed. A state that holds an event
+//     newer than the Stop that closed it is refused too.
+//   - no subagent it started is still open: a subagent in the background thinks inside the agent's own process, where no process below
+//     the agent says so, so the state keeps each one from its beginning to its end (sessionLatest.Subagents).
 //   - nothing the session may have started is still running: no process under the agent that started after the hook first saw the agent
 //     run the session (Noted). Processes of the agent that started before are its own (the servers it starts with itself); forget
 //     itself, what it started and everything above it are not counted either.
 //
 // What cannot be read (no state of the turn, no time the agent was noted at, a process list that cannot be read) is not idle: forget
-// refuses and says why.
+// refuses and says why. An application looks at the state of the turn again before each step (turnChanged) and stops when a session
+// began something since the plan was made.
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
 	"time"
 )
 
-// aliveWhy says why a session whose agent process p is alive is still at work, or "" when it is idle. subject names the id as the
-// refusal says it, and session is the id whose state of the turn counts (a subagent's id is judged by the session it ran under).
-func (r *forgetRun) aliveWhy(subject, session string, p *agentProcess) string {
-	agent := fmt.Sprintf("its agent process (%s, pid %d) is alive", p.Name, p.PID)
+// turnRead is what the state of the session's turn said when it was read (sessionLatest, with whether there is one).
+type turnRead struct {
+	latest sessionLatest
+	known  bool
+	err    error
+}
+
+// readTurn reads the state of the session's turn. While the plan is made (not applied) it keeps what it read: an application looks at the
+// state again before each step and stops when it is no longer that (turnChanged).
+func (r *forgetRun) readTurn(session string) turnRead {
 	latest, known, err := readSessionLatest(session)
+	t := turnRead{latest, known, err}
+	if !r.applying {
+		r.turnSeen[session] = t.canon()
+	}
+	return t
+}
+
+// canon is the state as one text, to see whether it changed.
+func (t turnRead) canon() string {
+	b, _ := json.Marshal(struct {
+		Latest sessionLatest
+		Known  bool
+		Err    string
+	}{t.latest, t.known, fmt.Sprint(t.err)})
+	return string(b)
+}
+
+// turnChanged says whether the state of the turn of any session the plan went by is no longer what the plan read: a request began, a
+// subagent began, the agent made a tool call, an event came. The plan was of a session that was not at work, and an application that goes
+// on is not of that.
+func (r *forgetRun) turnChanged() error {
+	for _, session := range forgetSorted(forgetKeys(r.turnSeen)) {
+		latest, known, err := readSessionLatest(session)
+		if (turnRead{latest, known, err}).canon() != r.turnSeen[session] {
+			return fmt.Errorf("%w: %s is at work again, so the rest was not run", errForgetTurnChanged, session)
+		}
+	}
+	return nil
+}
+
+// aliveWhy says why a session whose agent process p is alive is still at work, or "" when it is idle. subject names the id as the
+// refusal says it, and t is the state of the turn of the session that counts (a subagent's id is judged by the session it ran under).
+func (r *forgetRun) aliveWhy(subject string, p *agentProcess, t turnRead) string {
+	agent := fmt.Sprintf("its agent process (%s, pid %d) is alive", p.Name, p.PID)
+	latest := t.latest
 	switch {
-	case err != nil:
-		return r.cannotTell(subject, agent, "the state of its last turn could not be read: "+err.Error())
-	case !known:
+	case t.err != nil:
+		return r.cannotTell(subject, agent, "the state of its last turn could not be read: "+t.err.Error())
+	case !t.known:
 		return r.cannotTell(subject, agent, "no state of its last turn is kept: it is from an older shikii")
 	case latest.InTurn == nil:
 		return r.cannotTell(subject, agent, "its last turn was kept by an older shikii, which did not note whether it ended")
@@ -38,6 +84,12 @@ func (r *forgetRun) aliveWhy(subject, session string, p *agentProcess) string {
 		return fmt.Sprintf("%s is still running: %s and its last turn has not ended (a request or a command began it, and no Stop that ends it was recorded); wait for the agent to finish it, or end that agent, then try again", subject, agent)
 	case p.Noted.IsZero():
 		return r.cannotTell(subject, agent, "its record does not say when the agent was first seen running it: it is from an older shikii")
+	case latest.EventAt.After(latest.ClosedAt):
+		return fmt.Sprintf("%s is still running: %s and an event of the session came after the Stop that ended its last turn (the turn went on); wait for the agent to finish it, or end that agent, then try again", subject, agent)
+	}
+	if id, at := openSubagent(latest, p.Noted); id != "" {
+		return fmt.Sprintf("%s is still running: %s and a subagent it started is still open (%s, begun %s); a subagent in the background works inside the agent, so wait for it to end, or end that agent, then try again",
+			subject, agent, id, at.UTC().Format(time.RFC3339))
 	}
 	started, err := r.startedUnder(p)
 	if err != nil {
@@ -48,6 +100,17 @@ func (r *forgetRun) aliveWhy(subject, session string, p *agentProcess) string {
 	}
 	return fmt.Sprintf("%s is still running: %s and a process under it that started after the session did is running (%s, pid %d, started %s); wait for it to end, or end that agent, then try again",
 		subject, agent, processName(started.Name), started.PID, started.Started.UTC().Format(time.RFC3339))
+}
+
+// openSubagent is the oldest subagent the state says began after the agent was noted and has not ended ("" when there is none). One that
+// began before belongs to an earlier process of the agent (the session was resumed): its end was never going to be told to this one.
+func openSubagent(latest sessionLatest, noted time.Time) (id string, at time.Time) {
+	for sub, began := range latest.Subagents {
+		if began.After(noted) && (id == "" || began.Before(at) || began.Equal(at) && sub < id) {
+			id, at = sub, began
+		}
+	}
+	return id, at
 }
 
 func (r *forgetRun) cannotTell(subject, agent, why string) string {

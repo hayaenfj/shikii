@@ -55,7 +55,7 @@ func hookUserPrompt(agent string, in *hookInput, snapshot *hookSession) (hookOut
 	turnID := store.NewTraceID()
 	in.workTurn = turnID
 	previous, _, _ := readSessionLatest(in.SessionID) // the request this one replaces: whether its work is handed over (work_handover.go)
-	noteSessionRequest(in.SessionID, agent, turnID)
+	noteSessionRequestKeyed(in.SessionID, agent, turnID, in.TurnKey)
 	in.stateNoted = true
 	planning := newPlanningFrame(snapshot, in, scope, turnID)
 	if sp, err := spec.Load(hookSpecPath(agent, "needs-plan")); err != nil || !needsPlanningContext(sp) {
