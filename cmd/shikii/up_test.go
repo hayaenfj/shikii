@@ -270,9 +270,7 @@ func TestDoctorSaysAHandWrittenShikiiHookWasNotChecked(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(b), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(b, []byte("#!/bin/sh\n"), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		writeUnrunExecutable(t, b, "#!/bin/sh\n")
 	}
 	for _, command := range []string{
 		"~/.local/bin/shikii hook stop",
@@ -359,9 +357,7 @@ func TestDoctorDoesNotCallAFolderOrAFileThatCannotRunOk(t *testing.T) {
 		t.Fatal(err)
 	}
 	runs := filepath.Join(home, "shikii-runs")
-	if err := os.WriteFile(runs, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeUnrunExecutable(t, runs, "#!/bin/sh\n")
 	for bin, want := range map[string]string{dir: "MISSING ", plain: "MISSING ", runs: "ok   "} {
 		writeHookFiles(t, home, bin+" hook stop")
 		for _, line := range registeredBinaryLines(home, mcpCommand()) {

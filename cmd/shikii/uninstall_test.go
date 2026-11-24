@@ -806,9 +806,7 @@ func TestUninstAuditHooksWithASpaceInThePath(t *testing.T) {
 		}
 	}
 	// the command install writes runs the binary through a shell even with a space and a quote in its path
-	bin := filepath.Join(t.TempDir(), "my o'bin", "shikii")
-	writeFileT(t, bin, "#!/bin/sh\necho \"ran $1 $2\"\n")
-	os.Chmod(bin, 0o755)
+	bin := writeStub(t, filepath.Join(t.TempDir(), "my o'bin"), "shikii", "echo \"ran $1 $2\"\n")
 	out, err := exec.Command("/bin/sh", "-c", hookCommand(bin, "stop")).CombinedOutput()
 	if err != nil || strings.TrimSpace(string(out)) != "ran hook stop" {
 		t.Fatalf("the hook command must run through sh: %v %q (%s)", err, out, hookCommand(bin, "stop"))

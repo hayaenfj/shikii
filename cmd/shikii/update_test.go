@@ -42,9 +42,7 @@ func fixtureUpdate(t *testing.T) *updateFixture {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"shikii", "shikii-readout"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("old-"+name), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		writeUnrunExecutable(t, filepath.Join(dir, name), "old-"+name)
 	}
 	f := &updateFixture{tag: "v0.4.2", entryType: tar.TypeReg, files: map[string][]byte{
 		"shikii":         []byte("#!/bin/sh\nprintf 'shikii 0.4.2\\n'\n"),
@@ -195,9 +193,7 @@ func TestUpdateRefreshesSkillAndPreservesExistingPrompts(t *testing.T) {
 	// Use an absolute path without spaces, the same as a real hook's command.
 	f.opts.executable = filepath.Join(t.TempDir(), "shikii")
 	for _, name := range []string{"shikii", "shikii-readout"} {
-		if err := os.WriteFile(filepath.Join(filepath.Dir(f.opts.executable), name), []byte("old"), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		writeUnrunExecutable(t, filepath.Join(filepath.Dir(f.opts.executable), name), "old")
 	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)

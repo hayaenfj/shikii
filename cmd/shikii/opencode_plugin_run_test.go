@@ -321,8 +321,7 @@ func newPluginBox(t *testing.T) *pluginBox {
 		}
 	}
 	state := filepath.Join(dir, "state")
-	script := `#!/bin/sh
-d='` + state + `'
+	script := `d='` + state + `'
 event="$2"
 n=$(cat "$d/count-$event" 2>/dev/null || echo 0)
 n=$((n+1))
@@ -337,10 +336,7 @@ garbage) echo 'not json {'; exit 0 ;;
 esac
 if [ -f "$d/out-$event-$n" ]; then cat "$d/out-$event-$n"; elif [ -f "$d/out-$event" ]; then cat "$d/out-$event"; fi
 `
-	writeFileT(t, b.shikii, script)
-	if err := os.Chmod(b.shikii, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	b.shikii = writeStub(t, dir, "fake-shikii", script)
 	b.install(t, b.shikii)
 	return b
 }

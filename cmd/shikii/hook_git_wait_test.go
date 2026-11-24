@@ -31,14 +31,12 @@ func hangingGit(t *testing.T, answered string) (stillRunning func() []int) {
 		t.Fatal(err)
 	}
 	// $$ is the pid of the sleep too: exec replaces the shell, so the process the hook kills is the one that is written down
-	script := "#!/bin/sh\n"
+	script := ""
 	if answered != "" {
 		script += "case \"$*\" in *'" + answered + "'*) exec '" + real + "' \"$@\";; esac\n"
 	}
 	script += "echo $$ >> '" + pids + "'\nexec sleep 60\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeStub(t, bin, "git", script)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	stillRunning = func() []int {
 		raw, _ := os.ReadFile(pids)

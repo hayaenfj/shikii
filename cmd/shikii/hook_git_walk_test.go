@@ -382,10 +382,8 @@ func TestAnAnswerWhoseTopIsNotTheFolderWithTheGitFolderIsNotKept(t *testing.T) {
 		t.Skip("no git")
 	}
 	bin := t.TempDir()
-	script := "#!/bin/sh\nout=$('" + real + "' \"$@\"); rc=$?\ncase \"$*\" in\n*--show-toplevel*) if [ -n \"$SHIKII_TEST_FAKE_TOP\" ]; then printf '%s\\n' \"$SHIKII_TEST_FAKE_TOP\"; printf '%s\\n' \"$out\" | tail -n +2; else printf '%s\\n' \"$out\"; fi;;\n*) printf '%s\\n' \"$out\";;\nesac\nexit $rc\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script := "out=$('" + real + "' \"$@\"); rc=$?\ncase \"$*\" in\n*--show-toplevel*) if [ -n \"$SHIKII_TEST_FAKE_TOP\" ]; then printf '%s\\n' \"$SHIKII_TEST_FAKE_TOP\"; printf '%s\\n' \"$out\" | tail -n +2; else printf '%s\\n' \"$out\"; fi;;\n*) printf '%s\\n' \"$out\";;\nesac\nexit $rc\n"
+	writeStub(t, bin, "git", script)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	faked, honest, other := gitRepo(t), gitRepo(t), t.TempDir()
 	entryOf := func(repo string) bool {

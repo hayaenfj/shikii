@@ -21,10 +21,7 @@ func gitCallLog(t *testing.T) func() []string {
 		t.Skip("no git")
 	}
 	bin, seen := t.TempDir(), filepath.Join(t.TempDir(), "calls.log")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + seen + "'\nexec '" + real + "' \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeStub(t, bin, "git", "printf '%s\\n' \"$*\" >> '"+seen+"'\nexec '"+real+"' \"$@\"\n")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return func() []string {
 		t.Helper()
@@ -49,10 +46,7 @@ func slowFirstPlaceGit(t *testing.T, delay time.Duration) {
 		t.Skip("no git")
 	}
 	bin, mark := t.TempDir(), filepath.Join(t.TempDir(), "slowed")
-	script := "#!/bin/sh\nif [ \"$1\" = rev-parse ] && [ \"$2\" = --show-toplevel ] && [ ! -e '" + mark + "' ]; then\n  : > '" + mark + "'\n  sleep " + fmt.Sprintf("%.3f", delay.Seconds()) + "\nfi\nexec '" + real + "' \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeStub(t, bin, "git", "if [ \"$1\" = rev-parse ] && [ \"$2\" = --show-toplevel ] && [ ! -e '"+mark+"' ]; then\n  : > '"+mark+"'\n  sleep "+fmt.Sprintf("%.3f", delay.Seconds())+"\nfi\nexec '"+real+"' \"$@\"\n")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 

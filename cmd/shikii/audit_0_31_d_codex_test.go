@@ -140,9 +140,7 @@ func TestAuditDCodexPreviewFollowsTheInstallForACommandThatIsGone(t *testing.T) 
 				t.Fatal(err)
 			}
 		}
-		if err := os.WriteFile(wrapper, []byte("#!/bin/sh\nexec shikii \"$@\"\n"), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		writeUnrunExecutable(t, wrapper, "#!/bin/sh\nexec shikii \"$@\"\n")
 		theirs := "[mcp_servers.shikii]\ncommand = " + quotedList([]string{wrapper}) + "\n" + codexServerArgsLine + "\n"
 		if err := os.WriteFile(path, []byte(theirs), 0o644); err != nil {
 			t.Fatal(err)

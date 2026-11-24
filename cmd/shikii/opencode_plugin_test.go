@@ -694,10 +694,7 @@ func TestUpdateRewritesTheOpenCodePluginOnAMachineWithOnlyThePlugin(t *testing.T
 	ran := filepath.Join(bin, "ran")
 	exe := filepath.Join(bin, "shikii")
 	// the new binary stands in as a script that writes down how it was run: nothing real is started
-	writeFileT(t, exe, "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '"+ran+"'\n")
-	if err := os.Chmod(exe, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	exe = writeStub(t, bin, "shikii", "printf '%s\\n' \"$*\" >> '"+ran+"'\n")
 	for name, setup := range map[string]struct {
 		put  func(home string)
 		runs bool

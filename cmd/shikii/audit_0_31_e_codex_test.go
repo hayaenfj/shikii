@@ -60,9 +60,7 @@ func TestAuditECodexPreviewAndInstallOverManyForms(t *testing.T) {
 			home := freshMachine(t)
 			dir := t.TempDir()
 			for _, name := range []string{"shikii-wrapper.sh", "node", "shikii"} {
-				if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
-					t.Fatal(err)
-				}
+				writeUnrunExecutable(t, filepath.Join(dir, name), "#!/bin/sh\n")
 			}
 			if err := os.MkdirAll(filepath.Join(dir, "linked"), 0o755); err != nil {
 				t.Fatal(err)

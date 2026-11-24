@@ -271,9 +271,7 @@ func TestCodexServerCommandIsFixedOnlyInShikiisOwnBlock(t *testing.T) {
 	other := "model = \"o3\"\n\n[mcp_servers.other]\ncommand = \"x\"\n\n"
 	gone := filepath.Join(t.TempDir(), "old", "shikii")
 	existing := filepath.Join(t.TempDir(), "shikii")
-	if err := os.WriteFile(existing, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeUnrunExecutable(t, existing, "#!/bin/sh\n")
 	pinned := []string{"mcp", "--store", "/Users/someone/project/.shikii", "--local", "http://127.0.0.1:8080"}
 	for name, c := range map[string]struct {
 		before string

@@ -36,9 +36,7 @@ func TestAuditCCodexWrapperOfThePersonIsLeftByInitAndHookInstall(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(wrapper), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(wrapper, []byte("#!/bin/sh\nexec shikii \"$@\"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeUnrunExecutable(t, wrapper, "#!/bin/sh\nexec shikii \"$@\"\n")
 	path := filepath.Join(home, ".codex", "config.toml")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)

@@ -425,10 +425,8 @@ func lyingGit(t *testing.T, sedProgram string) {
 		t.Skip("no git")
 	}
 	bin := t.TempDir()
-	script := "#!/bin/sh\nif [ \"$1\" = rev-parse ] && [ \"$2\" = --show-toplevel ]; then\n  out=$('" + real + "' \"$@\"); rc=$?\n  printf '%s\\n' \"$out\" | sed '" + sedProgram + "'\n  exit $rc\nfi\nexec '" + real + "' \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script := "if [ \"$1\" = rev-parse ] && [ \"$2\" = --show-toplevel ]; then\n  out=$('" + real + "' \"$@\"); rc=$?\n  printf '%s\\n' \"$out\" | sed '" + sedProgram + "'\n  exit $rc\nfi\nexec '" + real + "' \"$@\"\n"
+	writeStub(t, bin, "git", script)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 

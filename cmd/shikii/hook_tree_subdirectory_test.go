@@ -32,10 +32,8 @@ func TestTreeSnapshotFromASubdirectoryUsesTheReposObjects(t *testing.T) {
 		t.Skip("no git")
 	}
 	bin, seen := t.TempDir(), filepath.Join(t.TempDir(), "alternates.log")
-	script := "#!/bin/sh\nif [ -n \"$GIT_ALTERNATE_OBJECT_DIRECTORIES\" ]; then printf '%s\\n' \"$GIT_ALTERNATE_OBJECT_DIRECTORIES\" >> '" + seen + "'; fi\nexec '" + real + "' \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script := "if [ -n \"$GIT_ALTERNATE_OBJECT_DIRECTORIES\" ]; then printf '%s\\n' \"$GIT_ALTERNATE_OBJECT_DIRECTORIES\" >> '" + seen + "'; fi\nexec '" + real + "' \"$@\"\n"
+	writeStub(t, bin, "git", script)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	for _, cwd := range []string{repo, sub} {
