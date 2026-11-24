@@ -2,13 +2,14 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## 0.42.0 — Once a day, the agent goes through its memory
+## 0.42.0 — At most once a day, the agent goes through its memory
 
 ### Changes
 
-- Added the memory nap, `shikii nap`. When 24 hours have passed since the last notice and at least 5 pieces of work have ended since then, shikii asks the agent at the start of a session to go through its memory. When the agent can use a background subagent, it does this alongside your current request. Otherwise it does it after your current request.
-- In a nap, the agent does three things. When the files an article is based on have changed, it rereads the article and checks it. It checks new and changed articles against their sources. It reads what you recently said to the agent and adds to the wiki the corrections and rules the wiki does not hold yet. What you said is shown with the id of any article that already holds it, so the same correction is not written twice.
-- shikii itself never edits an article. If a nap stops partway, the next one starts from what is left.
+- Added the memory nap, `shikii nap`: a way for the agent to go through its memory (the wiki's articles). When 24 hours have passed since shikii last asked for a review and at least 5 requests have ended, shikii asks the agent at the start of a session to review its memory. When the agent can use a helper agent that runs in the background (a subagent), it reviews at the same time as your current request. Otherwise it reviews after your request is done.
+- In a review, the agent does three things. When a file an article is based on has changed, it rereads the article and checks that it is still correct. It checks that new and rewritten articles agree with the conversations and documents they came from. It finds the corrections and rules in what you recently told the agent that the wiki does not hold yet, and adds them.
+- In the list of what you said that the agent is given, anything that already became an article carries that article's id, so the same correction is not written twice.
+- The agent edits the articles; shikii itself never does. If the review of the articles stops partway, the next nap starts from the articles not checked yet.
 
 ## 0.41.0 — Remove what finished agent sessions left in a project
 

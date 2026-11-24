@@ -881,3 +881,30 @@ func TestNapNextActionReviewsChangedPremisesFirstAndSortsConversationsByLessons(
 		}
 	}
 }
+
+// The next action tells the agent that an article needing no change is saved again unchanged with its watch: that save takes the files as
+// they are now, so the article leaves premise_changed, while the article whose file changed and was not saved again stays.
+func TestNapTakesAnArticleOffPremiseChangedWhenItIsSavedAgainUnchangedWithWatch(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	book := notebook.Book{Root: st.Dir, Scope: scope}
+	resaved := watchedNapArticle(t, book, draft, "Saved again after its file changed", "resaved.txt", "before")
+	left := watchedNapArticle(t, book, draft, "Left as it was after its file changed", "left.txt", "before")
+	for _, f := range []string{"resaved.txt", "left.txt"} {
+		if err := os.WriteFile(filepath.Join(scope, f), []byte("after"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if r := decodeNap(t); len(r.PremiseChanged) != 2 {
+		t.Fatalf("premise: both articles are listed before the save: %+v", r.PremiseChanged)
+	}
+	d := napDraft(draft, resaved.Title, "0000000000000001")
+	d.ID, d.Watch = resaved.ID, &[]string{"resaved.txt"}
+	saveNapArticle(t, book, d)
+	r := decodeNap(t)
+	if len(r.PremiseChanged) != 1 || r.PremiseChanged[0].ID != left.ID {
+		t.Fatalf("the article saved again unchanged with its watch leaves the list, the other stays: %+v", r.PremiseChanged)
+	}
+	if !strings.Contains(napNextAction, "save it again unchanged with its id and its watch") || !strings.Contains(napNextAction, "a maintenance review alone leaves it listed") {
+		t.Fatalf("the next action tells the agent how an article that needs no change leaves the list: %q", napNextAction)
+	}
+}
