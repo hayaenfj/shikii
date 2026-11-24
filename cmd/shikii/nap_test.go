@@ -451,7 +451,7 @@ func TestNapRunTwiceInARowShowsTheSecondOnlyWhatCameAfterTheFirst(t *testing.T) 
 	}
 }
 
-// fitNapConversations takes from the front the conversations that keep the encoded report within the bound, at least one and at most the
+// fitNapReport takes from the front the conversations that keep the encoded report within the bound, at least one and at most the
 // cap; newer_left counts the ones after them; and the bound is the size of what is printed.
 func TestNapFitTakesWhatFitsTheOutputAtMostTheCapAndAtLeastOne(t *testing.T) {
 	var convs []napConversation
@@ -459,7 +459,7 @@ func TestNapFitTakesWhatFitsTheOutputAtMostTheCapAndAtLeastOne(t *testing.T) {
 		convs = append(convs, napConversation{ID: fmt.Sprintf("%016x", i), Session: "s", Request: "request", Summary: "summary", Reply: "reply"})
 	}
 	r := napReport{NextAction: napNextAction}
-	if n := fitNapConversations(&r, convs, 1<<30, napMaxConvs); n != 64 || len(r.Conversations) != 64 || r.NewerLeft != 36 || r.Conversations[0].ID != convs[0].ID || r.Conversations[63].ID != convs[63].ID {
+	if n := fitNapReport(&r, convs, 1<<30, napMaxConvs); n != 64 || len(r.Conversations) != 64 || r.NewerLeft != 36 || r.Conversations[0].ID != convs[0].ID || r.Conversations[63].ID != convs[63].ID {
 		t.Fatalf("with room for all, the cap of 64 is the bound, the front ones are taken and 36 are left: %d %d left %d", n, len(r.Conversations), r.NewerLeft)
 	}
 	size := func(k int) int {
@@ -468,23 +468,23 @@ func TestNapFitTakesWhatFitsTheOutputAtMostTheCapAndAtLeastOne(t *testing.T) {
 	}
 	for _, k := range []int{2, 3, 17, 63, 64} {
 		fit := size(k)
-		if n := fitNapConversations(&r, convs, fit, napMaxConvs); n != k || r.NewerLeft != 100-k {
+		if n := fitNapReport(&r, convs, fit, napMaxConvs); n != k || r.NewerLeft != 100-k {
 			t.Fatalf("a bound of exactly the size of %d conversations takes %d: %d left %d", k, k, n, r.NewerLeft)
 		}
-		if n := fitNapConversations(&r, convs, fit-1, napMaxConvs); n != k-1 || r.NewerLeft != 100-(k-1) {
+		if n := fitNapReport(&r, convs, fit-1, napMaxConvs); n != k-1 || r.NewerLeft != 100-(k-1) {
 			t.Fatalf("one byte less takes %d: %d left %d", k-1, n, r.NewerLeft)
 		}
 	}
-	if n := fitNapConversations(&r, convs, 1, napMaxConvs); n != 1 || len(r.Conversations) != 1 || r.NewerLeft != 99 {
+	if n := fitNapReport(&r, convs, 1, napMaxConvs); n != 1 || len(r.Conversations) != 1 || r.NewerLeft != 99 {
 		t.Fatalf("one conversation is printed even when it alone is larger than the bound: %d left %d", n, r.NewerLeft)
 	}
 	var buf bytes.Buffer
-	fitNapConversations(&r, convs, 1<<30, 10)
+	fitNapReport(&r, convs, 1<<30, 10)
 	if err := encodeNapReport(&buf, r); err != nil || buf.Len() != napEncodedLen(r) {
 		t.Fatalf("the size counted is the size printed: %d %d %v", buf.Len(), napEncodedLen(r), err)
 	}
 	empty := napReport{NextAction: napNextAction}
-	if n := fitNapConversations(&empty, nil, napOutputMax, napMaxConvs); n != 0 || empty.Conversations == nil || empty.NewerLeft != 0 {
+	if n := fitNapReport(&empty, nil, napOutputMax, napMaxConvs); n != 0 || empty.Conversations == nil || empty.NewerLeft != 0 {
 		t.Fatalf("with no conversation, an empty list (printed as [], not null) and nothing left: %d %v", n, empty.Conversations)
 	}
 	var out bytes.Buffer
@@ -578,8 +578,8 @@ func TestNapDocsDescribeThePlaceAndTheFileThatRecordsIt(t *testing.T) {
 		file, heading string
 		words         []string
 	}{
-		{"../../docs/guide.md", "### Memory nap", []string{"`.shikii/nap-window-end`", "`newer_left`", "about 24,000 bytes", "at most 64", "starts where the last one stopped", "SHA-256", "no time is compared", "remove `.shikii/nap-window-end`", "`lessons`", "`premise_changed`", "`premise_changed_more`", "up to 32 in id order"}},
-		{"../../docs/guide.ja.md", "### \u8a18\u61b6\u306e\u3072\u3068\u4f11\u307f", []string{"`.shikii/nap-window-end`", "`newer_left`", "\u304a\u3088\u305d 24,000 \u30d0\u30a4\u30c8", "\u6700\u5927\u3067\u3082 64 \u4ef6", "\u524d\u56de\u304c\u6b62\u307e\u3063\u305f\u6240\u304b\u3089\u59cb\u307e\u308b", "SHA-256", "\u6642\u523b\u306f\u6bd4\u3079\u307e\u305b\u3093", "`.shikii/nap-window-end` \u3092\u6d88\u3059\u3088\u3046\u4f1d\u3048\u307e\u3059", "`lessons`", "`premise_changed`", "`premise_changed_more`", "id \u306e\u9806\u306b 32 \u4ef6\u307e\u3067"}},
+		{"../../docs/guide.md", "### Memory nap", []string{"`.shikii/nap-window-end`", "`newer_left`", "about 24,000 bytes", "at most 64", "starts where the last one stopped", "SHA-256", "no time is compared", "remove `.shikii/nap-window-end`", "`lessons`", "`premise_changed`", "`premise_changed_more`", "up to 32 in id order", "at most about 24,000 bytes in all", "`next_action` and the articles whose premise changed (below) included", "that run prints no conversation"}},
+		{"../../docs/guide.ja.md", "### \u8a18\u61b6\u306e\u3072\u3068\u4f11\u307f", []string{"`.shikii/nap-window-end`", "`newer_left`", "\u304a\u3088\u305d 24,000 \u30d0\u30a4\u30c8", "\u6700\u5927\u3067\u3082 64 \u4ef6", "\u524d\u56de\u304c\u6b62\u307e\u3063\u305f\u6240\u304b\u3089\u59cb\u307e\u308b", "SHA-256", "\u6642\u523b\u306f\u6bd4\u3079\u307e\u305b\u3093", "`.shikii/nap-window-end` \u3092\u6d88\u3059\u3088\u3046\u4f1d\u3048\u307e\u3059", "`lessons`", "`premise_changed`", "`premise_changed_more`", "id \u306e\u9806\u306b 32 \u4ef6\u307e\u3067", "\u51fa\u529b\u306e\u5168\u4f53\u3067\u304a\u3088\u305d 24,000 \u30d0\u30a4\u30c8\u307e\u3067", "`next_action` \u3068\u3001\u524d\u63d0\u306e\u5909\u308f\u3063\u305f\u8a18\u4e8b(\u4e0b\u306e `premise_changed`)\u3082\u3053\u306e\u5927\u304d\u3055\u306b\u6570\u3048\u307e\u3059", "\u8a18\u4e8b\u3067\u5927\u304d\u3055\u3092\u4f7f\u3044\u5207\u308b\u56de\u306f\u4f1a\u8a71\u3092\u51fa\u3055\u305a"}},
 	} {
 		text := string(mustRead(t, d.file))
 		at := strings.Index(text, d.heading)
@@ -619,7 +619,7 @@ func TestNapTakesNoArguments(t *testing.T) {
 	}
 	// Both texts say what the command records and what it counts for the next run, so neither calls it a plain read.
 	for name, text := range map[string]string{"the help of shikii": helpEntry(t, "shikii nap"), "the usage of the command": napUsage} {
-		for _, want := range []string{".shikii/nap-window-end", "newer_left", "lessons", "premise_changed", "24,000 bytes"} {
+		for _, want := range []string{".shikii/nap-window-end", "newer_left", "lessons", "premise_changed", "premise_changed_more", "24,000 bytes", "The whole output, those articles included, stays within about 24,000 bytes"} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("%s names the file that records the end of the window, newer_left, lessons and premise_changed; it lacks %q: %q", name, want, text)
 			}
