@@ -128,6 +128,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.40.1 | When old memory is moved into the wiki, an agent reviews up to 10 articles at a time instead of 2. A search from the command that finds nothing is tied to the session that ran it. |
 | 0.40.2 | A search from the command that finds nothing is tied to its session in OpenCode too. |
 | 0.41.0 | A person can remove what a finished agent session left in the project, and a tool can withdraw the articles it made from removed work, kept until the person restores or deletes them; removal from the command line or, after shikii asks them directly, over MCP. |
+| 0.42.0 | At most once a day, the agent goes through its memory: articles whose underlying files changed, and new or changed articles, are checked against their sources, and the person's recent replies are read for corrections the wiki does not hold yet. shikii edits no article itself. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -476,3 +477,15 @@ What was checked is projects made inside the tests and the four trial sessions o
 Later audits changed how "still running" is decided several times. At first it was whether 10 minutes had passed since the last record. But long work can go more than 10 minutes without a record. So the hook now notes the agent's process, and the decision is whether that process is alive. Even with the application open, a session can be removed when it is not thinking and nothing it started is still running. Whether it is thinking can only be inferred from hook events, though. Each audit found one more case, such as a subagent in the background or another hook asking to go on, and each was settled on the side of not removing.
 
 The same version added `shikii wiki withdraw`, with which a tool such as chiten takes back the articles it made from its own work. At first it deleted them. But the kind of a source is written freely by whoever saves it, so articles made from a person's words could be withdrawn too. So a withdrawn article is now kept, and the person checks it on the answer page and chooses to restore or delete it.
+
+### In 0.42.0, the agent goes through its accumulated memory once a day
+
+Claude Code has a feature that reorganizes accumulated memory in the background. shikii already had something close. Each request's reflection turns corrections into articles, and when the way articles are written changes, existing articles are reviewed a little at a time. But nothing decided when to review. Corrections that a reflection missed were never read again later either.
+
+So shikii now asks the agent to review at the start of a session, when 24 hours have passed since the last notice and at least 5 pieces of work have ended since then. The 24 hours and the 5 are the same as Claude Code's defaults. For the name we chose `shikii nap`, the memory nap: it is friendly, and it is not the name of Claude Code's feature.
+
+shikii only lists what to review; it never edits an article. The first version set the range of conversations to reread by the time of the notice. So when the agent got a notice and did not review, the conversations of that time fell out of the next range. Now shikii remembers how far `shikii nap` actually showed them, and the next nap carries on from there. Conversations come oldest first, 64 at a time.
+
+Two changes keep it light without losing accuracy. First, each conversation names the articles that cite it as a source. The agent only checks the conversations that already became articles, and reads the others most closely. Second, when the files an article is based on have changed, that article is shown first. We also measured cutting the agent's replies short. But most replies are under 200 bytes, and cut, a person's reply no longer shows what it corrects, so we did not do it.
+
+With the real Claude Code, the agent that got the notice ran `shikii nap` in a background subagent and added one procedure that no article held yet. It did not rewrite a correction that already was an article. Codex reviewed the same way when the request asked for work, but finished without reviewing when the request was only "that's all for today". OpenCode could not be checked: the model provider's usage limit was reached.

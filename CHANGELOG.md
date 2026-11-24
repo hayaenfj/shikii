@@ -2,6 +2,14 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.42.0 — Once a day, the agent goes through its memory
+
+### Changes
+
+- Added the memory nap, `shikii nap`. When 24 hours have passed since the last notice and at least 5 pieces of work have ended since then, shikii asks the agent at the start of a session to go through its memory. When the agent can use a background subagent, it does this alongside your current request. Otherwise it does it after your current request.
+- In a nap, the agent does three things. When the files an article is based on have changed, it rereads the article and checks it. It checks new and changed articles against their sources. It reads what you recently said to the agent and adds to the wiki the corrections and rules the wiki does not hold yet. What you said is shown with the id of any article that already holds it, so the same correction is not written twice.
+- shikii itself never edits an article. If a nap stops partway, the next one starts from what is left.
+
 ## 0.41.0 — Remove what finished agent sessions left in a project
 
 ### Changes
