@@ -14,8 +14,10 @@ package main
 // not decide what `shikii nap` shows.
 //
 // .shikii/nap-window-end holds one RFC 3339 time: where the window of the last `shikii nap` ended. The next `shikii nap` shows the
-// conversations after it (all of them the first time), up to now, or up to the 64th when more are waiting, and records the end of what it showed
-// once it has printed it. So a notice the agent did not act on, or a window longer than 64 conversations, loses nothing: the conversations
+// conversations after it (all of them the first time) that are not later than now, oldest first, 64 at a time, and records the time of the
+// last one it showed once it has printed them; when it showed none, the file is left as it was. The end is the time of a conversation, never
+// now: a conversation whose time was set before a run read the records but that was written after it is still after the end, so the next run
+// shows it. So a notice the agent did not act on, or a window longer than 64 conversations, loses nothing: the conversations
 // stay after that time until a `shikii nap` has shown them. It is a file of its own: the notice's rewrite of .shikii/nap carries no third
 // line, and the two writes never wait for each other.
 
@@ -97,8 +99,19 @@ func readNapWindowEnd(root string) (string, time.Time) {
 	return raw, end
 }
 
+// napStateUsable reports whether an open file may be read or rewritten as a nap state: an ordinary file with one name. A second name (a hard
+// link) is another file of the person's, and rewriting it in place would change that file too.
+func napStateUsable(f *os.File) bool {
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	return ok && st.Nlink == 1
+}
+
 func readNapFile(f *os.File) string {
-	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
+	if !napStateUsable(f) {
 		return ""
 	}
 	b, _ := io.ReadAll(io.LimitReader(f, napStateMax))
@@ -120,8 +133,8 @@ func rewriteNapFile(path, expected, state string) (bool, error) {
 		return false, err
 	}
 	defer f.Close()
-	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
-		return false, errors.New("the nap state must be a regular file")
+	if !napStateUsable(f) {
+		return false, errors.New("the nap state must be a regular file with one name")
 	}
 	if syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
 		return false, nil
@@ -140,10 +153,14 @@ func rewriteNapFile(path, expected, state string) (bool, error) {
 }
 
 // napNotice is the paragraph that tells the agent a nap is due, or "" when it is not (or another session was told
-// first). When it returns a paragraph it has written .shikii/nap and reopened a completed memory upgrade for what changed.
+// first). When it returns a paragraph it has written .shikii/nap and brought the memory upgrade up to date with what changed: a completed one
+// is reopened, and the new articles join one that is not complete.
 func napNotice(root, scope string, now time.Time) (string, error) {
 	raw := readNapState(root)
 	last, _ := parseNapState(raw)
+	if last.After(now) {
+		last = time.Time{} // a time in the future (the clock was once set ahead) is no earlier notice: it would keep the notice silent until then
+	}
 	if !last.IsZero() && now.Sub(last) < napInterval {
 		return "", nil
 	}
@@ -252,9 +269,10 @@ func napPremiseChangedOf(pages []notebook.Page) ([]napPremiseChanged, int) {
 	return out, more
 }
 
-// buildNapReport is what `shikii nap` prints: the window after the end of the last window that was shown (from the start when none was) up to
-// now, the conversations in it that have a reply, oldest first, and the memory upgrade's progress. When more than napMaxConvs are waiting, it
-// shows the oldest napMaxConvs, ends the window at the last of them and counts the rest in newer_left, so the next window starts with the rest.
+// buildNapReport is what `shikii nap` prints: the conversations after the end of the last window that was shown (from the start when none was),
+// not later than now, that have a reply, oldest first, and the memory upgrade's progress. The window ends at the time of the last conversation
+// shown (where it began when none is shown). When more than napMaxConvs are waiting, it shows the oldest napMaxConvs and counts the rest in
+// newer_left, so the next window starts with the rest.
 func buildNapReport(root, scope string, now time.Time) (napReport, error) {
 	var r napReport
 	var from time.Time
@@ -287,7 +305,6 @@ func buildNapReport(root, scope string, now time.Time) (napReport, error) {
 	// Oldest first by the time the conversation was saved (the stable sort keeps the history's order for equal times): the end of the
 	// window is a time, so what is left out is exactly what is later.
 	sort.SliceStable(convs, func(i, j int) bool { return convs[i].At.Before(convs[j].At) })
-	r.end = now
 	if len(convs) > napMaxConvs {
 		shown := napMaxConvs
 		for shown < len(convs) && convs[shown].At.Equal(convs[shown-1].At) {
@@ -295,12 +312,17 @@ func buildNapReport(root, scope string, now time.Time) (napReport, error) {
 		}
 		if shown < len(convs) {
 			r.NewerLeft = len(convs) - shown
-			r.end = convs[shown-1].At
 		}
 		convs = convs[:shown]
 	}
 	r.Conversations = convs
-	r.Window.To = r.end.UTC().Format(napWindowLayout)
+	r.end = from
+	if len(convs) > 0 {
+		r.end = convs[len(convs)-1].At
+	}
+	if !r.end.IsZero() {
+		r.Window.To = r.end.UTC().Format(napWindowLayout)
+	}
 	// MemoryUpgrade also keeps its own checkpoint (the hook asks it on every request); it edits no article.
 	if u, err := book.MemoryUpgrade(); err != nil {
 		r.MemoryUpgrade.Status, r.MemoryUpgrade.Error = "unavailable", err.Error()
@@ -313,8 +335,12 @@ func buildNapReport(root, scope string, now time.Time) (napReport, error) {
 
 // recordNapWindowEnd writes where the window just printed ended to .shikii/nap-window-end, under the file's lock and only while the file
 // still holds what buildNapReport read. When another `shikii nap` has recorded its window in between it records nothing: that run's
-// window stands, and the conversations the two both showed are shown again by the next one, never lost.
+// window stands, and the conversations the two both showed are shown again by the next one, never lost. A window that showed no conversation
+// has no new end, so the file is left as it was.
 func recordNapWindowEnd(root string, r napReport) error {
+	if len(r.Conversations) == 0 {
+		return nil
+	}
 	_, err := rewriteNapFile(napWindowEndPath(root), r.endState, r.end.UTC().Format(napWindowLayout)+"\n")
 	return err
 }

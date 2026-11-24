@@ -130,8 +130,9 @@ func TestRefreshMemoryUpgradeBringsBackOnlyChangedAndNewArticles(t *testing.T) {
 	}
 }
 
-// With no checkpoint there is nothing to reopen and none is made; an upgrade still under review keeps its inventory.
-func TestRefreshMemoryUpgradeLeavesAMissingOrUnfinishedUpgradeAlone(t *testing.T) {
+// With no checkpoint there is nothing to reopen and none is made. An upgrade still under review gains the article that is new and nothing
+// else, and when no article is new its checkpoint is not written again.
+func TestRefreshMemoryUpgradeMakesNoCheckpointAndOnlyAddsNewArticlesToAnUnfinishedOne(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/project"}
 	if _, err := b.Ingest(draft(seed(t, b, 1), "First article")); err != nil {
 		t.Fatal(err)
@@ -153,14 +154,21 @@ func TestRefreshMemoryUpgradeLeavesAMissingOrUnfinishedUpgradeAlone(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.Ingest(draft(seed(t, b, 2), "Second article")); err != nil {
+	if err := b.RefreshMemoryUpgrade(); err != nil {
+		t.Fatal(err)
+	}
+	if same, err := os.ReadFile(memoryUpgradePath(dir)); err != nil || string(same) != string(before) {
+		t.Fatalf("an upgrade that is not complete and has no new article is not written again:\n%s\n%s\n%v", before, same, err)
+	}
+	second, err := b.Ingest(draft(seed(t, b, 2), "Second article"))
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := b.RefreshMemoryUpgrade(); err != nil {
 		t.Fatal(err)
 	}
-	after, err := os.ReadFile(memoryUpgradePath(dir))
-	if err != nil || string(after) != string(before) {
-		t.Fatalf("an upgrade that is not complete keeps its inventory:\n%s\n%s\n%v", before, after, err)
+	c := upgradeCheckpointOf(t, b)
+	if len(c.Targets) != 2 || c.Targets[second.Page.ID] != second.Page.Revision || len(c.Reviews) != 0 || c.Complete {
+		t.Fatalf("an upgrade that is not complete gains the new article as a target and nothing else: %+v", c)
 	}
 }

@@ -353,8 +353,8 @@ func TestNapListsOnlyTheConversationsAfterTheEndOfTheLastWindow(t *testing.T) {
 	if r.Window.From != end.UTC().Format(time.RFC3339Nano) {
 		t.Fatalf("the window starts where the last one ended: %+v", r.Window)
 	}
-	if to := parseNapTime(t, r.Window.To); to.Before(now) || time.Since(to) > time.Minute {
-		t.Fatalf("the window runs up to now: %+v", r.Window)
+	if to := parseNapTime(t, r.Window.To); !to.Equal(now.Add(-2 * time.Hour)) {
+		t.Fatalf("the window ends at the time of the last conversation it showed, not at now: %+v", r.Window)
 	}
 	if got := readNapWindowEndFile(t, st); got != r.Window.To+"\n" {
 		t.Fatalf("the end of the window is recorded once it is printed:\n%q\n%q", r.Window.To, got)
@@ -531,9 +531,10 @@ func TestNapWindowEndIsRecordedUnderTheLockAndOnlyWhileTheFileIsAsRead(t *testin
 	if recorded == "" {
 		t.Fatalf("with the lock free the end is recorded")
 	}
+	saveConversation(t, st, scope, "0000000000000002", time.Now().Add(-30*time.Minute), "a reply saved after that window")
 	r, err := buildNapReport(st.Dir, scope, time.Now())
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || fmt.Sprint(conversationIDs(r)) != hexIDs(2, 2) {
+		t.Fatalf("premise: the next window shows the new conversation: %v %v", conversationIDs(r), err)
 	}
 	other := writeNapWindowEnd(t, st, time.Now().Add(time.Hour)) // another run records its window between the read and the write
 	if err := recordNapWindowEnd(st.Dir, r); err != nil {
@@ -906,5 +907,252 @@ func TestNapTakesAnArticleOffPremiseChangedWhenItIsSavedAgainUnchangedWithWatch(
 	}
 	if !strings.Contains(napNextAction, "save it again unchanged with its id and its watch") || !strings.Contains(napNextAction, "a maintenance review alone leaves it listed") {
 		t.Fatalf("the next action tells the agent how an article that needs no change leaves the list: %q", napNextAction)
+	}
+}
+
+// A file of the person's that has a second name at .shikii/nap or .shikii/nap-window-end (a hard link) is neither read nor written through:
+// the file is rewritten in place, so a write would change the person's file as well.
+const napPersonsFile = "do not touch\n"
+
+// linkToAPersonsFile gives path a second name of a file of the person's, which holds content, and returns the other name.
+func linkToAPersonsFile(t *testing.T, path, content string) string {
+	t.Helper()
+	other := filepath.Join(t.TempDir(), "persons-file")
+	if err := os.WriteFile(other, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(other, path); err != nil {
+		t.Fatal(err)
+	}
+	return other
+}
+
+func requireFileHolds(t *testing.T, path, want string) {
+	t.Helper()
+	if got, err := os.ReadFile(path); err != nil || string(got) != want {
+		t.Fatalf("%s must be left as it was:\n%q\n%q %v", path, want, got, err)
+	}
+}
+
+func TestNapStateFilesWithASecondNameAreReadAsNotThere(t *testing.T) {
+	st, _, _, _, _ := memoryEffectFixture(t)
+	text := time.Now().UTC().Format(napWindowLayout) + "\n"
+	for _, path := range []string{napStatePath(st), napWindowEndFilePath(st)} {
+		if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := readNapStateAt(path); got != text {
+			t.Fatalf("premise: a file with one name is read: %q", got)
+		}
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		linkToAPersonsFile(t, path, text)
+		if got := readNapStateAt(path); got != "" {
+			t.Fatalf("%s: a file with a second name is read as not there: %q", filepath.Base(path), got)
+		}
+	}
+	if raw, end := readNapWindowEnd(st.Dir); raw != "" || !end.IsZero() {
+		t.Fatalf("the window then starts at the beginning: %q %v", raw, end)
+	}
+}
+
+func TestNapNoticeDoesNotWriteThroughAHardLink(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	other := linkToAPersonsFile(t, napStatePath(st), napPersonsFile)
+	saveWorkResults(t, st, scope, 0, 5, time.Now())
+	out := startSession(t, scope, nil)
+	requireFileHolds(t, other, napPersonsFile)
+	if strings.Contains(out, napMarker) {
+		t.Fatalf("no mark could be taken, so the agent is not told:\n%s", out)
+	}
+	if ok, err := takeNapMark(st.Dir, "", "now\n"); ok || err == nil {
+		t.Fatalf("the mark is refused with an error: %v %v", ok, err)
+	}
+	requireFileHolds(t, other, napPersonsFile)
+}
+
+func TestNapWindowEndDoesNotWriteThroughAHardLink(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	saveConversation(t, st, scope, "0000000000000002", time.Now().Add(-time.Hour), "a reply")
+	other := linkToAPersonsFile(t, napWindowEndFilePath(st), napPersonsFile)
+	r, err := buildNapReport(st.Dir, scope, time.Now())
+	if err != nil || len(r.Conversations) == 0 {
+		t.Fatalf("premise: the window is built and shows a conversation: %v %v", conversationIDs(r), err)
+	}
+	err = recordNapWindowEnd(st.Dir, r)
+	requireFileHolds(t, other, napPersonsFile)
+	if err == nil {
+		t.Fatal("the end of the window is refused with an error: the next run then prints the window again")
+	}
+}
+
+// .shikii/nap and .shikii/nap-window-end are read only when they are small ordinary files, and are never written through a symbolic link,
+// a named pipe or a folder. The written text is what the caller read, so a write through the link would go through if it were not refused.
+func TestNapStateThatIsNotAnOrdinaryFileIsReadAsNotThereAndNotWrittenThrough(t *testing.T) {
+	st, _, _, _, _ := memoryEffectFixture(t)
+	text := time.Now().UTC().Format(napTimeLayout) + "\n"
+	for _, path := range []string{napStatePath(st), napWindowEndFilePath(st)} {
+		for _, kind := range []string{"a symbolic link", "a named pipe", "a folder"} {
+			t.Run(filepath.Base(path)+" is "+kind, func(t *testing.T) {
+				if err := os.RemoveAll(path); err != nil {
+					t.Fatal(err)
+				}
+				other := ""
+				switch kind {
+				case "a symbolic link":
+					other = filepath.Join(t.TempDir(), "persons-file")
+					if err := os.WriteFile(other, []byte(text), 0o600); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Symlink(other, path); err != nil {
+						t.Fatal(err)
+					}
+				case "a named pipe":
+					if err := syscall.Mkfifo(path, 0o600); err != nil {
+						t.Fatal(err)
+					}
+					pipe, err := os.OpenFile(path, os.O_RDWR|syscall.O_NONBLOCK, 0) // holds the pipe open, with the text waiting in it
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() { pipe.Close() })
+					if _, err := pipe.WriteString(text); err != nil {
+						t.Fatal(err)
+					}
+				case "a folder":
+					if err := os.Mkdir(path, 0o700); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if got := readNapStateAt(path); got != "" {
+					t.Fatalf("it is read as not there: %q", got)
+				}
+				if ok, err := rewriteNapFile(path, text, "rewritten\n"); ok || err == nil {
+					t.Fatalf("it is not written, and the refusal is an error: %v %v", ok, err)
+				}
+				if other != "" {
+					requireFileHolds(t, other, text)
+				}
+			})
+		}
+	}
+}
+
+// A file larger than 256 bytes is read only up to its first 256 bytes, so a long file is never read whole.
+func TestNapStateIsReadOnlyUpToTheLimit(t *testing.T) {
+	st, _, _, _, _ := memoryEffectFixture(t)
+	text := time.Now().UTC().Format(napTimeLayout) + "\n" + strings.Repeat("x", 1024)
+	for _, path := range []string{napStatePath(st), napWindowEndFilePath(st)} {
+		if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := readNapStateAt(path); got != text[:256] {
+			t.Fatalf("%s: the first 256 bytes are read and no more: %d bytes", filepath.Base(path), len(got))
+		}
+	}
+}
+
+// A notice that cannot be given (here its mark cannot be taken: .shikii/nap is a symbolic link) never stops the brief of the project.
+func TestNapNoticeFailureDoesNotStopTheBriefOfTheProject(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	always := draft
+	always.ID, always.Title, always.Lesson, always.Scene, always.AppliesTo = "", "Visible text is Japanese", "Every visible sentence is written in Japanese.", "いつも", "every request"
+	if _, err := (notebook.Book{Root: st.Dir, Scope: scope}).Ingest(always); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(t.TempDir(), "persons-file")
+	if err := os.WriteFile(sentinel, []byte(napPersonsFile), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(sentinel, napStatePath(st)); err != nil {
+		t.Fatal(err)
+	}
+	saveWorkResults(t, st, scope, 0, 5, time.Now())
+	out := startSession(t, scope, nil)
+	if !strings.Contains(out, "Every visible sentence is written in Japanese.") {
+		t.Fatalf("the brief is printed although the notice failed:\n%q", out)
+	}
+	if strings.Contains(out, napMarker) {
+		t.Fatalf("no notice is given when its mark could not be taken:\n%s", out)
+	}
+	requireFileHolds(t, sentinel, napPersonsFile)
+	home, err := agentHome()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if log, _ := os.ReadFile(filepath.Join(home, "hook.log")); !strings.Contains(string(log), "nap: ") {
+		t.Fatalf("the reason is left in hook.log: %q", log)
+	}
+}
+
+// A time in the future in the first line (the clock was set far ahead once) is no earlier notice: it must not keep the notice silent until
+// that time. Every work result then counts, as when there is no file, and the file is written again with this notice alone.
+func TestNapNoticeTreatsAFutureTimeInTheFileAsNoEarlierNotice(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	now := time.Now()
+	written := writeNapState(t, st, now.Add(48*time.Hour), now.Add(-80*time.Hour))
+	saveWorkResults(t, st, scope, 0, 2, now.Add(-time.Hour))
+	saveWorkResults(t, st, scope, 10, 2, now.Add(-90*24*time.Hour)) // before any real notice: counted only when the file holds no earlier time
+	if out := startSession(t, scope, nil); out != "" {
+		t.Fatalf("four results in all, nothing is said:\n%s", out)
+	}
+	if got := readNapStateFile(t, st); got != written {
+		t.Fatalf("the file is not rewritten when nothing is said:\n%q\n%q", written, got)
+	}
+	saveWorkResults(t, st, scope, 20, 1, now.Add(-90*24*time.Hour))
+	out := startSession(t, scope, nil)
+	if !strings.Contains(out, napMarker) || !strings.Contains(out, "5 work results so far") {
+		t.Fatalf("every result counts, and the notice comes:\n%s", out)
+	}
+	lines := strings.Split(strings.TrimSpace(readNapStateFile(t, st)), "\n")
+	if at, err := time.Parse(time.RFC3339, lines[0]); len(lines) != 1 || err != nil || at.After(time.Now().Add(time.Second)) {
+		t.Fatalf("the file holds this notice alone, not the future time: %q %v", lines, err)
+	}
+}
+
+// The window ends at the time of the last conversation it showed, not at now. A conversation whose time is before the moment a run read
+// the records, but which was written after it (its time was set before the write, or the clock was set back), is then shown by the next run.
+func TestNapShowsAConversationSavedAfterTheLastRunWithATimeBeforeThatRun(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	now := time.Now()
+	saveConversation(t, st, scope, "0000000000000001", now.Add(-3*time.Hour), "first")
+	first := napRunAt(t, st, scope, now)
+	if got := conversationIDs(first); fmt.Sprint(got) != hexIDs(1, 1) {
+		t.Fatalf("premise: the first run shows the first conversation: %v", got)
+	}
+	if end := parseNapTime(t, first.Window.To); !end.Equal(now.Add(-3 * time.Hour)) {
+		t.Fatalf("the first window ends at the conversation it showed: %+v", first.Window)
+	}
+	saveConversation(t, st, scope, "0000000000000002", now.Add(-time.Minute), "written after that run read the records")
+	second := napRunAt(t, st, scope, now.Add(time.Second))
+	if got := conversationIDs(second); fmt.Sprint(got) != hexIDs(2, 2) {
+		t.Fatalf("the conversation written after the first run is shown by the next one: %v", got)
+	}
+}
+
+// When a run shows nothing, the end stays where it was: it is not moved to now, and no file is made or rewritten.
+func TestNapKeepsTheEndOfTheWindowWhereItWasWhenNothingIsShown(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	now := time.Now()
+	early := napRunAt(t, st, scope, now.Add(-24*time.Hour)) // before the conversation of the fixture
+	if len(early.Conversations) != 0 || early.Window.From != "" || early.Window.To != "" {
+		t.Fatalf("premise: nothing is shown and the window has no end: %+v", early)
+	}
+	if _, err := os.Lstat(napWindowEndFilePath(st)); !os.IsNotExist(err) {
+		t.Fatalf("no end is recorded when nothing was shown and none was there: %v", err)
+	}
+	saveConversation(t, st, scope, "0000000000000001", now.Add(-2*time.Hour), "shown once")
+	shown := napRunAt(t, st, scope, now)
+	recorded := readNapWindowEndFile(t, st)
+	if len(shown.Conversations) != 1 || recorded != shown.Window.To+"\n" {
+		t.Fatalf("premise: the end is recorded once a conversation is shown: %+v %q", shown.Window, recorded)
+	}
+	later := napRunAt(t, st, scope, now.Add(time.Hour))
+	if len(later.Conversations) != 0 || later.Window.From != shown.Window.To || later.Window.To != shown.Window.To {
+		t.Fatalf("a window with nothing in it ends where it began: %+v", later.Window)
+	}
+	if got := readNapWindowEndFile(t, st); got != recorded {
+		t.Fatalf("the end is left where it was:\n%q\n%q", recorded, got)
 	}
 }

@@ -65,11 +65,12 @@ func (b Book) ReopenMemoryUpgrade() error {
 	return nil
 }
 
-// RefreshMemoryUpgrade reopens a completed memory upgrade for what has changed since it completed: the checkpoint is no longer complete,
-// and every current article it does not list yet (not withdrawn, not retired by a replacement) becomes a target. The reviews, the
-// withdrawals and the blocked marks stay. The next MemoryUpgrade then counts an article reviewed when its review still matches (the
-// same revision and the same related articles), so only the articles edited since and the new ones come back for review. Nothing
-// happens when there is no checkpoint or the upgrade is not complete: its inventory is still the one being reviewed.
+// RefreshMemoryUpgrade brings the memory upgrade up to date with what has changed since it began: every current article it does not list
+// yet (not withdrawn, not retired by a replacement) becomes a target, also while the upgrade is not complete (a page declared blocked keeps
+// it from completing, and the new articles must still come back for review). A completed upgrade is reopened: the checkpoint is no longer
+// complete. The reviews, the withdrawals and the blocked marks stay. The next MemoryUpgrade then counts an article reviewed when its
+// review still matches (the same revision and the same related articles), so only the articles edited since and the new ones come back for
+// review. Nothing happens when there is no checkpoint, or the upgrade is not complete and no article is new.
 func (b Book) RefreshMemoryUpgrade() error {
 	b = b.scopedRead()
 	dir, err := b.directory(false, "pages")
@@ -91,9 +92,6 @@ func (b Book) RefreshMemoryUpgrade() error {
 	if err != nil {
 		return err
 	}
-	if !c.Complete {
-		return nil
-	}
 	pages, issues, err := b.pages()
 	if err != nil || len(issues) > 0 {
 		return errors.New("inspect wiki files before refreshing the memory upgrade")
@@ -104,10 +102,15 @@ func (b Book) RefreshMemoryUpgrade() error {
 			retired[id] = true
 		}
 	}
+	added := false
 	for _, p := range pages {
 		if !p.Gone() && !retired[p.ID] && c.Targets[p.ID] == "" {
 			c.Targets[p.ID] = p.Revision
+			added = true
 		}
+	}
+	if !c.Complete && !added {
+		return nil
 	}
 	c.Complete = false
 	return saveMemoryUpgrade(dir, c)
