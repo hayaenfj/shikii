@@ -491,6 +491,16 @@ It shuffles the order of the options, asks the same state again, and reports how
 (the difference from asking in the spec's order). It warns and exits 1 when the flip rate is above 0.10 or the range of the position shift is above 0.10.
 The model does not generate text, so running permutations is cheap. The options are sent in the order written in the spec (`systemone.OrderedCriteria`; a Go map would sort the keys).
 
+### Memory nap: `shikii nap`
+
+At most once a day, shikii sets aside a moment to go through what has piled up. When a person's session starts (never a subagent's), and 24 hours or more have passed since the last notice with 5 or more requests finished since then (saved work results), the hook tells the agent to run `shikii nap` in a background subagent. The numbers are fixed; there is no setting.
+
+- The notice writes the time to `.shikii/nap` (this notice on the first line, the previous one on the second), so another session opened at the same time is not told again.
+- A completed memory upgrade starts again. Only the articles changed since and the new ones come back for review.
+- `shikii nap` only reads. It prints, as JSON, the conversations between the last two notices (the request, the agent's summary and the person's reply; up to the newest 64). The agent adds the corrections and rules in the person's replies that the wiki does not hold yet, through the usual steps (`shikii wiki capture` → `shikii reflect place` → `shikii reflect submit`).
+- The same output carries the progress of the memory upgrade, and the agent carries it to the end.
+- shikii never edits an article itself. When the agent does not run it, what is left stays in the memory upgrade's checkpoint and in the conversation records, and the next notice picks it up.
+
 ### Cleanup: `shikii gc`
 
 Records (`records/`) grow with every decision. Labels are calibration material and are never thrown away, but old records that never got a label are not needed.

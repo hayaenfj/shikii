@@ -56,6 +56,8 @@ func main() {
 		err = cmdGC(os.Args[2:])
 	case "forget":
 		err = cmdForget(os.Args[2:])
+	case "nap":
+		err = cmdNap(os.Args[2:])
 	case "wiki":
 		err = cmdWiki(os.Args[2:])
 	case "handoff":
@@ -156,6 +158,8 @@ func usageText() string {
   shikii gc        [spec.yaml...] [--older-than 30d] [--apply] [--store DIR]
   shikii forget    <session id>... [--apply]
                    Remove what finished agent sessions (trial runs, a session started by mistake) left in this project's .shikii/: their records, work states and sources that no article cites. Without --apply it only lists what would go and what stays; with it, the removed records are kept in .shikii/records/forgotten/ first. A person runs it; an agent does not remove records on its own (over MCP, shikii_wiki forget asks the person in the client first)
+  shikii nap
+                   Read-only. Lists the conversations since the last nap notice and the progress of the memory upgrade as JSON, with the next_action an agent follows (SessionStart tells the agent when it is due: 24 hours and 5 saved work results since the last time). No arguments, no standard input
   shikii hash      <spec.yaml>
 `
 }

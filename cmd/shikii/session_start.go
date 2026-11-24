@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/hayaenfj/shikii/internal/handoff"
 	"github.com/hayaenfj/shikii/internal/notebook"
@@ -44,6 +45,17 @@ func runSessionStart() error {
 	brief, err := sessionBrief(root, scope)
 	if err != nil {
 		return err
+	}
+	// Memory nap (nap.go) is told to the person's own session only, never to a subagent's, and never stops the brief.
+	if in.AgentID == "" {
+		if notice, err := napNotice(root, scope, time.Now()); err != nil {
+			hookLog("nap: " + err.Error())
+		} else if notice != "" {
+			if brief != "" {
+				brief += "\n\n"
+			}
+			brief += notice
+		}
 	}
 	if b := (hookOut{Context: brief}).json("SessionStart"); b != nil {
 		fmt.Fprintln(stdout, string(b))

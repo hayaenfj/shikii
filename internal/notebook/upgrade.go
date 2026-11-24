@@ -65,6 +65,54 @@ func (b Book) ReopenMemoryUpgrade() error {
 	return nil
 }
 
+// RefreshMemoryUpgrade reopens a completed memory upgrade for what has changed since it completed: the checkpoint is no longer complete,
+// and every current article it does not list yet (not withdrawn, not retired by a replacement) becomes a target. The reviews, the
+// withdrawals and the blocked marks stay. The next MemoryUpgrade then counts an article reviewed when its review still matches (the
+// same revision and the same related articles), so only the articles edited since and the new ones come back for review. Nothing
+// happens when there is no checkpoint or the upgrade is not complete: its inventory is still the one being reviewed.
+func (b Book) RefreshMemoryUpgrade() error {
+	b = b.scopedRead()
+	dir, err := b.directory(false, "pages")
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	unlock, err := lock(dir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	c, err := readMemoryUpgrade(dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !c.Complete {
+		return nil
+	}
+	pages, issues, err := b.pages()
+	if err != nil || len(issues) > 0 {
+		return errors.New("inspect wiki files before refreshing the memory upgrade")
+	}
+	retired := map[string]bool{}
+	for _, p := range pages {
+		for _, id := range p.Replaces {
+			retired[id] = true
+		}
+	}
+	for _, p := range pages {
+		if !p.Gone() && !retired[p.ID] && c.Targets[p.ID] == "" {
+			c.Targets[p.ID] = p.Revision
+		}
+	}
+	c.Complete = false
+	return saveMemoryUpgrade(dir, c)
+}
+
 func readMemoryUpgrade(dir string) (memoryUpgradeCheckpoint, error) {
 	var c memoryUpgradeCheckpoint
 	f, err := os.OpenFile(memoryUpgradePath(dir), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
