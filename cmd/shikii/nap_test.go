@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"testing"
@@ -251,12 +252,19 @@ func TestNapNoticeReopensACompletedMemoryUpgradeForNewArticles(t *testing.T) {
 
 func decodeNap(t *testing.T) napReport {
 	t.Helper()
+	r, _ := decodeNapOutput(t)
+	return r
+}
+
+// decodeNapOutput is decodeNap with the text that was printed, for a test of which keys the JSON carries.
+func decodeNapOutput(t *testing.T) (napReport, string) {
+	t.Helper()
 	out := capture(t, func() error { return cmdNap(nil) })
 	var r napReport
 	if err := json.Unmarshal([]byte(out), &r); err != nil {
 		t.Fatalf("one JSON object: %v\n%s", err, out)
 	}
-	return r
+	return r, out
 }
 
 func saveConversation(t *testing.T, st store.Store, scope, id string, at time.Time, reply string) {
@@ -559,14 +567,15 @@ func TestNapRecordsNothingWhenTheWindowCouldNotBePrinted(t *testing.T) {
 	}
 }
 
-// The guides describe the window the command prints and the file that records its end.
+// The guides describe the window the command prints, the file that records its end, the lessons of a conversation and the articles whose
+// premise changed.
 func TestNapDocsDescribeTheWindowAndTheFileThatRecordsItsEnd(t *testing.T) {
 	for _, d := range []struct {
 		file, heading string
 		words         []string
 	}{
-		{"../../docs/guide.md", "### Memory nap", []string{"`.shikii/nap-window-end`", "`newer_left`", "oldest first, 64 at a time", "starts where the last one stopped"}},
-		{"../../docs/guide.ja.md", "### \u8a18\u61b6\u306e\u3072\u3068\u4f11\u307f", []string{"`.shikii/nap-window-end`", "`newer_left`", "\u53e4\u3044\u65b9\u304b\u3089 64 \u4ef6", "\u524d\u56de\u304c\u7d42\u308f\u3063\u305f\u6240\u304b\u3089\u59cb\u307e\u308b"}},
+		{"../../docs/guide.md", "### Memory nap", []string{"`.shikii/nap-window-end`", "`newer_left`", "oldest first, 64 at a time", "starts where the last one stopped", "`lessons`", "`premise_changed`", "`premise_changed_more`", "up to 32 in id order"}},
+		{"../../docs/guide.ja.md", "### \u8a18\u61b6\u306e\u3072\u3068\u4f11\u307f", []string{"`.shikii/nap-window-end`", "`newer_left`", "\u53e4\u3044\u65b9\u304b\u3089 64 \u4ef6", "\u524d\u56de\u304c\u7d42\u308f\u3063\u305f\u6240\u304b\u3089\u59cb\u307e\u308b", "`lessons`", "`premise_changed`", "`premise_changed_more`", "id \u306e\u9806\u306b 32 \u4ef6\u307e\u3067"}},
 	} {
 		text := string(mustRead(t, d.file))
 		at := strings.Index(text, d.heading)
@@ -601,8 +610,10 @@ func TestNapTakesNoArguments(t *testing.T) {
 	}
 	// Both texts say what the command records and what it counts for the next run, so neither calls it a plain read.
 	for name, text := range map[string]string{"the help of shikii": helpEntry(t, "shikii nap"), "the usage of the command": napUsage} {
-		if !strings.Contains(text, ".shikii/nap-window-end") || !strings.Contains(text, "newer_left") {
-			t.Fatalf("%s names the file that records the end of the window and newer_left: %q", name, text)
+		for _, want := range []string{".shikii/nap-window-end", "newer_left", "lessons", "premise_changed"} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("%s names the file that records the end of the window, newer_left, lessons and premise_changed; it lacks %q: %q", name, want, text)
+			}
 		}
 	}
 }
@@ -636,5 +647,237 @@ func TestNapCutsTheRequestAndSummaryShorterThanTheReply(t *testing.T) {
 	c := r.Conversations[0]
 	if len(c.Reply) != 1500 || len(c.Request) != 800 || len(c.Summary) != 400 {
 		t.Fatalf("reply 1500, request 800, summary 400 bytes: %d %d %d", len(c.Reply), len(c.Request), len(c.Summary))
+	}
+}
+
+// napDraft is a draft of the fixture's shape under a title of its own (so an id of its own), citing the given conversations.
+func napDraft(draft notebook.Draft, title string, sources ...string) notebook.Draft {
+	draft.ID, draft.Title, draft.Lesson, draft.Sources = "", title, "Lesson of "+title+".", sources
+	return draft
+}
+
+func saveNapArticle(t *testing.T, book notebook.Book, d notebook.Draft) *notebook.Page {
+	t.Helper()
+	saved, err := book.Ingest(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return saved.Page
+}
+
+// watchedNapArticle saves an article of the fixture's shape that cites the fixture's conversation and watches one project file, which it
+// writes with content first.
+func watchedNapArticle(t *testing.T, book notebook.Book, draft notebook.Draft, title, file, content string) *notebook.Page {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(book.Scope, file), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d := napDraft(draft, title, "0000000000000001")
+	d.Watch = &[]string{file}
+	return saveNapArticle(t, book, d)
+}
+
+// lessonsOf is the lessons of each conversation in the report by conversation id (a conversation with none is not in the map).
+func lessonsOf(r napReport) map[string][]string {
+	by := map[string][]string{}
+	for _, c := range r.Conversations {
+		if len(c.Lessons) > 0 {
+			by[c.ID] = c.Lessons
+		}
+	}
+	return by
+}
+
+func sortedIDs(ids ...string) []string {
+	out := append([]string{}, ids...)
+	sort.Strings(out)
+	return out
+}
+
+// Every conversation is still listed; one that an article cites as a source carries that article's id in lessons, so the agent checks the
+// article instead of adding the same lesson again, and one nobody cites carries no lessons (the key is not in the JSON at all).
+func TestNapNamesTheArticlesThatCiteAConversation(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	book := notebook.Book{Root: st.Dir, Scope: scope}
+	now := time.Now()
+	saveConversation(t, st, scope, "0000000000000002", now.Add(-3*time.Hour), "cited by two articles")
+	saveConversation(t, st, scope, "0000000000000003", now.Add(-2*time.Hour), "cited by no article")
+	b := saveNapArticle(t, book, napDraft(draft, "Second article", "0000000000000002"))
+	c := saveNapArticle(t, book, napDraft(draft, "Third article", "0000000000000002", "0000000000000001"))
+	r, out := decodeNapOutput(t)
+	if got := conversationIDs(r); fmt.Sprint(got) != fmt.Sprint([]string{"0000000000000002", "0000000000000003", "0000000000000001"}) {
+		t.Fatalf("every conversation is still listed, oldest first (the fixture's is the newest): %v", got)
+	}
+	want := map[string][]string{
+		"0000000000000001": sortedIDs(draft.ID, c.ID),
+		"0000000000000002": sortedIDs(b.ID, c.ID),
+	}
+	if got := lessonsOf(r); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("each conversation names the live articles that cite it, by id, and the one nobody cites names none:\n got %v\nwant %v", got, want)
+	}
+	var raw struct {
+		Conversations []map[string]any `json:"conversations"`
+	}
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range raw.Conversations {
+		_, has := c["lessons"]
+		if cited := c["id"] != "0000000000000003"; has != cited {
+			t.Fatalf("the lessons key is there exactly when an article cites the conversation: %v", c)
+		}
+	}
+}
+
+// An article that was withdrawn, deleted or replaced is out of the wiki's working set, so it does not stand for the conversation.
+func TestNapLeavesOutArticlesThatWereWithdrawnDeletedOrReplaced(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	book := notebook.Book{Root: st.Dir, Scope: scope}
+	now := time.Now()
+	for i := 4; i <= 7; i++ {
+		saveConversation(t, st, scope, fmt.Sprintf("%016x", i), now.Add(-time.Duration(i)*time.Hour), "a reply")
+	}
+	withdrawn := saveNapArticle(t, book, napDraft(draft, "To be withdrawn", "0000000000000004"))
+	if _, err := book.Withdraw(notebook.Withdrawal{ID: withdrawn.ID, Revision: withdrawn.Revision, Sources: []string{"0000000000000004"}, Reason: "The work that made it took it back."}); err != nil {
+		t.Fatal(err)
+	}
+	deleted := saveNapArticle(t, book, napDraft(draft, "To be deleted", "0000000000000005"))
+	if _, err := book.Manage(notebook.Change{ID: deleted.ID, Revision: deleted.Revision, Action: "delete"}); err != nil {
+		t.Fatal(err)
+	}
+	replaced := saveNapArticle(t, book, napDraft(draft, "To be replaced", "0000000000000006"))
+	replacement := napDraft(draft, "The replacement", "0000000000000007")
+	replacement.Replaces = []string{replaced.ID}
+	kept := saveNapArticle(t, book, replacement)
+	r := decodeNap(t)
+	if got := conversationIDs(r); fmt.Sprint(got) != fmt.Sprint([]string{"0000000000000007", "0000000000000006", "0000000000000005", "0000000000000004", "0000000000000001"}) {
+		t.Fatalf("every conversation is still listed, oldest first, whatever became of the articles that cite it: %v", got)
+	}
+	want := map[string][]string{"0000000000000001": {draft.ID}, "0000000000000007": {kept.ID}}
+	if got := lessonsOf(r); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("a withdrawn, a deleted and a replaced article stand for nothing; the replacement does:\n got %v\nwant %v", got, want)
+	}
+}
+
+// The person's correction counts as a citation too, even when the conversation is not among the article's sources, and an article is named
+// once however many ways it cites the conversation.
+func TestNapCitationsNameEachArticleOnceFromItsSourcesAndItsCorrection(t *testing.T) {
+	const a, b, c = "aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb", "cccccccccccccccc"
+	pages := []notebook.Page{
+		{ID: c, Sources: []notebook.Source{{ID: "0000000000000009"}}, Correction: &store.Correction{SourceID: "0000000000000003"}},
+		{ID: b, Sources: []notebook.Source{{ID: "0000000000000001"}, {ID: "0000000000000002"}}},
+		{ID: a, Sources: []notebook.Source{{ID: "0000000000000001"}}, Correction: &store.Correction{SourceID: "0000000000000001"}},
+	}
+	want := map[string][]string{
+		"0000000000000001": {a, b}, // a cites it twice, once as a source and once in its correction, and is named once
+		"0000000000000002": {b},
+		"0000000000000003": {c}, // only the correction
+		"0000000000000009": {c},
+	}
+	if got := napCitations(pages); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("each article once, in id order:\n got %v\nwant %v", got, want)
+	}
+}
+
+// An article that watches project files and whose files changed (or can no longer be read) is listed first, whatever the memory upgrade
+// says; an article whose files are as they were, and one that watches none, are not.
+func TestNapListsTheArticlesWhoseWatchedFilesChangedOrAreGone(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	book := notebook.Book{Root: st.Dir, Scope: scope}
+	watchedNapArticle(t, book, draft, "Watches a file that stays", "stays.txt", "same")
+	changed := watchedNapArticle(t, book, draft, "Watches a file that changes", "changes.txt", "before")
+	gone := watchedNapArticle(t, book, draft, "Watches a file that goes", "goes.txt", "before")
+	if err := os.WriteFile(filepath.Join(scope, "changes.txt"), []byte("after"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(scope, "goes.txt")); err != nil {
+		t.Fatal(err)
+	}
+	r := decodeNap(t)
+	want := []napPremiseChanged{{changed.ID, changed.Revision, changed.Title}, {gone.ID, gone.Revision, gone.Title}}
+	sort.Slice(want, func(i, j int) bool { return want[i].ID < want[j].ID })
+	if fmt.Sprint(r.PremiseChanged) != fmt.Sprint(want) || r.PremiseChangedMore != 0 {
+		t.Fatalf("only the articles whose watched file changed or went, by id, with revision and title (the fixture article and the one whose file stays are not there):\n got %+v\nwant %+v", r.PremiseChanged, want)
+	}
+}
+
+// Nothing changed: the key is not in the JSON, as the lessons of a conversation nobody cites are not.
+func TestNapLeavesOutPremiseChangedWhenNoWatchedFileChanged(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	watchedNapArticle(t, notebook.Book{Root: st.Dir, Scope: scope}, draft, "Watches a file that stays", "stays.txt", "same")
+	_, out := decodeNapOutput(t)
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &keys); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"premise_changed", "premise_changed_more"} {
+		if _, has := keys[key]; has {
+			t.Fatalf("no premise changed, so no %s key:\n%s", key, out)
+		}
+	}
+	if _, has := keys["conversations"]; !has {
+		t.Fatalf("premise: the keys of the report are read: %v", keys)
+	}
+}
+
+// What the memory upgrade has reviewed does not matter: a review keeps the files the article was saved against, so the premise stays
+// changed until the article is saved again, and the nap names it every time.
+func TestNapListsAChangedPremiseEvenWhenTheMemoryUpgradeReviewedTheArticle(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	book := notebook.Book{Root: st.Dir, Scope: scope}
+	changed := watchedNapArticle(t, book, draft, "Watches a file that changes", "changes.txt", "before")
+	if err := os.WriteFile(filepath.Join(scope, "changes.txt"), []byte("after"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	u, err := book.MemoryUpgrade()
+	if err != nil || len(u.Tasks) != 2 {
+		t.Fatalf("the fixture article and the changed one are up for review: %+v %v", u, err)
+	}
+	for _, task := range u.Tasks {
+		if _, err := book.Maintain(notebook.MaintenanceReview{PageID: task.PageID, Revision: task.Revision, Key: task.Key, Reason: "Checked the file and the article."}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := decodeNap(t)
+	if r.MemoryUpgrade.Status != "complete" {
+		t.Fatalf("premise: the memory upgrade has reviewed both: %+v", r.MemoryUpgrade)
+	}
+	if len(r.PremiseChanged) != 1 || r.PremiseChanged[0].ID != changed.ID {
+		t.Fatalf("the reviewed article is named all the same: %+v", r.PremiseChanged)
+	}
+}
+
+// At most 32 are named, in id order, and the number left out is counted, so a wiki where a large file changed does not fill the output.
+func TestNapListsAtMost32ChangedPremisesAndCountsTheRest(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	book := notebook.Book{Root: st.Dir, Scope: scope}
+	ids := []string{}
+	for i := 0; i < 33; i++ {
+		ids = append(ids, watchedNapArticle(t, book, draft, fmt.Sprintf("Watches the shared file %d", i), "shared.txt", "before").ID)
+	}
+	if err := os.WriteFile(filepath.Join(scope, "shared.txt"), []byte("after"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, out := decodeNapOutput(t)
+	got := []string{}
+	for _, p := range r.PremiseChanged {
+		got = append(got, p.ID)
+	}
+	if want := sortedIDs(ids...)[:32]; fmt.Sprint(got) != fmt.Sprint(want) || r.PremiseChangedMore != 1 || !strings.Contains(out, `"premise_changed_more": 1`) {
+		t.Fatalf("the first 32 by id and one left out:\n got %v more %d\nwant %v", got, r.PremiseChangedMore, want)
+	}
+}
+
+// The agent is told to review the articles whose premise changed before the memory upgrade, and what to do with a conversation that has
+// lessons (check those articles, do not add the same lesson again) and with one that has none (read it most closely).
+func TestNapNextActionReviewsChangedPremisesFirstAndSortsConversationsByLessons(t *testing.T) {
+	a := napNextAction
+	if !strings.HasPrefix(a, "1) If premise_changed lists articles, review them before anything else") || strings.Index(a, "premise_changed") > strings.Index(a, "memory-upgrade") {
+		t.Fatalf("the changed premises come first, ahead of the memory upgrade: %q", a)
+	}
+	for _, want := range []string{"premise_changed_more", "maintenance", "A conversation with lessons is already cited by those articles", "do not add the same content again", "without lessons most closely"} {
+		if !strings.Contains(a, want) {
+			t.Errorf("the next action does not say %q: %q", want, a)
+		}
 	}
 }
