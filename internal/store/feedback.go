@@ -109,9 +109,8 @@ func (s Store) readRecentFeedback(scope string, capture hash.Hash) ([]Feedback, 
 			}
 			break // use only observations written up to the newline
 		}
-		var v Feedback
-		if len(line) > 32<<10 || json.Unmarshal([]byte(line), &v) != nil || v.ID == "" || v.Request == "" || v.Summary == "" || v.Reply == "" ||
-			len(v.Request) > feedbackTextMax || len(v.Summary) > feedbackTextMax || len(v.Reply) > feedbackTextMax || len(v.Targets) > 2 {
+		v, ok := decodeFeedbackLine([]byte(line))
+		if !ok {
 			continue
 		}
 		recent[count%feedbackRecent] = v
@@ -131,6 +130,68 @@ func (s Store) readRecentFeedback(scope string, capture hash.Hash) ([]Feedback, 
 
 // RecentFeedback is source material taken into the wiki. Kept apart from the list of truths.
 func (s Store) RecentFeedback(scope string) ([]Feedback, error) { return s.recentFeedback(scope) }
+
+// decodeFeedbackLine is one line of the history, or false for a line that is not a conversation: too long, broken, or missing a part.
+func decodeFeedbackLine(line []byte) (Feedback, bool) {
+	var v Feedback
+	if len(line) > 32<<10 || json.Unmarshal(line, &v) != nil || v.ID == "" || v.Request == "" || v.Summary == "" || v.Reply == "" ||
+		len(v.Request) > feedbackTextMax || len(v.Summary) > feedbackTextMax || len(v.Reply) > feedbackTextMax || len(v.Targets) > 2 {
+		return v, false
+	}
+	return v, true
+}
+
+// FeedbackSince is every conversation of the scope saved after since (all of them when it is zero), newest first by place in the file. It
+// reads the whole file from its start, line by line, with no limit on the count or the size of the history: RecentFeedback's window (the newest
+// 256 within the last 4 MiB) was made for recalling similar past answers, not for going through what has piled up. A line is taken by the
+// same rules: a broken or too long line is skipped, a last line that is not ended by a newline yet is not taken, and of a repeated ID only
+// the newest record stands (so an ID whose newest record is not after since is not returned, whatever an older record of it says).
+func (s Store) FeedbackSince(scope string, since time.Time) ([]Feedback, error) {
+	f, err := s.openFile(s.feedbackPath(scope), os.O_RDONLY)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	r := bufio.NewReaderSize(f, 64<<10)
+	var rows []Feedback       // in file order; a record replaced by a newer one of its ID is left empty
+	place := map[string]int{} // the place in rows of the newest record of each ID that is after since
+	for {
+		line, err := r.ReadSlice('\n')
+		tooLong := false
+		for err == bufio.ErrBufferFull { // a line longer than the buffer is never taken: read on to its end
+			tooLong = true
+			_, err = r.ReadSlice('\n')
+		}
+		if err != nil {
+			if err != io.EOF {
+				return nil, err
+			}
+			break // use only observations written up to the newline
+		}
+		v, ok := decodeFeedbackLine(line)
+		if tooLong || !ok {
+			continue
+		}
+		if at, seen := place[v.ID]; seen { // an older record of the ID stands no more, whether or not this one is after since
+			rows[at] = Feedback{}
+			delete(place, v.ID)
+		}
+		if since.IsZero() || v.At.After(since) {
+			place[v.ID] = len(rows)
+			rows = append(rows, v)
+		}
+	}
+	out := make([]Feedback, 0, len(rows))
+	for i := len(rows) - 1; i >= 0; i-- {
+		if rows[i].ID != "" {
+			out = append(out, rows[i])
+		}
+	}
+	return out, nil
+}
 
 // TextMatch is the share of query words that appear in the text.
 // A long lesson can still be found with short query words. It is not a confidence or a line that allows acting.

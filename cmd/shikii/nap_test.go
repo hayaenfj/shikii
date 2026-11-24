@@ -1156,3 +1156,51 @@ func TestNapKeepsTheEndOfTheWindowWhereItWasWhenNothingIsShown(t *testing.T) {
 		t.Fatalf("the end is left where it was:\n%q\n%q", recorded, got)
 	}
 }
+
+// The nap is not limited by a count of the conversations saved: the history RecentFeedback reads (the newest 256 within 4 MiB) was made for
+// recalling similar past answers. With 300 waiting, the first run shows the oldest 64, the others follow, and running it until
+// newer_left is 0 shows every conversation exactly once.
+func TestNapShowsEveryConversationExactlyOnceHoweverManyAreWaiting(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	now := time.Now()
+	const total = 300
+	for i := 1; i <= total; i++ {
+		saveConversation(t, st, scope, fmt.Sprintf("%016x", i), now.Add(-time.Duration(total+10-i)*time.Minute), "reply")
+	}
+	shown := map[string]int{}
+	left := []int{}
+	for run := 0; run < 10; run++ {
+		r := napRunAt(t, st, scope, now)
+		for _, id := range conversationIDs(r) {
+			shown[id]++
+		}
+		left = append(left, r.NewerLeft)
+		if r.NewerLeft == 0 {
+			break
+		}
+	}
+	if fmt.Sprint(left) != "[236 172 108 44 0]" {
+		t.Fatalf("newer_left counts down by 64 to 0: %v", left)
+	}
+	if len(shown) != total {
+		t.Fatalf("every conversation is shown: %d of %d", len(shown), total)
+	}
+	for id, n := range shown {
+		if n != 1 {
+			t.Fatalf("%s is shown %d times, not once", id, n)
+		}
+	}
+}
+
+// A conversation older than the newest 256 is in the first window: the oldest ones come first.
+func TestNapShowsAConversationOlderThanTheNewest256OnTheFirstRun(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	now := time.Now()
+	for i := 1; i <= 300; i++ {
+		saveConversation(t, st, scope, fmt.Sprintf("%016x", i), now.Add(-time.Duration(310-i)*time.Minute), "reply")
+	}
+	first := napRunAt(t, st, scope, now)
+	if got := conversationIDs(first); fmt.Sprint(got) != hexIDs(1, 64) || first.NewerLeft != 236 {
+		t.Fatalf("the first run shows the oldest 64 of the 300, 44 of which are older than the newest 256: %d %v left %d", len(got), got, first.NewerLeft)
+	}
+}

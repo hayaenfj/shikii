@@ -281,7 +281,7 @@ func buildNapReport(root, scope string, now time.Time) (napReport, error) {
 		r.Window.From = from.UTC().Format(napWindowLayout)
 	}
 	book := notebook.Book{Root: root, Scope: scope}
-	recent, err := book.RecentFeedback()
+	recent, err := book.FeedbackSince(from) // the whole history after the end of the last window, not the newest 256 of it
 	if err != nil {
 		return r, err
 	}
@@ -297,7 +297,7 @@ func buildNapReport(root, scope string, now time.Time) (napReport, error) {
 	convs := []napConversation{}
 	for i := len(recent) - 1; i >= 0; i-- { // the history is newest first
 		f := recent[i]
-		if strings.TrimSpace(f.Reply) == "" || (!from.IsZero() && !f.At.After(from)) || f.At.After(now) {
+		if strings.TrimSpace(f.Reply) == "" || f.At.After(now) {
 			continue
 		}
 		convs = append(convs, napConversation{f.ID, f.At, f.Session, cut(f.Request, napRequestLimit), cut(f.Summary, napSummaryLimit), cut(f.Reply, napReplyLimit), cited[f.ID]})
