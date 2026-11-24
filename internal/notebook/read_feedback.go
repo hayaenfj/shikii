@@ -3,7 +3,6 @@ package notebook
 import (
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/hayaenfj/shikii/internal/store"
 )
@@ -34,11 +33,11 @@ func (b Book) RecentFeedback() ([]store.Feedback, error) {
 	return view.Items(), nil
 }
 
-// FeedbackSince is every conversation of the project saved after the time (all of them when it is zero), newest first, with no count
-// or size limit on the history: RecentFeedback's bounded window was made for recalling similar past answers, not for going through
-// what has piled up.
-func (b Book) FeedbackSince(since time.Time) ([]store.Feedback, error) {
-	return (store.Store{Dir: b.Root}).FeedbackSince(b.Scope, since)
+// FeedbackAfter is every conversation of the project written after the place the mark names (all of them for the zero mark), in the order
+// they were written, each with the mark just after its line, and with no count or size limit on the history: RecentFeedback's bounded
+// window was made for recalling similar past answers, not for going through what has piled up.
+func (b Book) FeedbackAfter(mark store.FeedbackMark) ([]store.FeedbackLine, error) {
+	return (store.Store{Dir: b.Root}).FeedbackAfter(b.Scope, mark)
 }
 
 // PendingSourcesFromFeedback keeps the original history order and review-file

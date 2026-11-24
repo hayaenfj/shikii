@@ -1,10 +1,13 @@
 package store
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -82,16 +85,38 @@ func feedbackIDs(items []Feedback) []string {
 	return ids
 }
 
-// FeedbackSince is not a window: it reads the file from its start, whatever the count and the size (RecentFeedback keeps the newest 256 of
-// the last 4 MiB), and returns every conversation after the time, newest first.
-func TestFeedbackSinceReadsTheWholeFileWhateverItsCountAndSize(t *testing.T) {
+func feedbackReplies(items []FeedbackLine) []string {
+	out := []string{}
+	for _, f := range items {
+		out = append(out, f.Reply)
+	}
+	return out
+}
+
+func feedbackLineIDs(items []FeedbackLine) []string {
+	out := []string{}
+	for _, f := range items {
+		out = append(out, f.ID)
+	}
+	return out
+}
+
+// hashOfLine is the hash a mark holds for a line of the file, computed here: SHA-256 of the line without its newline, in hex.
+func hashOfLine(line string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSuffix(line, "\n")))
+	return hex.EncodeToString(sum[:])
+}
+
+// FeedbackAfter is not a window: it reads the file from the mark to its end, whatever the count and the size (RecentFeedback keeps the
+// newest 256 of the last 4 MiB), and returns the conversations in the order they were written.
+func TestFeedbackAfterReadsTheWholeFileWhateverItsCountAndSize(t *testing.T) {
 	s, scope := feedbackWindowFixture(t, 600)
-	got, err := s.FeedbackSince(scope, time.Time{})
+	got, err := s.FeedbackAfter(scope, FeedbackMark{})
 	if err != nil || len(got) != 273 { // the fixture repeats 273 ids, so 273 are left after the duplicates
 		t.Fatalf("every id of 600 lines, not the newest 256 lines: %d %v", len(got), err)
 	}
-	if got[0].Reply != "reply 599" || got[len(got)-1].Reply != "reply 327" {
-		t.Fatalf("the newest line of each id, newest first: %q ... %q", got[0].Reply, got[len(got)-1].Reply)
+	if got[0].Reply != "reply 327" || got[len(got)-1].Reply != "reply 599" {
+		t.Fatalf("the newest line of each id, in the order of those lines: %q ... %q", got[0].Reply, got[len(got)-1].Reply)
 	}
 	// 1100 records of about 4 KB each are more than 4 MiB: the oldest ones are beyond the tail RecentFeedback reads.
 	big := strings.Repeat("x", 1400)
@@ -101,68 +126,176 @@ func TestFeedbackSinceReadsTheWholeFileWhateverItsCountAndSize(t *testing.T) {
 		lines = append(lines, string(raw)+"\n")
 	}
 	writeFeedbackLines(t, s, scope, lines...)
-	got, err = s.FeedbackSince(scope, time.Time{})
-	if err != nil || len(got) != 1100 || got[len(got)-1].ID != fmt.Sprintf("%016x", 1) {
-		t.Fatalf("all 1100 records of a file larger than 4 MiB, the oldest last: %d %v", len(got), err)
+	got, err = s.FeedbackAfter(scope, FeedbackMark{})
+	if err != nil || len(got) != 1100 || got[0].ID != fmt.Sprintf("%016x", 1) {
+		t.Fatalf("all 1100 records of a file larger than 4 MiB, the oldest first: %d %v", len(got), err)
 	}
-	if got, err := (Store{Dir: t.TempDir()}).FeedbackSince(scope, time.Time{}); err != nil || got != nil {
+	if got, err := (Store{Dir: t.TempDir()}).FeedbackAfter(scope, FeedbackMark{}); err != nil || got != nil {
 		t.Fatalf("a project with no feedback file has no conversations: %d %v", len(got), err)
 	}
 }
 
-func TestFeedbackSinceKeepsOnlyTheNewestRecordOfAnId(t *testing.T) {
+// Of a repeated ID the newest line stands, at its own place in the file; an older line of it before the mark is not what was meant, so the
+// conversation is read again when a newer line of it is after the mark.
+func TestFeedbackAfterKeepsOnlyTheNewestLineOfAnId(t *testing.T) {
 	s, scope := feedbackWindowFixture(t, 0)
+	first := feedbackLine(t, "000000000000000a", "first, replaced", 10)
+	other := feedbackLine(t, "000000000000000b", "other", 20)
 	writeFeedbackLines(t, s, scope,
-		feedbackLine(t, "000000000000000a", "first, replaced", 10),
-		feedbackLine(t, "000000000000000b", "other", 20),
+		first,
+		other,
 		feedbackLine(t, "000000000000000a", "second, kept", 30),
-		feedbackLine(t, "000000000000000c", "newer than the time, then replaced by an older one", 50),
-		feedbackLine(t, "000000000000000c", "the last of its id is not after the time", 5),
+		feedbackLine(t, "000000000000000c", "replaced by a line with an older time", 50),
+		feedbackLine(t, "000000000000000c", "the last of its id, whatever its time", 5),
 	)
-	got, err := s.FeedbackSince(scope, time.Unix(7, 0))
-	if err != nil || fmt.Sprint(feedbackIDs(got)) != "[000000000000000a 000000000000000b]" || got[0].Reply != "second, kept" {
-		t.Fatalf("the newest record of an id stands, and an id whose last record is not after the time is not there: %v %v", got, err)
+	got, err := s.FeedbackAfter(scope, FeedbackMark{})
+	if err != nil || fmt.Sprint(feedbackReplies(got)) != "[other second, kept the last of its id, whatever its time]" {
+		t.Fatalf("the newest line of an id stands, in file order, whatever its time says: %v %v", feedbackReplies(got), err)
 	}
-	// An older record of an id that the time leaves out does not come back when the newest one is after the time.
-	got, err = s.FeedbackSince(scope, time.Unix(25, 0))
-	if err != nil || fmt.Sprint(feedbackIDs(got)) != "[000000000000000a]" || got[0].Reply != "second, kept" {
-		t.Fatalf("only the newest record of the id that is after the time: %v %v", got, err)
+	got, err = s.FeedbackAfter(scope, FeedbackMark{Offset: int64(len(first)), Hash: hashOfLine(first)})
+	if err != nil || fmt.Sprint(feedbackLineIDs(got)) != "[000000000000000b 000000000000000a 000000000000000c]" {
+		t.Fatalf("after the first line: %v %v", feedbackLineIDs(got), err)
+	}
+	got, err = s.FeedbackAfter(scope, FeedbackMark{Offset: int64(len(first) + len(other)), Hash: hashOfLine(other)})
+	if err != nil || fmt.Sprint(feedbackReplies(got)) != "[second, kept the last of its id, whatever its time]" {
+		t.Fatalf("after the second line, the first line of an id is not read again, the newer one is: %v %v", feedbackReplies(got), err)
 	}
 }
 
-func TestFeedbackSinceSkipsBrokenLinesAndTheLineStillBeingWritten(t *testing.T) {
+// A broken or too long line is skipped; a line with no newline yet is not taken, and no mark is ever past it.
+func TestFeedbackAfterSkipsBrokenLinesAndTheLineStillBeingWritten(t *testing.T) {
 	s, scope := feedbackWindowFixture(t, 0)
 	tooLong := Feedback{ID: "00000000000000f1", Request: "r", Summary: "s", Reply: strings.Repeat("y", 40<<10), At: time.Unix(15, 0)}
 	rawLong, _ := json.Marshal(tooLong)
 	tooLong.ID, tooLong.Reply = "00000000000000f2", strings.Repeat("z", 100<<10)
 	rawLonger, _ := json.Marshal(tooLong) // longer than the buffer the file is read with
+	complete := feedbackLine(t, "0000000000000002", "kept after the broken lines", 20)
 	writeFeedbackLines(t, s, scope,
 		feedbackLine(t, "0000000000000001", "kept", 10),
 		"this is not json\n",
 		`{"id":"00000000000000e1","request":"r","summary":"s"}`+"\n", // no reply
 		string(rawLong)+"\n",                                         // a line over 32 KiB
 		string(rawLonger)+"\n",                                       // a line over 64 KiB
-		feedbackLine(t, "0000000000000002", "kept after the broken lines", 20),
+		complete,
 		strings.TrimSuffix(feedbackLine(t, "0000000000000003", "complete but not ended by a newline yet", 30), "\n"),
 	)
-	got, err := s.FeedbackSince(scope, time.Time{})
-	if err != nil || fmt.Sprint(feedbackIDs(got)) != "[0000000000000002 0000000000000001]" {
-		t.Fatalf("broken and too long lines are skipped, the line without its newline is not taken: %v %v", feedbackIDs(got), err)
+	got, err := s.FeedbackAfter(scope, FeedbackMark{})
+	if err != nil || fmt.Sprint(feedbackLineIDs(got)) != "[0000000000000001 0000000000000002]" {
+		t.Fatalf("broken and too long lines are skipped, the line without its newline is not taken: %v %v", feedbackLineIDs(got), err)
+	}
+	raw, _ := os.ReadFile(s.feedbackPath(scope))
+	if last := got[len(got)-1].Mark.Offset; last != int64(strings.LastIndex(string(raw), "\n")+1) {
+		t.Fatalf("no mark is past the line being written: %d of %d bytes", last, len(raw))
+	}
+	if got[1].Mark.Hash != hashOfLine(complete) {
+		t.Fatalf("the hash is that of the line without its newline: %s", got[1].Mark.Hash)
 	}
 }
 
-func TestFeedbackSinceReturnsOnlyWhatIsAfterTheTime(t *testing.T) {
+// Each conversation carries the mark just after its line, and a read from that mark returns what comes after it.
+func TestFeedbackAfterGivesTheMarkOfEachLineAndResumesFromIt(t *testing.T) {
 	s, scope := feedbackWindowFixture(t, 0)
-	writeFeedbackLines(t, s, scope,
-		feedbackLine(t, "0000000000000001", "before", 10),
-		feedbackLine(t, "0000000000000002", "at the time", 20),
-		feedbackLine(t, "0000000000000003", "after", 30),
-	)
-	got, err := s.FeedbackSince(scope, time.Unix(20, 0))
-	if err != nil || fmt.Sprint(feedbackIDs(got)) != "[0000000000000003]" {
-		t.Fatalf("a record at the very time is not after it: %v %v", feedbackIDs(got), err)
+	lines := []string{
+		feedbackLine(t, "0000000000000001", "one", 30), // times do not matter: only the place does
+		"this is not json\n",
+		feedbackLine(t, "0000000000000002", "two", 10),
+		feedbackLine(t, "0000000000000003", "three", 20),
 	}
-	if got, err = s.FeedbackSince(scope, time.Time{}); err != nil || len(got) != 3 {
-		t.Fatalf("with no time every conversation is returned: %v %v", feedbackIDs(got), err)
+	writeFeedbackLines(t, s, scope, lines...)
+	got, err := s.FeedbackAfter(scope, FeedbackMark{})
+	if err != nil || len(got) != 3 {
+		t.Fatalf("three conversations: %v %v", feedbackLineIDs(got), err)
+	}
+	end := func(n int) int64 { // the offset after the first n lines of the file
+		total := 0
+		for _, line := range lines[:n] {
+			total += len(line)
+		}
+		return int64(total)
+	}
+	for i, want := range []struct {
+		line int // the place in lines of the conversation
+	}{{0}, {2}, {3}} {
+		if got[i].Mark != (FeedbackMark{Offset: end(want.line + 1), Hash: hashOfLine(lines[want.line])}) {
+			t.Fatalf("conversation %d: mark %+v, want offset %d hash %s", i, got[i].Mark, end(want.line+1), hashOfLine(lines[want.line]))
+		}
+	}
+	for i := range got {
+		rest, err := s.FeedbackAfter(scope, got[i].Mark)
+		if err != nil || len(rest) != len(got)-i-1 {
+			t.Fatalf("after conversation %d: %v %v", i, feedbackLineIDs(rest), err)
+		}
+	}
+}
+
+// A mark whose offset no longer ends the line with its hash is looked up by the hash: the lines before it were removed, or the file
+// was replaced. When no line has the hash, the read starts at the beginning.
+func TestFeedbackAfterChecksTheMarkAgainstTheFile(t *testing.T) {
+	s, scope := feedbackWindowFixture(t, 0)
+	one := feedbackLine(t, "0000000000000001", "one", 10)
+	two := feedbackLine(t, "0000000000000002", "two", 20)
+	three := feedbackLine(t, "0000000000000003", "three", 30)
+	four := feedbackLine(t, "0000000000000004", "four", 40)
+	writeFeedbackLines(t, s, scope, one, two, three, four)
+	mark := FeedbackMark{Offset: int64(len(one) + len(two)), Hash: hashOfLine(two)}
+	after := func(label, want string) {
+		t.Helper()
+		got, err := s.FeedbackAfter(scope, mark)
+		if err != nil || fmt.Sprint(feedbackReplies(got)) != want {
+			t.Fatalf("%s: %v %v, want %s", label, feedbackReplies(got), err, want)
+		}
+	}
+	after("the file as it was", "[three four]")
+	writeFeedbackLines(t, s, scope, two, three, four) // the line before the mark was removed: the offset points into the next line
+	after("a line before the mark was removed", "[three four]")
+	writeFeedbackLines(t, s, scope, three, four) // the line the mark stands for was removed too
+	after("the line of the mark is gone", "[three four]")
+	writeFeedbackLines(t, s, scope, four, two, three) // another file: the line is found elsewhere
+	after("the line is elsewhere", "[three]")
+	writeFeedbackLines(t, s, scope, one, feedbackLine(t, "0000000000000002", "TWO", 20)) // the same offset ends a line with another hash
+	after("another line at the same offset", "[one TWO]")
+	writeFeedbackLines(t, s, scope, one[:10]) // shorter than the offset
+	after("a file shorter than the offset", "[]")
+	for _, m := range []FeedbackMark{{Offset: 0, Hash: mark.Hash}, {Offset: mark.Offset}, {Offset: -4, Hash: mark.Hash}} {
+		writeFeedbackLines(t, s, scope, one, two)
+		got, err := s.FeedbackAfter(scope, m)
+		if err != nil || len(got) != 2 {
+			t.Fatalf("a mark with no offset or no hash is the beginning: %+v %v %v", m, feedbackReplies(got), err)
+		}
+	}
+}
+
+// What RecentFeedback takes from a file and what FeedbackAfter takes from the beginning are the same conversations (the first newest first,
+// the second in file order): the two read lines by the same rules.
+func TestFeedbackAfterTakesTheSameLinesAsRecentFeedbackOnOddFiles(t *testing.T) {
+	s, scope := feedbackWindowFixture(t, 0)
+	line := func(id string, i int, extra string) string {
+		return fmt.Sprintf(`{"id":"%s","request":"r%s","summary":"s","reply":"x","at":"%s"}`+"\n", id, extra, time.Unix(int64(i), 0).UTC().Format(time.RFC3339))
+	}
+	writeFeedbackLines(t, s, scope,
+		line("a", 1, ""),
+		"garbage\n",
+		line("b", 2, strings.Repeat("y", 40<<10)), // 40 KiB: too long
+		line("c", 3, strings.Repeat("y", 70<<10)), // 70 KiB: over the buffer
+		line("a", 4, ""), // repeated id
+		`{"id":"d","request":"r","summary":"s","reply":"","at":"1970-01-01T00:00:00Z"}`+"\n", // empty reply
+		line("e", 5, ""),
+		strings.TrimSuffix(line("f", 6, ""), "\n"), // partial last line
+	)
+	recent, err := s.RecentFeedback(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := s.FeedbackAfter(scope, FeedbackMark{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent) != len(after) {
+		t.Fatalf("recent %v, after %v", feedbackIDs(recent), feedbackLineIDs(after))
+	}
+	for i, v := range recent {
+		if w := after[len(after)-1-i].Feedback; !reflect.DeepEqual(v, w) {
+			t.Fatalf("recent %v, after %v", feedbackIDs(recent), feedbackLineIDs(after))
+		}
 	}
 }

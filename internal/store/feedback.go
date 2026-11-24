@@ -4,6 +4,9 @@ package store
 // and consulted on later similar requests. Kept in records/feedback/, apart from ordinary decisions and truths.
 import (
 	"bufio"
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"hash"
@@ -47,7 +50,8 @@ const (
 	// assessment stays under the 32 KiB its file is read with: a character is at most six bytes in the file.
 	AssessmentTextLimit = 1500
 	feedbackTextMax     = FeedbackTextLimit
-	feedbackReadMax     = 4 << 20 // do not read the whole history every turn
+	feedbackReadMax     = 4 << 20  // do not read the whole history every turn
+	feedbackLineMax     = 32 << 10 // the longest line (its newline counted) that is a conversation
 	feedbackRecent      = 256
 	feedbackRecall      = 2
 )
@@ -134,19 +138,37 @@ func (s Store) RecentFeedback(scope string) ([]Feedback, error) { return s.recen
 // decodeFeedbackLine is one line of the history, or false for a line that is not a conversation: too long, broken, or missing a part.
 func decodeFeedbackLine(line []byte) (Feedback, bool) {
 	var v Feedback
-	if len(line) > 32<<10 || json.Unmarshal(line, &v) != nil || v.ID == "" || v.Request == "" || v.Summary == "" || v.Reply == "" ||
+	if len(line) > feedbackLineMax || json.Unmarshal(line, &v) != nil || v.ID == "" || v.Request == "" || v.Summary == "" || v.Reply == "" ||
 		len(v.Request) > feedbackTextMax || len(v.Summary) > feedbackTextMax || len(v.Reply) > feedbackTextMax || len(v.Targets) > 2 {
 		return v, false
 	}
 	return v, true
 }
 
-// FeedbackSince is every conversation of the scope saved after since (all of them when it is zero), newest first by place in the file. It
-// reads the whole file from its start, line by line, with no limit on the count or the size of the history: RecentFeedback's window (the newest
-// 256 within the last 4 MiB) was made for recalling similar past answers, not for going through what has piled up. A line is taken by the
-// same rules: a broken or too long line is skipped, a last line that is not ended by a newline yet is not taken, and of a repeated ID only
-// the newest record stands (so an ID whose newest record is not after since is not returned, whatever an older record of it says).
-func (s Store) FeedbackSince(scope string, since time.Time) ([]Feedback, error) {
+// FeedbackMark is a place in the history of conversations: the byte offset just after a line, and the SHA-256 (hex) of that line's bytes
+// without its newline. The history is only appended to, under its lock, so a line written after the mark was read is after the offset,
+// whatever time it carries. The hash tells whether the offset still stands after the file was rewritten (shikii forget removes the lines
+// of a finished session) or replaced. The zero mark is the beginning.
+type FeedbackMark struct {
+	Offset int64
+	Hash   string
+}
+
+// FeedbackLine is a conversation with the mark just after the line it was read from.
+type FeedbackLine struct {
+	Feedback
+	Mark FeedbackMark
+}
+
+// FeedbackAfter is every conversation of the scope written after the mark (all of them for the zero mark), in the order they were
+// written. It reads the file from the mark to its end, line by line, with no limit on the count or the size of the history:
+// RecentFeedback's window (the newest 256 within the last 4 MiB) was made for recalling similar past answers, not for going through what
+// has piled up. A line is taken by the same rules: a broken or too long line is skipped, a last line that is not ended by a newline yet is
+// not taken (so no mark is ever past it), and of a repeated ID only the newest line stands, at its own place.
+//
+// When the line that ends at the mark's offset no longer hashes to the mark's hash, the file was rewritten or replaced: the read goes on
+// after the first line that has the hash, and from the beginning when no line has it (a conversation may then be read again, none is lost).
+func (s Store) FeedbackAfter(scope string, mark FeedbackMark) ([]FeedbackLine, error) {
 	f, err := s.openFile(s.feedbackPath(scope), os.O_RDONLY)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -155,42 +177,108 @@ func (s Store) FeedbackSince(scope string, since time.Time) ([]Feedback, error) 
 		return nil, err
 	}
 	defer f.Close()
-	r := bufio.NewReaderSize(f, 64<<10)
-	var rows []Feedback       // in file order; a record replaced by a newer one of its ID is left empty
-	place := map[string]int{} // the place in rows of the newest record of each ID that is after since
-	for {
-		line, err := r.ReadSlice('\n')
-		tooLong := false
-		for err == bufio.ErrBufferFull { // a line longer than the buffer is never taken: read on to its end
-			tooLong = true
-			_, err = r.ReadSlice('\n')
-		}
-		if err != nil {
-			if err != io.EOF {
-				return nil, err
-			}
-			break // use only observations written up to the newline
-		}
-		v, ok := decodeFeedbackLine(line)
-		if tooLong || !ok {
-			continue
-		}
-		if at, seen := place[v.ID]; seen { // an older record of the ID stands no more, whether or not this one is after since
-			rows[at] = Feedback{}
-			delete(place, v.ID)
-		}
-		if since.IsZero() || v.At.After(since) {
-			place[v.ID] = len(rows)
-			rows = append(rows, v)
-		}
+	from, err := feedbackResume(f, mark)
+	if err != nil {
+		return nil, err
 	}
-	out := make([]Feedback, 0, len(rows))
-	for i := len(rows) - 1; i >= 0; i-- {
-		if rows[i].ID != "" {
-			out = append(out, rows[i])
+	var rows []FeedbackLine   // in file order; a line replaced by a newer one of its ID is left empty
+	place := map[string]int{} // the place in rows of the newest line of each ID
+	err = scanFeedbackLines(f, from, func(line []byte, end int64) bool {
+		v, ok := decodeFeedbackLine(line)
+		if !ok {
+			return true
+		}
+		if at, seen := place[v.ID]; seen {
+			rows[at] = FeedbackLine{}
+		}
+		place[v.ID] = len(rows)
+		rows = append(rows, FeedbackLine{v, FeedbackMark{end, feedbackLineHash(line)}})
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]FeedbackLine, 0, len(place))
+	for _, row := range rows {
+		if row.ID != "" {
+			out = append(out, row)
 		}
 	}
 	return out, nil
+}
+
+// scanFeedbackLines gives fn each complete line of f from the offset from (its newline included) and the offset just after it, until fn
+// returns false. A line longer than the history keeps is not given, and neither is a last line with no newline yet.
+func scanFeedbackLines(f *os.File, from int64, fn func(line []byte, end int64) bool) error {
+	if _, err := f.Seek(from, io.SeekStart); err != nil {
+		return err
+	}
+	r := bufio.NewReaderSize(f, 64<<10)
+	end := from
+	for {
+		line, err := r.ReadSlice('\n')
+		n := len(line)
+		tooLong := false
+		for err == bufio.ErrBufferFull { // a line longer than the buffer is never taken: read on to its end
+			tooLong = true
+			var rest []byte
+			rest, err = r.ReadSlice('\n')
+			n += len(rest)
+		}
+		if err != nil {
+			if err != io.EOF {
+				return err
+			}
+			return nil // use only observations written up to the newline
+		}
+		end += int64(n)
+		if tooLong || n > feedbackLineMax {
+			continue
+		}
+		if !fn(line, end) {
+			return nil
+		}
+	}
+}
+
+// feedbackLineHash is the hash a mark holds: the SHA-256 of the line without its newline, in hex.
+func feedbackLineHash(line []byte) string {
+	sum := sha256.Sum256(bytes.TrimSuffix(line, []byte("\n")))
+	return hex.EncodeToString(sum[:])
+}
+
+// feedbackResume is the offset a read after mark starts from: the mark's own while the line that ends there still has the mark's hash,
+// else the end of the first line that has it, else 0.
+func feedbackResume(f *os.File, mark FeedbackMark) (int64, error) {
+	if mark.Offset <= 0 || mark.Hash == "" {
+		return 0, nil
+	}
+	if line, ok := feedbackLineEndingAt(f, mark.Offset); ok && feedbackLineHash(line) == mark.Hash {
+		return mark.Offset, nil
+	}
+	found := int64(0)
+	err := scanFeedbackLines(f, 0, func(line []byte, end int64) bool {
+		if feedbackLineHash(line) == mark.Hash {
+			found = end
+			return false
+		}
+		return true
+	})
+	return found, err
+}
+
+// feedbackLineEndingAt is the line of f that ends just before the offset (its newline is the byte before it), or false when the offset
+// is not the end of a line that the history keeps: beyond the file, in the middle of a line, or after a line that is too long.
+func feedbackLineEndingAt(f *os.File, offset int64) ([]byte, bool) {
+	n := min(offset, feedbackLineMax+1) // the line, its newline, and the newline before it
+	buf := make([]byte, n)
+	if _, err := f.ReadAt(buf, offset-n); err != nil || buf[n-1] != '\n' {
+		return nil, false
+	}
+	if at := bytes.LastIndexByte(buf[:n-1], '\n'); at >= 0 {
+		return buf[at+1:], true
+	}
+	return buf, n == offset && n <= feedbackLineMax // no newline before it: the line starts the file, unless it is longer than the history keeps
 }
 
 // TextMatch is the share of query words that appear in the text.
