@@ -497,9 +497,11 @@ At most once a day, shikii sets aside a moment to go through what has piled up. 
 
 - The notice writes the time to `.shikii/nap` (this notice on the first line, the previous one on the second), so another session opened at the same time is not told again.
 - A completed memory upgrade starts again. Only the articles changed since and the new ones come back for review.
-- `shikii nap` only reads. It prints, as JSON, the conversations between the last two notices (the request, the agent's summary and the person's reply; up to the newest 64). The agent adds the corrections and rules in the person's replies that the wiki does not hold yet, through the usual steps (`shikii wiki capture` → `shikii reflect place` → `shikii reflect submit`).
+- `shikii nap` prints, as JSON, the conversations it has not shown yet (the request, the agent's summary and the person's reply): those saved after the end of the window the last `shikii nap` printed, or all of them the first time. The agent adds the corrections and rules in the person's replies that the wiki does not hold yet, through the usual steps (`shikii wiki capture` → `shikii reflect place` → `shikii reflect submit`).
+- The conversations come oldest first, 64 at a time. When more are waiting, the window ends at the 64th, `newer_left` counts the rest, and the next `shikii nap` starts with them. The conversation records are read up to the newest 256, so if `shikii nap` goes unrun until more than that pile up, the older ones are not shown.
+- Once it has printed a window, `shikii nap` writes where the window ended to `.shikii/nap-window-end`, a file of its own. So a notice the agent did not act on loses nothing: the next `shikii nap` starts where the last one stopped, and shows the conversations in between too.
 - The same output carries the progress of the memory upgrade, and the agent carries it to the end.
-- shikii never edits an article itself. When the agent does not run it, what is left stays in the memory upgrade's checkpoint and in the conversation records, and the next notice picks it up.
+- shikii never edits an article itself. When the agent does not run `shikii nap`, what is left of the review stays in the memory upgrade's checkpoint, the conversations wait in the records, and the next `shikii nap` shows them.
 
 ### Cleanup: `shikii gc`
 

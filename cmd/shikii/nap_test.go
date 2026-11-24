@@ -274,59 +274,315 @@ func conversationIDs(r napReport) []string {
 	return ids
 }
 
-// shikii nap lists the conversations of the window between the last two notices (after the earlier one, up to the last one),
-// oldest first, and nothing outside it.
-func TestNapListsOnlyTheConversationsOfTheWindow(t *testing.T) {
+func napWindowEndFilePath(st store.Store) string { return filepath.Join(st.Dir, "nap-window-end") }
+
+// writeNapWindowEnd writes .shikii/nap-window-end as `shikii nap` does: the end of the last window it printed, one time.
+func writeNapWindowEnd(t *testing.T, st store.Store, at time.Time) string {
+	t.Helper()
+	text := at.UTC().Format(time.RFC3339Nano) + "\n"
+	if err := os.WriteFile(napWindowEndFilePath(st), []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return text
+}
+
+func readNapWindowEndFile(t *testing.T, st store.Store) string {
+	t.Helper()
+	b, err := os.ReadFile(napWindowEndFilePath(st))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// napRunAt is what `shikii nap` does with the clock set: the window is built at now, and its end is recorded.
+func napRunAt(t *testing.T, st store.Store, scope string, now time.Time) napReport {
+	t.Helper()
+	r, err := buildNapReport(st.Dir, scope, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := recordNapWindowEnd(st.Dir, r); err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func parseNapTime(t *testing.T, text string) time.Time {
+	t.Helper()
+	at, err := time.Parse(time.RFC3339, strings.TrimSpace(text))
+	if err != nil {
+		t.Fatalf("not a time: %q %v", text, err)
+	}
+	return at
+}
+
+func hexIDs(from, to int) string {
+	ids := []string{}
+	for i := from; i <= to; i++ {
+		ids = append(ids, fmt.Sprintf("%016x", i))
+	}
+	return fmt.Sprint(ids)
+}
+
+// shikii nap lists the conversations after the end of the last window it printed, up to now, oldest first, and nothing outside them. The
+// notice's file (.shikii/nap) does not decide the window and is not touched by the command.
+func TestNapListsOnlyTheConversationsAfterTheEndOfTheLastWindow(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
 	now := time.Now()
-	before, from, to := now.Add(-100*time.Hour), now.Add(-72*time.Hour), now.Add(-24*time.Hour)
-	saveConversation(t, st, scope, "0000000000000001", before, "before the window")
-	saveConversation(t, st, scope, "0000000000000002", now.Add(-60*time.Hour), "inside, older")
-	saveConversation(t, st, scope, "0000000000000003", now.Add(-30*time.Hour), "inside, newer")
-	saveConversation(t, st, scope, "0000000000000004", now.Add(-2*time.Hour), "after the window")
-	writeNapState(t, st, to, from)
+	end := now.Add(-72 * time.Hour)
+	saveConversation(t, st, scope, "0000000000000001", now.Add(-100*time.Hour), "before the last window ended")
+	saveConversation(t, st, scope, "0000000000000002", now.Add(-60*time.Hour), "after it, older")
+	saveConversation(t, st, scope, "0000000000000003", now.Add(-30*time.Hour), "after it, newer")
+	saveConversation(t, st, scope, "0000000000000004", now.Add(-2*time.Hour), "after it, the newest")
+	saveConversation(t, st, scope, "0000000000000005", now.Add(2*time.Hour), "not yet: later than now")
+	writeNapWindowEnd(t, st, end)
+	notices := writeNapState(t, st, now.Add(-24*time.Hour), now.Add(-80*time.Hour))
 	r := decodeNap(t)
-	if got := conversationIDs(r); fmt.Sprint(got) != "[0000000000000002 0000000000000003]" {
-		t.Fatalf("only the two inside the window, oldest first: %v", got)
+	if got := conversationIDs(r); fmt.Sprint(got) != hexIDs(2, 4) {
+		t.Fatalf("the three after the end of the last window, oldest first, none from the future: %v", got)
 	}
-	if r.Window.From != from.UTC().Format(time.RFC3339) || r.Window.To != to.UTC().Format(time.RFC3339) {
-		t.Fatalf("the window is the two times of the file: %+v", r.Window)
+	if r.Window.From != end.UTC().Format(time.RFC3339Nano) {
+		t.Fatalf("the window starts where the last one ended: %+v", r.Window)
+	}
+	if to := parseNapTime(t, r.Window.To); to.Before(now) || time.Since(to) > time.Minute {
+		t.Fatalf("the window runs up to now: %+v", r.Window)
+	}
+	if got := readNapWindowEndFile(t, st); got != r.Window.To+"\n" {
+		t.Fatalf("the end of the window is recorded once it is printed:\n%q\n%q", r.Window.To, got)
+	}
+	if got := readNapStateFile(t, st); got != notices {
+		t.Fatalf("the notice's file is left as it was:\n%q\n%q", notices, got)
 	}
 	c := r.Conversations[0]
-	if c.Request != "request 0000000000000002" || c.Summary != "summary 0000000000000002" || c.Reply != "inside, older" || c.Session != "session-0000000000000002" || c.At.IsZero() {
+	if c.Request != "request 0000000000000002" || c.Summary != "summary 0000000000000002" || c.Reply != "after it, older" || c.Session != "session-0000000000000002" || c.At.IsZero() {
 		t.Fatalf("each conversation carries its id, time, session and its three texts: %+v", c)
 	}
-	if r.NextAction != napNextAction || !strings.Contains(r.NextAction, "memory-upgrade") || !strings.Contains(r.NextAction, "Never delete") {
+	if r.NextAction != napNextAction || !strings.Contains(r.NextAction, "memory-upgrade") || !strings.Contains(r.NextAction, "Never delete") || !strings.Contains(r.NextAction, "newer_left") {
 		t.Fatalf("the next action is given: %q", r.NextAction)
 	}
 	if r.MemoryUpgrade.Status == "" || r.MemoryUpgrade.Total != 1 {
 		t.Fatalf("the progress of the memory upgrade is given: %+v", r.MemoryUpgrade)
 	}
-	// with one line the window starts at the beginning; with no file it runs up to now
-	writeNapState(t, st, to)
-	if got := conversationIDs(decodeNap(t)); fmt.Sprint(got) != "[0000000000000001 0000000000000002 0000000000000003]" {
-		t.Fatalf("with one time the window starts at the beginning: %v", got)
-	}
-	if err := os.Remove(napStatePath(st)); err != nil {
-		t.Fatal(err)
-	}
-	r = decodeNap(t)
-	if len(r.Conversations) != 4 || r.Window.From != "" {
-		t.Fatalf("with no file every conversation up to now is in the window: %v %+v", conversationIDs(r), r.Window)
+	// With no file, or a file that holds no time, the window starts at the beginning (and the file then holds a time).
+	for name, prepare := range map[string]func(){
+		"no file":             func() { _ = os.Remove(napWindowEndFilePath(st)) },
+		"a file with no time": func() { _ = os.WriteFile(napWindowEndFilePath(st), []byte("yesterday\n"), 0o600) },
+	} {
+		prepare()
+		r = decodeNap(t)
+		if got := conversationIDs(r); fmt.Sprint(got) != hexIDs(1, 4) || r.Window.From != "" {
+			t.Fatalf("%s: every conversation up to now is in the window: %v %+v", name, got, r.Window)
+		}
+		if got := readNapWindowEndFile(t, st); got != r.Window.To+"\n" {
+			t.Fatalf("%s: the end of the window is recorded:\n%q\n%q", name, r.Window.To, got)
+		}
 	}
 }
 
-// At most 64 conversations are listed: the newest of the window, oldest first, and the count left out is said.
-func TestNapListsAtMost64ConversationsAndSaysHowManyWereLeftOut(t *testing.T) {
+// The reported failure: the agent was told, did not run shikii nap, and was told again. The next shikii nap shows the conversations of the
+// window nobody read as well as the later ones, and the notice does not move where the window starts.
+func TestNapShowsTheConversationsOfANoticeThatWasNotActedOn(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
 	now := time.Now()
-	for i := 1; i <= 70; i++ {
-		saveConversation(t, st, scope, fmt.Sprintf("%016x", i), now.Add(-time.Duration(100-i)*time.Minute), "reply")
+	windowEnd := writeNapWindowEnd(t, st, now.Add(-90*time.Hour)) // the last shikii nap showed what came before this
+	saveConversation(t, st, scope, "0000000000000001", now.Add(-95*time.Hour), "shown by the last shikii nap")
+	saveConversation(t, st, scope, "0000000000000002", now.Add(-70*time.Hour), "before the notice nobody acted on")
+	writeNapState(t, st, now.Add(-50*time.Hour), now.Add(-120*time.Hour)) // that notice, and the one before it
+	saveConversation(t, st, scope, "0000000000000003", now.Add(-30*time.Hour), "after that notice")
+	saveWorkResults(t, st, scope, 0, 5, now.Add(-time.Hour))
+	if out := startSession(t, scope, nil); !strings.Contains(out, napMarker) {
+		t.Fatalf("the next notice comes:\n%s", out)
+	}
+	if got := readNapWindowEndFile(t, st); got != windowEnd {
+		t.Fatalf("a notice does not move where the window starts:\n%q\n%q", windowEnd, got)
 	}
 	r := decodeNap(t)
-	ids := conversationIDs(r)
-	if len(ids) != 64 || ids[0] != fmt.Sprintf("%016x", 7) || ids[63] != fmt.Sprintf("%016x", 70) || r.OlderOmitted != 6 {
-		t.Fatalf("the newest 64, oldest first, and 6 left out: %d %v %v", len(ids), ids[:1], r.OlderOmitted)
+	if got := conversationIDs(r); fmt.Sprint(got) != hexIDs(2, 3) {
+		t.Fatalf("the conversation of the window nobody read is listed with the later one: %v", got)
+	}
+}
+
+// Run twice in a row, the second shikii nap shows only what was saved after the first one's window, and a third shows nothing.
+func TestNapRunTwiceInARowShowsTheSecondOnlyWhatCameAfterTheFirst(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	now := time.Now()
+	saveConversation(t, st, scope, "0000000000000001", now.Add(-3*time.Hour), "first")
+	saveConversation(t, st, scope, "0000000000000002", now.Add(-2*time.Hour), "second")
+	first := decodeNap(t) // through the command: it prints, then records
+	if got := conversationIDs(first); fmt.Sprint(got) != hexIDs(1, 2) || first.Window.From != "" {
+		t.Fatalf("the first run lists everything: %v %+v", got, first.Window)
+	}
+	end := parseNapTime(t, readNapWindowEndFile(t, st))
+	if !end.Equal(parseNapTime(t, first.Window.To)) {
+		t.Fatalf("the recorded end is the printed one: %v %+v", end, first.Window)
+	}
+	saveConversation(t, st, scope, "0000000000000003", end.Add(time.Minute), "third, after the first window")
+	second := napRunAt(t, st, scope, end.Add(time.Hour))
+	if got := conversationIDs(second); fmt.Sprint(got) != hexIDs(3, 3) || second.Window.From != first.Window.To {
+		t.Fatalf("the second run lists only what came after the first window: %v %+v", got, second.Window)
+	}
+	third := napRunAt(t, st, scope, end.Add(2*time.Hour))
+	if got := conversationIDs(third); len(got) != 0 || third.Window.From != second.Window.To {
+		t.Fatalf("a third run with nothing new lists nothing: %v %+v", got, third.Window)
+	}
+}
+
+// At most 64 conversations are listed: the oldest of the window, oldest first, the window ends at the 64th and the count of the rest is said,
+// so the next shikii nap lists the rest and then nothing.
+func TestNapListsTheOldest64AndTheRestComesInTheNextRun(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	now := time.Now()
+	at := func(i int) time.Time { return now.Add(-time.Duration(100-i) * time.Minute) }
+	for i := 1; i <= 70; i++ {
+		saveConversation(t, st, scope, fmt.Sprintf("%016x", i), at(i), "reply")
+	}
+	first := decodeNap(t)
+	if got := conversationIDs(first); len(got) != 64 || fmt.Sprint(got) != hexIDs(1, 64) || first.NewerLeft != 6 {
+		t.Fatalf("the oldest 64, oldest first, and 6 left for the next run: %d %v %v", len(got), got, first.NewerLeft)
+	}
+	if first.Window.To != at(64).UTC().Format(time.RFC3339Nano) || readNapWindowEndFile(t, st) != first.Window.To+"\n" {
+		t.Fatalf("the window ends at the 64th conversation and that is recorded: %+v %q", first.Window, readNapWindowEndFile(t, st))
+	}
+	second := decodeNap(t)
+	if got := conversationIDs(second); fmt.Sprint(got) != hexIDs(65, 70) || second.NewerLeft != 0 || second.Window.From != first.Window.To {
+		t.Fatalf("the next run lists the 6 that were left, none twice: %v %+v left %d", got, second.Window, second.NewerLeft)
+	}
+	if got := conversationIDs(decodeNap(t)); len(got) != 0 {
+		t.Fatalf("then nothing is left: %v", got)
+	}
+}
+
+// Conversations saved at the very time of the 64th go with it: the window ends at that time, so the next one would not list them.
+func TestNapKeepsConversationsOfTheSameTimeTogetherAtTheLimit(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	now := time.Now()
+	for i := 1; i <= 63; i++ {
+		saveConversation(t, st, scope, fmt.Sprintf("%016x", i), now.Add(-time.Duration(100-i)*time.Minute), "reply")
+	}
+	same := now.Add(-30 * time.Minute)
+	saveConversation(t, st, scope, fmt.Sprintf("%016x", 64), same, "reply")
+	saveConversation(t, st, scope, fmt.Sprintf("%016x", 65), same, "reply")
+	saveConversation(t, st, scope, fmt.Sprintf("%016x", 66), now.Add(-20*time.Minute), "reply")
+	first := decodeNap(t)
+	if got := conversationIDs(first); fmt.Sprint(got) != hexIDs(1, 65) || first.NewerLeft != 1 {
+		t.Fatalf("the 65th, saved at the time of the 64th, is listed with it: %d %v", len(got), first.NewerLeft)
+	}
+	if got := conversationIDs(decodeNap(t)); fmt.Sprint(got) != hexIDs(66, 66) {
+		t.Fatalf("the next run lists the one that was left: %v", got)
+	}
+}
+
+// The window is cut by the time of the conversations, not by their place in the file: one saved later in the file but with an earlier time
+// (the clock was set back) is listed with the oldest, and is not lost to the cut at 64.
+func TestNapCutsAtTheLimitByTimeNotByOrderInTheFile(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	now := time.Now()
+	for i := 1; i <= 64; i++ {
+		saveConversation(t, st, scope, fmt.Sprintf("%016x", i), now.Add(-time.Duration(100-i)*time.Minute), "reply")
+	}
+	saveConversation(t, st, scope, fmt.Sprintf("%016x", 65), now.Add(-200*time.Minute), "reply") // the last in the file, the earliest in time
+	first := decodeNap(t)
+	if got := conversationIDs(first); len(got) != 64 || got[0] != fmt.Sprintf("%016x", 65) || got[63] != fmt.Sprintf("%016x", 63) || first.NewerLeft != 1 {
+		t.Fatalf("the earliest in time comes first, and the one left is the latest in time: %d %v %v", len(got), got, first.NewerLeft)
+	}
+	if got := conversationIDs(decodeNap(t)); fmt.Sprint(got) != hexIDs(64, 64) {
+		t.Fatalf("the next run lists the one that was left: %v", got)
+	}
+}
+
+// The end of the window is written under the file's lock and only while the file holds what the window was read from. A run that finds the
+// lock held, or another run's window recorded, writes nothing; its window is then listed again by the next run, never lost.
+func TestNapWindowEndIsRecordedUnderTheLockAndOnlyWhileTheFileIsAsRead(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	saveConversation(t, st, scope, "0000000000000001", time.Now().Add(-time.Hour), "a reply")
+	if err := os.WriteFile(napWindowEndFilePath(st), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(napWindowEndFilePath(st), os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		t.Fatal(err)
+	}
+	if got := conversationIDs(decodeNap(t)); fmt.Sprint(got) != hexIDs(1, 1) {
+		t.Fatalf("with the lock held the window is still printed: %v", got)
+	}
+	if got := readNapWindowEndFile(t, st); got != "" {
+		t.Fatalf("with the lock held nothing is recorded: %q", got)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_UN); err != nil {
+		t.Fatal(err)
+	}
+	if got := conversationIDs(decodeNap(t)); fmt.Sprint(got) != hexIDs(1, 1) {
+		t.Fatalf("the window that was not recorded is listed again: %v", got)
+	}
+	recorded := readNapWindowEndFile(t, st)
+	if recorded == "" {
+		t.Fatalf("with the lock free the end is recorded")
+	}
+	r, err := buildNapReport(st.Dir, scope, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := writeNapWindowEnd(t, st, time.Now().Add(time.Hour)) // another run records its window between the read and the write
+	if err := recordNapWindowEnd(st.Dir, r); err != nil {
+		t.Fatal(err)
+	}
+	if got := readNapWindowEndFile(t, st); got != other {
+		t.Fatalf("a file that is no longer as it was read is left to the run that wrote it:\n%q\n%q", other, got)
+	}
+}
+
+type napBrokenPipe struct{}
+
+func (napBrokenPipe) Write([]byte) (int, error) { return 0, fmt.Errorf("broken pipe") }
+
+// The end is recorded after the window is printed: when nothing could be printed, nothing is recorded and the next run lists it.
+func TestNapRecordsNothingWhenTheWindowCouldNotBePrinted(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	saveConversation(t, st, scope, "0000000000000001", time.Now().Add(-time.Hour), "a reply")
+	old := stdout
+	stdout = napBrokenPipe{}
+	err := cmdNap(nil)
+	stdout = old
+	if err == nil || !strings.Contains(err.Error(), "broken pipe") {
+		t.Fatalf("the failure to print is returned: %v", err)
+	}
+	if got := readNapWindowEndFile(t, st); got != "" {
+		t.Fatalf("nothing was shown, so nothing is recorded: %q", got)
+	}
+	if got := conversationIDs(decodeNap(t)); fmt.Sprint(got) != hexIDs(1, 1) {
+		t.Fatalf("the next run lists the conversation: %v", got)
+	}
+}
+
+// The guides describe the window the command prints and the file that records its end.
+func TestNapDocsDescribeTheWindowAndTheFileThatRecordsItsEnd(t *testing.T) {
+	for _, d := range []struct {
+		file, heading string
+		words         []string
+	}{
+		{"../../docs/guide.md", "### Memory nap", []string{"`.shikii/nap-window-end`", "`newer_left`", "oldest first, 64 at a time", "starts where the last one stopped"}},
+		{"../../docs/guide.ja.md", "### \u8a18\u61b6\u306e\u3072\u3068\u4f11\u307f", []string{"`.shikii/nap-window-end`", "`newer_left`", "\u53e4\u3044\u65b9\u304b\u3089 64 \u4ef6", "\u524d\u56de\u304c\u7d42\u308f\u3063\u305f\u6240\u304b\u3089\u59cb\u307e\u308b"}},
+	} {
+		text := string(mustRead(t, d.file))
+		at := strings.Index(text, d.heading)
+		if at < 0 {
+			t.Fatalf("%s has no section %q", d.file, d.heading)
+		}
+		section := text[at+len(d.heading):]
+		if end := strings.Index(section, "\n### "); end >= 0 {
+			section = section[:end]
+		}
+		section = strings.Join(strings.Fields(section), " ")
+		for _, want := range d.words {
+			if !strings.Contains(section, want) {
+				t.Errorf("%s: the section on the nap does not say %q", d.file, want)
+			}
+		}
 	}
 }
 
@@ -342,6 +598,12 @@ func TestNapTakesNoArguments(t *testing.T) {
 	}
 	if !strings.Contains(usageText(), "shikii nap") {
 		t.Fatalf("the help of shikii lists the command")
+	}
+	// Both texts say what the command records and what it counts for the next run, so neither calls it a plain read.
+	for name, text := range map[string]string{"the help of shikii": helpEntry(t, "shikii nap"), "the usage of the command": napUsage} {
+		if !strings.Contains(text, ".shikii/nap-window-end") || !strings.Contains(text, "newer_left") {
+			t.Fatalf("%s names the file that records the end of the window and newer_left: %q", name, text)
+		}
 	}
 }
 
