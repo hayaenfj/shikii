@@ -111,6 +111,9 @@ func TestStopWithKeptTablesStaysNearTheComparisonWithHead(t *testing.T) {
 // with the request's HEAD of the same file, in the same run, and leaves the entries of the files it did not compare as they are.
 const recordStopAllowance = 20 * time.Millisecond
 
+// timedRuns is how many times each side of the comparison runs; the fastest run of each side is compared.
+const timedRuns = 5
+
 func TestStopWithAManyFileRecordStaysNearTheComparisonWithHead(t *testing.T) {
 	const files = 200
 	repo, root, readme := uncommittedLinesRepo(t)
@@ -147,13 +150,25 @@ func TestStopWithAManyFileRecordStaysNearTheComparisonWithHead(t *testing.T) {
 	if len(changed) != 1 {
 		t.Fatalf("premise: one changed file, got %v", changed)
 	}
-	start := time.Now()
-	in := guardTurnInputStopped(root, repo, before, nil, changed, true, head, time.Time{})
-	keepStoppedLines(root, nil, in, head)
-	withRecord := time.Since(start)
-	start = time.Now()
-	guardTurnInputKept(repo, before, nil, changed, true, head, time.Time{})
-	withHead := time.Since(start)
+	// Each side runs a few times, in turn, and the fastest run of each is compared: a side takes a few milliseconds, so one run alone
+	// is decided by the load of the other test groups running at the same time (98.9 ms against 20.5 ms once, in a Linux container
+	// under make test, where each alone took 5 to 10 ms).
+	var withRecord, withHead time.Duration
+	for i := 0; i < timedRuns; i++ {
+		start := time.Now()
+		in := guardTurnInputStopped(root, repo, before, nil, changed, true, head, time.Time{})
+		keepStoppedLines(root, nil, in, head)
+		d := time.Since(start)
+		start = time.Now()
+		guardTurnInputKept(repo, before, nil, changed, true, head, time.Time{})
+		e := time.Since(start)
+		if i == 0 || d < withRecord {
+			withRecord = d
+		}
+		if i == 0 || e < withHead {
+			withHead = e
+		}
+	}
 	t.Logf("Stop over %d changed file, record of %d files: with the record %v, compared with HEAD %v (ratio %.2f)", len(changed), files, withRecord, withHead, float64(withRecord)/float64(withHead))
 	// The comparison with HEAD of one small file can take a few milliseconds (3 ms on Linux), so a ratio alone is decided by
 	// the noise of one run (9.9 ms against 3.3 ms failed once, ratio 3.06); the allowance says how much more is too much.
