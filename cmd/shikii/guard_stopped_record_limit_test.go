@@ -114,7 +114,7 @@ func TestStopThatWritesARecordNearItsLimitStaysNearTheComparisonWithHead(t *test
 	before := listingHeader("req") + listing
 	g := guard{ID: "no-word", Kind: guardKindForbiddenWords, Words: []string{"FORBIDDENWORD"}}
 	var withRecord, withHead time.Duration
-	for i := 0; i < 3; i++ {
+	for i := 0; i < timedRuns; i++ {
 		if err := writeAtomic(p, b); err != nil {
 			t.Fatal(err)
 		}

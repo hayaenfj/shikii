@@ -46,9 +46,9 @@ func TestStopWithARecordNearItsLimitReadsItOnceAndStaysNearTheComparisonWithHead
 	if len(changed) != 1 {
 		t.Fatalf("premise: one changed file, got %v", changed)
 	}
-	// the faster of three runs of each, so a pause of the machine in one run does not decide
+	// the fastest of timedRuns runs of each, so the load of the machine in one run does not decide
 	var withRecord, withHead time.Duration
-	for i := 0; i < 3; i++ {
+	for i := 0; i < timedRuns; i++ {
 		reads, done := countStoppedReads(t)
 		start := time.Now()
 		in := guardTurnInputStopped(root, repo, before, nil, changed, true, head, time.Time{})
