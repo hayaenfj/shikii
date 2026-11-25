@@ -125,7 +125,7 @@ func TestNapCountsTheUncitedConversationsAnArticleCitedAfterTheRun(t *testing.T)
 		t.Fatalf("one row per run that had read conversations shown before: %v", rows)
 	}
 	requireNapLogRow(t, rows[0], 2, 1, 1, "0000000000000002")
-	if got, want := napStatusLine(t, st), "nap: conversations shown while no article cited them: 1, of which an article cited later: 1 (runs: 1)"; got != want {
+	if got, want := napStatusLine(t, st), "nap: conversations read while no article cited them: 1, of which an article cites now: 1 (runs: 1)"; got != want {
 		t.Fatalf("status line:\n got %q\nwant %q", got, want)
 	}
 
@@ -145,7 +145,7 @@ func TestNapCountsTheUncitedConversationsAnArticleCitedAfterTheRun(t *testing.T)
 		t.Fatalf("a second row: %v", rows)
 	}
 	requireNapLogRow(t, rows[1], 2, 2, 1, "0000000000000004")
-	if got, want := napStatusLine(t, st), "nap: conversations shown while no article cited them: 3, of which an article cited later: 2 (runs: 2)"; got != want {
+	if got, want := napStatusLine(t, st), "nap: conversations read while no article cited them: 3, of which an article cites now: 2 (runs: 2)"; got != want {
 		t.Fatalf("status line sums the rows:\n got %q\nwant %q", got, want)
 	}
 }
@@ -180,7 +180,7 @@ func TestNapDoesNotCountAReadNoticeAsAnArticleCitingTheConversation(t *testing.T
 		t.Fatalf("one row: %v", rows)
 	}
 	requireNapLogRow(t, rows[0], 3, 2, 0)
-	if got, want := napStatusLine(t, st), "nap: conversations shown while no article cited them: 2, of which an article cited later: 0 (runs: 1)"; got != want {
+	if got, want := napStatusLine(t, st), "nap: conversations read while no article cited them: 2, of which an article cites now: 0 (runs: 1)"; got != want {
 		t.Fatalf("status line:\n got %q\nwant %q", got, want)
 	}
 }

@@ -113,8 +113,8 @@ func TestHelpPrintsFormsThatRunAsWritten(t *testing.T) {
 	}{
 		{[]string{"work"}, map[string]int{"work prepare": 3, "work record": 1}},
 		{[]string{"hook", "plan"}, map[string]int{"hook plan query": 1}},
-		{[]string{"reflect"}, map[string]int{"reflect query": 1, "reflect place": 1}},
-		{[]string{"wiki"}, map[string]int{"wiki query": 3, "wiki capture": 1, "wiki ingest": 1}},
+		{[]string{"reflect"}, map[string]int{"reflect query": 1, "reflect place": 1, "reflect submit": 1}},
+		{[]string{"wiki"}, map[string]int{"wiki query": 3, "wiki capture": 1, "wiki ingest": 2}},
 		{[]string{"handoff"}, map[string]int{"handoff list": 1, "handoff read": 1, "handoff write": 1, "handoff append": 1}},
 	} {
 		name := strings.Join(c.command, " ")

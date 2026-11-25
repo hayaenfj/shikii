@@ -57,6 +57,7 @@ var agentUsages = map[string]agentUsage{
 		Forms: []agentForm{
 			{"the pending conversations, oldest first, with their sources, and how_to_submit (the shape of submit); more_pending counts the ones that did not fit, and the next query lists them", "reflect query", ""},
 			{"where a draft lesson could go and what it may contradict, before saving a new lesson", "reflect place", `{"wiki":[{"sources":["<source id>"],"title":"<title>","lesson":"<one or two sentences>","applies_to":"<when it applies>","kind":"rule","scene":"<when ...>"}]}`},
+			{"after shikii nap: say which conversations you read, by sending their ids as the sources of one wiki entry, even when there is nothing to add (session_id, your own session's id, may be added to the JSON or left out)", "reflect submit", `{"wiki":[{"sources":["<source id>"]}]}`},
 		},
 		Notes: []string{
 			"query takes no arguments; read one source's original text with shikii wiki query <source id>.",
@@ -72,6 +73,7 @@ var agentUsages = map[string]agentUsage{
 			{"read one lesson (lesson:<page id>@<revision> for an exact revision; continue:<cursor> as the last argument reads on)", "wiki query lesson:<page id>", ""},
 			{"save a source you checked", "wiki capture", `{"kind":"test","title":"<title>","content":"<what you observed>","reference":"<file, command or URL>","version":"<version or commit>","observed_at":"<now, RFC 3339>"}`},
 			{"save a lesson from sources", "wiki ingest", `{"sources":["<source id>"],"title":"<title>","lesson":"<one or two sentences>","applies_to":"<when it applies>","kind":"rule","scene":"<when ...>","body":"<background, reasons, open points>"}`},
+			{"after shikii nap: say which conversations you read, with nothing to add: the ids as the only field (the entry itself, not the wiki list that reflect submit takes)", "wiki ingest", `{"sources":["<source id>"]}`},
 		},
 		Notes: []string{
 			"kind of a source: human, agent, code, test or release. kind of a lesson: rule, howto, criteria, fact or history.",

@@ -348,3 +348,85 @@ func TestFeedbackAfterTakesTheSameLinesAsRecentFeedbackOnOddFiles(t *testing.T) 
 		}
 	}
 }
+
+// A line that is in the file more than once, byte for byte, carries which copy it is: the number of lines with the same bytes before it
+// (0 for the first). The read goes on after that copy, so a copy at the end of the file that was read is not read again.
+func TestFeedbackAfterGivesTheCopyOfALineThatIsInTheFileMoreThanOnce(t *testing.T) {
+	s, scope := feedbackWindowFixture(t, 0)
+	lineL := feedbackLine(t, "000000000000000a", "L-reply", 10)
+	lineA := feedbackLine(t, "000000000000000b", "A-reply", 20)
+	lineB := feedbackLine(t, "000000000000000c", "B-reply", 30)
+	writeFeedbackLines(t, s, scope, lineL, lineA, lineL, lineB, lineL)
+	got, err := s.FeedbackAfter(scope, FeedbackMark{})
+	if err != nil || fmt.Sprint(feedbackLineIDs(got)) != "[000000000000000b 000000000000000c 000000000000000a]" {
+		t.Fatalf("the newest line of an id stands: %v %v", feedbackLineIDs(got), err)
+	}
+	for i, want := range []int{0, 0, 2} { // A and B are in the file once; the line that stands for L is its third copy
+		if got[i].Mark.Copy != want {
+			t.Errorf("conversation %d: copy %d, want %d", i, got[i].Mark.Copy, want)
+		}
+	}
+	rest, err := s.FeedbackAfter(scope, got[2].Mark)
+	if err != nil || len(rest) != 0 {
+		t.Fatalf("after the third copy nothing is left, but %v came again: %v", feedbackLineIDs(rest), err)
+	}
+	rest, err = s.FeedbackAfter(scope, got[0].Mark)
+	if err != nil || fmt.Sprint(feedbackLineIDs(rest)) != "[000000000000000c 000000000000000a]" {
+		t.Fatalf("after A: %v %v", feedbackLineIDs(rest), err)
+	}
+}
+
+// The copy is counted from the beginning of the file, not from where the read started: a read that goes on after an earlier copy gives
+// the later copies the numbers they have in the file.
+func TestFeedbackAfterCountsCopiesFromTheBeginningOfTheFile(t *testing.T) {
+	s, scope := feedbackWindowFixture(t, 0)
+	lineL := feedbackLine(t, "000000000000000a", "L-reply", 10)
+	lineA := feedbackLine(t, "000000000000000b", "A-reply", 20)
+	lineB := feedbackLine(t, "000000000000000c", "B-reply", 30)
+	writeFeedbackLines(t, s, scope, lineL, lineA, lineL, lineB, lineL)
+	firstCopy := FeedbackMark{Offset: int64(len(lineL)), Hash: hashOfLine(lineL)} // the mark of the first copy, which is how a run that read up to it made it
+	got, err := s.FeedbackAfter(scope, firstCopy)
+	if err != nil || fmt.Sprint(feedbackLineIDs(got)) != "[000000000000000b 000000000000000c 000000000000000a]" {
+		t.Fatalf("what comes after the first copy: %v %v", feedbackLineIDs(got), err)
+	}
+	if last := got[2].Mark; last.Copy != 2 || last.Hash != hashOfLine(lineL) {
+		t.Fatalf("the line that stands for L is its third copy in the file, whichever line the read started after: %+v", last)
+	}
+	secondCopy := FeedbackMark{Offset: int64(len(lineL) + len(lineA) + len(lineL)), Hash: hashOfLine(lineL), Copy: 1}
+	got, err = s.FeedbackAfter(scope, secondCopy)
+	if err != nil || fmt.Sprint(feedbackLineIDs(got)) != "[000000000000000c 000000000000000a]" || got[1].Mark.Copy != 2 {
+		t.Fatalf("after the second copy: %v %+v %v", feedbackLineIDs(got), got, err)
+	}
+}
+
+// When fewer copies are in the file than the mark names (shikii forget removed lines, or the file was replaced), the read goes on after
+// the first copy: a conversation may be read again, none is skipped. A mark with no copy (one made before the field) is the first copy.
+func TestFeedbackAfterGoesOnAfterTheFirstCopyWhenTheNamedCopyIsGone(t *testing.T) {
+	s, scope := feedbackWindowFixture(t, 0)
+	lineL := feedbackLine(t, "000000000000000a", "L-reply", 10)
+	lineA := feedbackLine(t, "000000000000000b", "A-reply", 20)
+	lineB := feedbackLine(t, "000000000000000c", "B-reply", 30)
+	second := FeedbackMark{Offset: int64(len(lineL) + len(lineA) + len(lineL)), Hash: hashOfLine(lineL), Copy: 1}
+	for _, c := range []struct {
+		name  string
+		lines []string
+		want  string
+	}{
+		{"the file the mark was made on", []string{lineL, lineA, lineL, lineB}, "[000000000000000c]"},
+		{"the first copy was removed", []string{lineA, lineL, lineB}, "[000000000000000c]"},
+		{"the second copy was removed", []string{lineL, lineA, lineB}, "[000000000000000b 000000000000000c]"},
+		{"the line is gone", []string{lineA, lineB}, "[000000000000000b 000000000000000c]"},
+	} {
+		writeFeedbackLines(t, s, scope, c.lines...)
+		got, err := s.FeedbackAfter(scope, second)
+		if err != nil || fmt.Sprint(feedbackLineIDs(got)) != c.want {
+			t.Errorf("%s: %v %v, want %s", c.name, feedbackLineIDs(got), err, c.want)
+		}
+	}
+	writeFeedbackLines(t, s, scope, lineL, lineA, lineL, lineB)
+	old := FeedbackMark{Offset: second.Offset, Hash: second.Hash} // no copy: the first
+	got, err := s.FeedbackAfter(scope, old)
+	if err != nil || fmt.Sprint(feedbackLineIDs(got)) != "[000000000000000b 000000000000000a 000000000000000c]" {
+		t.Errorf("a mark without a copy goes on after the first copy: %v %v", feedbackLineIDs(got), err)
+	}
+}

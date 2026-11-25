@@ -145,16 +145,23 @@ func decodeFeedbackLine(line []byte) (Feedback, bool) {
 	return v, true
 }
 
-// FeedbackMark is a place in the history of conversations: the SHA-256 (hex) of one line's bytes without its newline, and the byte offset
-// just after that line when the mark was made. A read after the mark goes on after the first line of the file that has the hash, found by
-// hashing the lines from the beginning, and from the beginning when no line has it: the offset is not used to find the place, because
+// FeedbackMark is a place in the history of conversations: the SHA-256 (hex) of one line's bytes without its newline, which copy of that
+// line it is, and the byte offset just after that line when the mark was made. A read after the mark goes on after the line of the file
+// that has the hash and is that copy, found by hashing the lines from the beginning; when the file has fewer copies than the mark names,
+// it goes on after the first copy, and from the beginning when no line has the hash: the offset is not used to find the place, because
 // shikii forget rewrites the file (removing the lines of a finished session) and a copy of the same line may then end at the old offset
 // with lines between the copies never read. The history is only appended to, under its lock, so a line written after the marked one is
-// after it in the file, whatever time it carries. Offset is kept in the stored form of a mark (a zero Offset or an empty Hash is the
-// zero mark, the beginning).
+// after it in the file, whatever time it carries. Offset and Copy are kept in the stored form of a mark (a zero Offset or an empty Hash is
+// the zero mark, the beginning).
+//
+// Copy is how many lines with the same bytes come before the line in the file: 0 for the first (and for a mark from before the field,
+// which always went on after the first copy). shikii itself never writes the same bytes twice (a line holds the time to the nanosecond and
+// the id of its turn); a copy comes from a file put back by hand or merged from a backup. Without Copy, a run that read up to the last of
+// two copies would go on after the first of them and show what lies between them again, on every run.
 type FeedbackMark struct {
 	Offset int64
 	Hash   string
+	Copy   int
 }
 
 // FeedbackLine is a conversation with the mark just after the line it was read from.
@@ -169,8 +176,10 @@ type FeedbackLine struct {
 // has piled up. A line is taken by the same rules: a broken or too long line is skipped, a last line that is not ended by a newline yet is
 // not taken (so no mark is ever past it), and of a repeated ID only the newest line stands, at its own place.
 //
-// The read goes on after the first line of the file that has the mark's hash, and from the beginning when no line has it (a conversation
-// may then be read again, none is lost). The whole file is hashed once for it, which the daily run of shikii nap can afford.
+// The read goes on after the line of the file that has the mark's hash and is the copy the mark names (the first copy when the file has
+// fewer copies, so a conversation may be read again and none is lost), and from the beginning when no line has the hash. The file is hashed
+// from the beginning for it, and once more up to the place the read starts at, to number the copies of the lines it returns: the daily run of
+// shikii nap can afford both.
 func (s Store) FeedbackAfter(scope string, mark FeedbackMark) ([]FeedbackLine, error) {
 	f, err := s.openFile(s.feedbackPath(scope), os.O_RDONLY)
 	if os.IsNotExist(err) {
@@ -186,20 +195,39 @@ func (s Store) FeedbackAfter(scope string, mark FeedbackMark) ([]FeedbackLine, e
 	}
 	var rows []FeedbackLine   // in file order; a line replaced by a newer one of its ID is left empty
 	place := map[string]int{} // the place in rows of the newest line of each ID
+	seen := map[string]int{}  // how many lines of each hash the read has been through
 	err = scanFeedbackLines(f, from, func(line []byte, end int64) bool {
 		v, ok := decodeFeedbackLine(line)
 		if !ok {
 			return true
 		}
-		if at, seen := place[v.ID]; seen {
+		hash := feedbackLineHash(line)
+		copyOf := seen[hash]
+		seen[hash]++
+		if at, found := place[v.ID]; found {
 			rows[at] = FeedbackLine{}
 		}
 		place[v.ID] = len(rows)
-		rows = append(rows, FeedbackLine{v, FeedbackMark{end, feedbackLineHash(line)}})
+		rows = append(rows, FeedbackLine{v, FeedbackMark{Offset: end, Hash: hash, Copy: copyOf}})
 		return true
 	})
 	if err != nil {
 		return nil, err
+	}
+	if from > 0 && len(rows) > 0 { // the copies before the place the read started at count too
+		wanted := map[string]bool{}
+		for _, row := range rows {
+			if row.ID != "" {
+				wanted[row.Mark.Hash] = true
+			}
+		}
+		before, err := countFeedbackCopies(f, from, wanted)
+		if err != nil {
+			return nil, err
+		}
+		for i := range rows {
+			rows[i].Mark.Copy += before[rows[i].Mark.Hash]
+		}
 	}
 	out := make([]FeedbackLine, 0, len(place))
 	for _, row := range rows {
@@ -272,23 +300,50 @@ func feedbackLineHash(line []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// feedbackResume is the offset a read after mark starts from: the end of the first line of the file (from its beginning) that has the
-// mark's hash, else 0. The mark's own offset is not trusted even when the line that ends there has the hash: the same line may be in the
-// file twice, and after shikii forget removed lines before the mark, the offset may be the end of the second copy, with what lies between
-// the copies never read. Starting after the first copy reads a conversation again at worst, and skips none.
+// feedbackResume is the offset a read after mark starts from: the end of the line of the file (from its beginning) that has the mark's hash
+// and is the copy the mark names; the end of the first line that has the hash when the file has fewer copies than that; else 0. The mark's
+// own offset is not trusted even when the line that ends there has the hash: the same line may be in the file twice, and after shikii
+// forget removed lines before the mark, the offset may be the end of the second copy, with what lies between the copies never read. A
+// mark that names no copy (Copy 0) goes on after the first copy, and so does one whose copy is gone: that reads a conversation again at
+// worst, and skips none. (Forget removes a line with all its copies, since copies are one session's, so the copies left are the ones the
+// mark counted.)
 func feedbackResume(f *os.File, mark FeedbackMark) (int64, error) {
 	if mark.Offset <= 0 || mark.Hash == "" {
 		return 0, nil
 	}
-	found := int64(0)
+	want := max(mark.Copy, 0)
+	first, named, copies := int64(0), int64(0), 0
 	err := scanFeedbackLines(f, 0, func(line []byte, end int64) bool {
-		if feedbackLineHash(line) == mark.Hash {
-			found = end
+		if feedbackLineHash(line) != mark.Hash {
+			return true
+		}
+		if copies == 0 {
+			first = end
+		}
+		if copies == want {
+			named = end
 			return false
 		}
+		copies++
 		return true
 	})
-	return found, err
+	if named == 0 {
+		named = first
+	}
+	return named, err
+}
+
+// countFeedbackCopies counts, for each hash of wanted, the lines of f from its beginning up to the offset upTo (the end of a line) that
+// have it.
+func countFeedbackCopies(f *os.File, upTo int64, wanted map[string]bool) (map[string]int, error) {
+	counts := map[string]int{}
+	err := scanFeedbackLines(f, 0, func(line []byte, end int64) bool {
+		if hash := feedbackLineHash(line); wanted[hash] {
+			counts[hash]++
+		}
+		return end < upTo
+	})
+	return counts, err
 }
 
 // TextMatch is the share of query words that appear in the text.

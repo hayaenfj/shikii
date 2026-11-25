@@ -10,10 +10,11 @@ package main
 // in a run, that are all in .shikii/nap-read). A conversation that was not read prints again and is counted by the run that moves the
 // window over it, once, whatever happened to it in between.
 //
-// Each run that moved the window over conversations with a recorded state prints the counts as last_nap
-// ({"shown":N,"uncited":U,"picked_up":K}) and, once it has printed and replaced .shikii/nap-shown, adds one JSON line to
-// .shikii/nap-log (the time, the three counts and the ids picked up). `shikii status` sums every line of the log. Both files are ordinary files with one name or nothing: a log that cannot be written never
-// fails a run (one line a day does not need a size limit).
+// Each run that wrote the window over conversations with a recorded state prints the counts as last_nap
+// ({"shown":N,"uncited":U,"picked_up":K}) and adds one JSON line to .shikii/nap-log (the time, the three counts and the ids picked up),
+// before it prints: the conversations are counted when the window moves over them, once, whatever happens to the printing or to the
+// record of what was shown after that (see finishNap). `shikii status` sums every line of the log. Both files are ordinary files with one
+// name or nothing: a log that cannot be written never fails a run (one line a day does not need a size limit).
 
 import (
 	"encoding/json"
@@ -87,7 +88,9 @@ type napLogRow struct {
 }
 
 // appendNapLog adds the line for a run to .shikii/nap-log. It writes only to an ordinary file with one name (never through a symbolic link
-// or into a hard-linked file) and never fails the run: a line that cannot be written is not counted.
+// or into a hard-linked file) and never fails the run: a line that cannot be written is not counted. When the last line of the file is not
+// ended by a newline (a run stopped in the middle of writing it), the new line starts on a line of its own, so the two are not joined and
+// lost together.
 func appendNapLog(root string, p napLastNap, at time.Time) {
 	row := napLogRow{At: at.UTC().Format(napTimeLayout), Shown: p.Shown, Uncited: p.Uncited, PickedUp: p.PickedUp, PickedUpIDs: p.ids}
 	if row.PickedUpIDs == nil {
@@ -97,7 +100,7 @@ func appendNapLog(root string, p napLastNap, at time.Time) {
 	if err != nil {
 		return
 	}
-	f, err := os.OpenFile(filepath.Join(root, napLogName), os.O_WRONLY|os.O_APPEND|os.O_CREATE|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0o600)
+	f, err := os.OpenFile(filepath.Join(root, napLogName), os.O_RDWR|os.O_APPEND|os.O_CREATE|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0o600)
 	if err != nil {
 		return
 	}
@@ -105,11 +108,18 @@ func appendNapLog(root string, p napLastNap, at time.Time) {
 	if !napStateUsable(f) {
 		return
 	}
-	_, _ = f.Write(append(line, '\n'))
+	line = append(line, '\n')
+	if info, err := f.Stat(); err == nil && info.Size() > 0 {
+		var last [1]byte
+		if _, err := f.ReadAt(last[:], info.Size()-1); err == nil && last[0] != '\n' {
+			line = append([]byte{'\n'}, line...)
+		}
+	}
+	_, _ = f.Write(line) // one write: with O_APPEND the line is not split by another writer's
 }
 
 // readNapLog sums the lines of .shikii/nap-log: the uncited conversations, those picked up later and the number of lines. A line that is
-// not a row is skipped. The file counts as not there (runs 0) when it is not an ordinary file with one name.
+// not a row is skipped, and the lines around it count. The file counts as not there (runs 0) when it is not an ordinary file with one name.
 func readNapLog(root string) (uncited, pickedUp, runs int) {
 	f, err := os.OpenFile(filepath.Join(root, napLogName), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
@@ -135,6 +145,6 @@ func readNapLog(root string) (uncited, pickedUp, runs int) {
 // printNapPickup is the line of `shikii status` that sums .shikii/nap-log; nothing is printed when the log has no line.
 func printNapPickup(out io.Writer, root string) {
 	if uncited, pickedUp, runs := readNapLog(root); runs > 0 {
-		fmt.Fprintf(out, "nap: conversations shown while no article cited them: %d, of which an article cited later: %d (runs: %d)\n", uncited, pickedUp, runs)
+		fmt.Fprintf(out, "nap: conversations read while no article cited them: %d, of which an article cites now: %d (runs: %d)\n", uncited, pickedUp, runs)
 	}
 }
