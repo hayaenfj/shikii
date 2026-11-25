@@ -293,8 +293,14 @@ func rewriteNapFileLimit(path, expected, state string, limit int64) (bool, error
 func napNotice(root, scope string, now time.Time) (string, error) {
 	raw := readNapState(root)
 	m := parseNapMark(raw)
+	// A time in the future (the clock was once set ahead, or is set a little back now) is no earlier notice: it would keep the notice
+	// silent until then. Each time is dropped on its own, so a notice that no nap has followed is still given again, counting from the
+	// notice before it when that one is not in the future too.
 	if m.last.After(now) {
-		m = napMark{} // a time in the future (the clock was once set ahead) is no earlier notice: it would keep the notice silent until then
+		m.last = time.Time{}
+	}
+	if m.before.After(now) {
+		m.before = time.Time{}
 	}
 	if !m.pending && !m.last.IsZero() && now.Sub(m.last) < napInterval {
 		return "", nil
