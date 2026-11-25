@@ -151,6 +151,10 @@ for (const step of scenario.steps) {
       e.messages.forEach((m, i) => added.push(...partsOf(m.content).slice(partsOf(given[i]?.content).length)))
       contexts.push([...e.system.map((s) => s.text), ...added.map((t) => t.trim())])
       requests.push({ system: e.system.map((s) => s.text), messages: e.messages.map((m) => ({ id: m.id, role: m.role, texts: partsOf(m.content).map((t) => t.trim()) })) })
+    } else if (step.op === "history") {
+      // a message the conversation already had when this process started (a session resumed with opencode run --session): it is in the
+      // model's messages and no hook of this process ran for it
+      ;(llm[step.sid] ??= []).push({ id: newID(), role: step.role ?? "user", content: [{ type: "text", text: step.text }] })
     } else if (step.op === "deliver") {
       ;(llm[step.sid] ??= []).push(...(queued[step.sid] ?? []))
       queued[step.sid] = []
@@ -1894,6 +1898,149 @@ func TestOpenCodePluginStillGivesTheTextWhenOpenCodeGivesNoMessageID(t *testing.
 	}
 	if !slices.Contains(run.Contexts[0], "TEXT-OF-THE-REQUEST") || !slices.Contains(run.Contexts[0], "BRIEF-OF-THE-SESSION") {
 		t.Errorf("the model call still gets the brief and the request's text: %q", run.Contexts[0])
+	}
+}
+
+// resumedHistory is what a session already has when a new process (a new `opencode run --session <id>`) gets its next request: n
+// earlier requests, each followed by an answer. No hook of that process ran for them.
+func resumedHistory(sid string, n int) []map[string]any {
+	var steps []map[string]any
+	for i := 1; i <= n; i++ {
+		steps = append(steps,
+			map[string]any{"op": "history", "sid": sid, "role": "user", "text": fmt.Sprintf("old request %d", i)},
+			map[string]any{"op": "history", "sid": sid, "role": "assistant", "text": fmt.Sprintf("old answer %d", i)})
+	}
+	return steps
+}
+
+// countText is how many times text is in a model call: in the system text and in every message.
+func countText(r modelRequest, text string) int {
+	n := 0
+	for _, s := range r.System {
+		n += strings.Count(s, text)
+	}
+	for _, m := range r.Messages {
+		for _, s := range m.Texts {
+			n += strings.Count(s, text)
+		}
+	}
+	return n
+}
+
+// A session resumed in a new process (opencode run --session <id>, one process per request) asks session-start at the first request that
+// process sees, and what it says (a memory nap that is due, for one) is about that request. It goes on the message of the request that
+// asked for it, not on the first message of a conversation that has five requests already, where the model reads it as an old text
+// of the first request (measured on OpenCode 2.4.1: the agent did not run the nap it was asked to start). Every model call of the turn
+// has it in the same place, and the next request of the process does not move it.
+func TestOpenCodePluginPutsTheBriefOnTheRequestThatAskedForItInAResumedSession(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "session-start", 0, additionalJSON("BRIEF-WITH-THE-NAP-NOTICE"))
+	b.answer(t, "user-prompt-submit", 1, additionalJSON("TEXT-OF-REQUEST-SIX"))
+	b.answer(t, "user-prompt-submit", 2, additionalJSON("TEXT-OF-REQUEST-SEVEN"))
+	steps := resumedHistory("s1", 5) // messages 0 to 9
+	steps = append(steps,
+		map[string]any{"op": "prompt", "sid": "s1", "text": "request 6"}, // message 10
+		map[string]any{"op": "context", "sid": "s1"},
+		map[string]any{"op": "context", "sid": "s1"}, // a second model call of the same turn
+		map[string]any{"op": "history", "sid": "s1", "role": "assistant", "text": "answer 6"},
+		map[string]any{"op": "prompt", "sid": "s1", "text": "request 7"}, // message 12
+		map[string]any{"op": "context", "sid": "s1"})
+	run, calls := b.play(t, map[string]any{"steps": steps})
+	if len(run.Errors) != 0 || len(run.Requests) != 3 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	if n := countCalls(calls, "session-start"); n != 1 {
+		t.Errorf("session-start is asked once in the process, asked %d times", n)
+	}
+	for i, r := range run.Requests {
+		if !slices.Equal(r.System, []string{"BASE"}) {
+			t.Errorf("model call %d: the system text is changed: %q", i+1, r.System)
+		}
+		if got := textsOf(r, 0); !slices.Equal(got, []string{"old request 1"}) {
+			t.Errorf("model call %d: the first request of the conversation is sent as it was: %q", i+1, got)
+		}
+		if got := textsOf(r, 10); !slices.Equal(got, []string{"request 6", "BRIEF-WITH-THE-NAP-NOTICE", "TEXT-OF-REQUEST-SIX"}) {
+			t.Errorf("model call %d: the brief goes on the message of the request that asked for it: %q", i+1, got)
+		}
+		if n := countText(r, "BRIEF-WITH-THE-NAP-NOTICE"); n != 1 {
+			t.Errorf("model call %d: the brief is in the call %d times, once is wanted: %+v", i+1, n, r.Messages)
+		}
+	}
+	if got := textsOf(run.Requests[2], 12); !slices.Equal(got, []string{"request 7", "TEXT-OF-REQUEST-SEVEN"}) {
+		t.Errorf("the next request does not take the brief over: %q", got)
+	}
+}
+
+// A summary takes the request's message that asked for the brief away: the brief (the old one when asking again got no answer) goes on
+// the first message the model gets, as a request's text does when a summary took its message. That also holds when the summary came
+// before any model call had the request's message.
+func TestOpenCodePluginPutsTheBriefOnTheSummaryWhenASummaryTookTheRequestThatAskedForIt(t *testing.T) {
+	for _, callBefore := range []bool{true, false} {
+		b := newPluginBox(t)
+		b.answer(t, "session-start", 1, additionalJSON("OLD-BRIEF"))
+		b.fail(t, "session-start", 2) // asking again after the summary gets no answer: the old brief stays
+		steps := resumedHistory("s1", 2)
+		steps = append(steps, map[string]any{"op": "prompt", "sid": "s1", "text": "request 3"})
+		if callBefore {
+			steps = append(steps, map[string]any{"op": "context", "sid": "s1"})
+		}
+		steps = append(steps,
+			map[string]any{"op": "compaction", "sid": "s1"},
+			map[string]any{"op": "context", "sid": "s1"})
+		run, _ := b.play(t, map[string]any{"steps": steps})
+		if len(run.Errors) != 0 || len(run.Requests) == 0 {
+			t.Fatalf("model call before %v: the steps ran: %+v", callBefore, run)
+		}
+		after := run.Requests[len(run.Requests)-1]
+		if len(after.Messages) != 1 || !slices.Equal(textsOf(after, 0), []string{"SUMMARY-OF-THE-CONVERSATION", "OLD-BRIEF"}) || !slices.Equal(after.System, []string{"BASE"}) {
+			t.Errorf("model call before %v: the old brief goes on the summary: %+v", callBefore, after)
+		}
+	}
+}
+
+// An OpenCode that gives the prompt hook no messageID cannot say which message asked: the brief goes into the system text, as a request's
+// text does then, not on the first message of the conversation.
+func TestOpenCodePluginPutsTheBriefInTheSystemTextWhenOpenCodeGivesNoMessageID(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "session-start", 0, additionalJSON("BRIEF-OF-THE-SESSION"))
+	steps := resumedHistory("s1", 2)
+	steps = append(steps,
+		map[string]any{"op": "prompt", "sid": "s1", "text": "request 3", "noMessageID": true},
+		map[string]any{"op": "context", "sid": "s1"})
+	run, _ := b.play(t, map[string]any{"steps": steps})
+	if len(run.Errors) != 0 || len(run.Requests) != 1 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	r := run.Requests[0]
+	if !slices.Equal(r.System, []string{"BASE", "BRIEF-OF-THE-SESSION"}) || countText(r, "BRIEF-OF-THE-SESSION") != 1 {
+		t.Errorf("the brief is in the system text, once: %+v", r)
+	}
+	if got := textsOf(r, 0); !slices.Equal(got, []string{"old request 1"}) {
+		t.Errorf("the first message of the conversation is sent as it was: %q", got)
+	}
+}
+
+// The request that asked for the brief may wait (a message sent while a turn runs is delivered at a step boundary). Until it is in the
+// model's messages the brief goes nowhere, and not on an older message that it would have to leave again: it goes on the request's
+// message when that comes.
+func TestOpenCodePluginWaitsWithTheBriefForTheRequestThatAskedForItToArrive(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "session-start", 0, additionalJSON("BRIEF-OF-THE-SESSION"))
+	steps := resumedHistory("s1", 1)
+	steps = append(steps,
+		map[string]any{"op": "prompt", "sid": "s1", "text": "request 2", "queued": true},
+		map[string]any{"op": "context", "sid": "s1"}, // the message has not arrived
+		map[string]any{"op": "deliver", "sid": "s1"},
+		map[string]any{"op": "context", "sid": "s1"})
+	run, _ := b.play(t, map[string]any{"steps": steps})
+	if len(run.Errors) != 0 || len(run.Requests) != 2 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	if n := countText(run.Requests[0], "BRIEF-OF-THE-SESSION"); n != 0 {
+		t.Errorf("the brief goes nowhere until the request that asked for it has arrived: %+v", run.Requests[0])
+	}
+	if got := textsOf(run.Requests[1], 2); !slices.Equal(got, []string{"request 2", "BRIEF-OF-THE-SESSION"}) || countText(run.Requests[1], "BRIEF-OF-THE-SESSION") != 1 {
+		t.Errorf("the brief goes on the request's message when it arrives: %+v", run.Requests[1])
 	}
 }
 
