@@ -2,11 +2,11 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## 0.43.1 — In OpenCode too, the memory nap notice reaches the current request
+## 0.43.1 — When you carry on a conversation in OpenCode, the memory nap request reaches your current request
 
 ### Fixes
 
-- Fixed OpenCode showing the agent a memory nap notice given partway through a session that goes on as if it were old text on the first request of the conversation, so `shikii nap` did not run. The text shikii gives at the start of a session now goes on the request it came with.
+- Fixed the agent passing over the memory nap request (`shikii nap`) when you reopen an earlier conversation in OpenCode and carry on, so the review never started. This request is part of the text shikii gives the agent at the start of a session. It used to appear on the first request of the conversation, not on the one you had just sent, so the agent took it as old text. It now comes with the request you just sent, and the agent starts the review right away. Claude Code already received it this way.
 
 ## 0.43.0 — The memory nap counts the missed corrections it caught
 
