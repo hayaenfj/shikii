@@ -1,20 +1,21 @@
 package main
 
 // What `shikii nap` caught of what it showed uncited. A conversation printed while no live article cited it (no `lessons`) is a
-// conversation the wiki may hold nothing of. When an article cites it by the next run, the agent's reading of it reached the wiki. The
-// count needs no new operation from the agent: .shikii/nap-shown keeps, for every conversation a run printed, whether an article cited it
-// then, and the next run looks at the live articles again (the same read it makes for `lessons`). Only an article counts: the sources the
-// agent sends to say it read a conversation are not saved as an article's source, so a read notice alone never raises the count.
+// conversation the wiki may hold nothing of. When an article cites it by the time the agent has read it, the agent's reading of it reached
+// the wiki. The count needs no new operation from the agent: .shikii/nap-first keeps, for every conversation a run printed for the first
+// time, whether an article cited it then (nap_first.go), and the run that moves the window over it looks at the live articles again (the
+// same read it makes for `lessons`). Only an article counts: the sources the agent sends to say it read a conversation are not saved as an
+// article's source, so a read notice alone never raises the count.
 //
-// Only the conversations the agent has read are counted: the ones the window has just moved over (the first ones of .shikii/nap-shown,
-// in a run, that are all in .shikii/nap-read). A conversation that was not read prints again and is counted by the run that moves the
-// window over it, once, whatever happened to it in between.
+// Only the conversations the agent has read are counted: the ones the window has just moved over (the first ones of .shikii/nap-shown, in a
+// run, that are all in .shikii/nap-read). A conversation that was not read prints again and is counted by the run that moves the window
+// over it, once, whatever happened to it in between (a run that left it out, or printed it again).
 //
-// Each run that wrote the window over conversations with a recorded state prints the counts as last_nap
-// ({"shown":N,"uncited":U,"picked_up":K}) and adds one JSON line to .shikii/nap-log (the time, the three counts and the ids picked up),
-// before it prints: the conversations are counted when the window moves over them, once, whatever happens to the printing or to the
-// record of what was shown after that (see finishNap). `shikii status` sums every line of the log. Both files are ordinary files with one
-// name or nothing: a log that cannot be written never fails a run (one line a day does not need a size limit).
+// A run that wrote the window over conversations with a recorded state counts them there and then (countNapRead): it adds one JSON line to
+// .shikii/nap-log (the time, the three counts and the ids picked up) and prints the counts as last_nap. That is before the report is built,
+// so nothing that fails after the window moved can lose the count, and only the run that wrote the window counts, so two runs at the same
+// time count the conversations once. `shikii status` sums every line of the log. The log is an ordinary file with one name or nothing: a
+// log that cannot be written never fails a run (one line a day does not need a size limit).
 
 import (
 	"encoding/json"
@@ -41,30 +42,30 @@ type napLastNap struct {
 	ids []string // not printed in the report; the log keeps them
 }
 
-// napCited is whether an article cited a conversation when a run printed it, as .shikii/nap-shown records it.
+// napCited is whether an article cited a conversation when a run first printed it, as .shikii/nap-first records it (and, in a record of
+// what was shown from before that file, as the fourth field of a line of .shikii/nap-shown did).
 type napCited byte
 
 const (
-	napCitedUnknown napCited = iota // a record from before this was kept: the conversation is not counted
+	napCitedUnknown napCited = iota // not recorded: the conversation is not counted
 	napWasUncited
 	napWasCited
 )
 
-// napPickupOf compares the first moved conversations of a record of .shikii/nap-shown (raw is its text; moved is how many of them the
-// window has been moved over: the ones read) with the live articles' citations (cited, by conversation id) as they are now. It is nil
-// when the record is not there or cannot be read, and when none of those conversations has a recorded state.
-func napPickupOf(raw string, cited map[string][]string, moved int) *napLastNap {
-	shown, ok := parseNapShown(raw)
-	if !ok {
-		return nil
-	}
+// napPickupOf counts the conversations the window has just moved over (moved): the state of each is first[id], else the one the record of
+// what was shown carried; cited is the live articles' citations by conversation id as they are now. It is nil when none has a state.
+func napPickupOf(moved []napShownConv, first map[string]napCited, cited map[string][]string) *napLastNap {
 	var p napLastNap
-	for _, c := range shown.convs[:min(moved, len(shown.convs))] {
-		if c.cited == napCitedUnknown {
+	for _, c := range moved {
+		state, ok := first[c.id]
+		if !ok {
+			state = c.cited
+		}
+		if state == napCitedUnknown {
 			continue
 		}
 		p.Shown++
-		if c.cited == napWasCited {
+		if state == napWasCited {
 			continue
 		}
 		p.Uncited++

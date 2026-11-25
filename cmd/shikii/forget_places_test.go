@@ -8,6 +8,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
 // forgetPlaceClasses say how a place in the project's .shikii/ (or the agents' common folder) tells which session a record is of:
@@ -51,8 +54,8 @@ var forgetPlaces = []forgetPlace{
 	{`^store/records/(store-name|store-id)$`, "outside", ""},
 	{`^store/records/forgotten/`, "outside", ""},
 	{`^store/(project\.json|hook\.log|hook\.log\.[0-9]+)$`, "undecided", ""},
-	// shikii nap's own files: conversation ids and places in the record, emptied or rewritten by every run of shikii nap (nap-log only grows: counts and ids of conversations an article cited later)
-	{`^store/(nap|nap-window-end|nap-shown|nap-read|nap-log)$`, "undecided", ""},
+	// shikii nap's own files: conversation ids and places in the record, emptied or rewritten by every run of shikii nap (nap-log only grows: counts and ids of conversations an article cited later; nap-first holds a conversation's id until the run that counts it takes it out)
+	{`^store/(nap|nap-window-end|nap-shown|nap-read|nap-log|nap-first)$`, "undecided", ""},
 	{`^store/(wiki|decisions|handoff|guards)/`, "outside", ""},
 	{`^home/agent/`, "outside", ""},
 }
@@ -184,5 +187,36 @@ func TestForgetPlaceTableSeesAPlaceItDoesNotKnow(t *testing.T) {
 	}
 	if left := forgetUnclassified([]string{"store/records/feedback/" + strings.Repeat("0", 64) + ".jsonl"}); len(left) != 1 {
 		t.Errorf("a place taken out of the table is still taken: %v", left)
+	}
+}
+
+// Every file shikii nap writes under the project's store is in the table: a run that prints conversations, a run that counts the ones
+// read, and the names the code gives its files.
+func TestForgetKnowsEveryFileShikiiNapWrites(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	book := notebook.Book{Root: st.Dir, Scope: scope}
+	saveConversation(t, st, scope, "0000000000000002", time.Now().Add(-time.Hour), "second")
+	decodeNap(t)
+	saveNapArticle(t, book, napDraft(draft, "Second article", "0000000000000002"))
+	napSendSources(t, st, scope, hexIDList(1, 2)...)
+	decodeNap(t)
+	var paths []string
+	entries, err := os.ReadDir(st.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "nap") {
+			paths = append(paths, "store/"+e.Name())
+		}
+	}
+	for _, name := range []string{napStateName, napWindowEndName, napShownName, notebook.NapReadName, napLogName, napFirstName} {
+		paths = append(paths, "store/"+name)
+	}
+	if len(paths) < 8 {
+		t.Fatalf("the runs wrote too few nap files to check: %v", paths)
+	}
+	if left := forgetUnclassified(paths); len(left) > 0 {
+		t.Errorf("a file shikii nap writes is in no place of the table (decide its class in forget_places_test.go): %v", left)
 	}
 }

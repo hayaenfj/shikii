@@ -26,7 +26,7 @@ package main
 // (a script that drops them, say) has read none of them. A conversation counts as read when a save (shikii reflect submit or wiki
 // ingest) names its id among the sources of a wiki entry after the run printed it: notebook.Book.RecordNapRead appends the ids a save
 // names to .shikii/nap-read, one per line. After a run has printed, it writes .shikii/nap-shown (the window it started from and, for each
-// conversation printed, its id, the place after its line and whether an article cited it) and empties .shikii/nap-read, so what was named before the run printed is
+// conversation printed, its id and the place after its line) and empties .shikii/nap-read, so what was named before the run printed is
 // never counted. A save accepts an id that .shikii/nap-shown lists as a source even when the conversation is older than the newest 256
 // and no save has kept it (see notebook.Book.napShownConversation), so the agent can always name what it was given. The next
 // `shikii nap` starts by moving the window over the longest run of conversations from the first one printed whose
@@ -35,20 +35,24 @@ package main
 // .shikii/nap-window-end still holds what the last run started from, under its lock.
 //
 // The next run finds its place by the hash, not by the offset: it goes on after the line of the record that has the saved hash and is
-// the copy the place names, after the first line that has it when the record has fewer copies, and from the beginning when none has it
-// (`shikii forget` may have rewritten the record, or it was replaced, or the same line is in it more than once, and the offset can then
-// end another line): a conversation may be shown again, none is lost. Without the copy, a run that read up to the last of two equal
-// lines would go on after the first of them and show what lies between them again on every run. Each of these files is read and written
-// only when it is an ordinary file with one name (a symbolic link or a hard link is a file of the person's, never written through); a
-// file that cannot be used means nothing read or shown, and the error says to remove the file. Each file is its own: the notice's rewrite
-// of .shikii/nap carries no third line, and the writes never wait for each other.
+// the copy the place names, when that line ends at the byte offset the place holds; after the first line that has it when it does not
+// (the record has fewer copies, or lines before it were removed or rewritten, which can make a later line the named copy); and from the
+// beginning when none has it (`shikii forget` may have rewritten the record, or it was replaced, or the same line is in it more than
+// once, and the offset can then end another line): a conversation may be shown again, none is lost. Without the copy, a run that read up
+// to the last of two equal lines would go on after the first of them and show what lies between them again on every run. Each of these
+// files is read and written only when it is an ordinary file with one name (a symbolic link or a hard link is a file of the person's,
+// never written through); a file that cannot be used means nothing read or shown, and the error says to remove the file. Each file is its
+// own: the notice's rewrite of .shikii/nap carries no third line, and the writes never wait for each other.
 //
-// What the run before caught is counted from the same record (nap_pickup.go): each line of .shikii/nap-shown also says whether an article
-// cited the conversation when it was first printed (a conversation printed again keeps what it was then, so an article saved from it in
-// between is what the run caught), and the next run prints last_nap, how many of the conversations it moved the window over (the ones
-// read) were printed uncited and an article cites now, and adds a line to .shikii/nap-log. Only the run that wrote the window counts the
+// What the run before caught is counted from two places (nap_pickup.go, nap_first.go). .shikii/nap-first keeps, for each conversation,
+// whether an article cited it when it was first printed: a run adds the line when it prints the conversation for the first time, and
+// takes it out when it moves the window over the conversation and counts it, so no run in between can lose it (a conversation printed
+// again, or left out of a run, keeps its line, and so an article saved from it in between is what the run caught). The run that wrote
+// the window over the conversations read counts them there and then, before it builds the report: last_nap says how many of them were
+// printed uncited and an article cites now, and a line is added to .shikii/nap-log. Only the run that wrote the window counts the
 // conversations: one whose lock was held, or that found the window moved by another run, counts none, and a conversation that was not
-// read is counted when a later run moves the window over it, once. The agent is asked for nothing more.
+// read is counted when a later run moves the window over it, once. A failure later in the run (the report, the printing, the record of
+// what was shown) cannot lose or repeat the count. The agent is asked for nothing more.
 
 import (
 	"encoding/hex"
@@ -297,12 +301,12 @@ type napReport struct {
 	} `json:"memory_upgrade"`
 	NextAction string `json:"next_action"`
 
-	// What recordNapShown needs, none of it printed: the place after each conversation printed (in the order printed), whether an article
-	// cited it when it was first printed (in the same order), the content of
-	// .shikii/nap-window-end that the report was read from, the content of .shikii/nap-shown that the run started with, and the error
-	// of moving the window at the start, which the command returns once it has printed.
+	// What recordNapShown and recordNapFirst need, none of it printed: the place after each conversation printed (in the order printed),
+	// the conversations printed for the first time with whether an article cited each then, the content of .shikii/nap-window-end that
+	// the report was read from, the content of .shikii/nap-shown that the run started with, and the errors of moving the window and of
+	// counting at the start, which the command returns once it has printed.
 	ends      []store.FeedbackMark
-	states    []napCited // whether an article cited each conversation printed when it was first printed (in the order printed)
+	firstNew  []napFirstEntry
 	endState  string
 	shownRaw  string
 	settleErr error
@@ -351,15 +355,27 @@ func napPremiseChangedOf(pages []notebook.Page) ([]napPremiseChanged, int) {
 }
 
 // runNapReport is a run of `shikii nap` up to the printing: it moves the window over the conversations the agent has read since the last
-// run (settleNapWindow), then builds the report from the window. The error of moving the window does not stop the run: it is kept in the
-// report for the command to return after printing, and the report is built from the window as it is.
+// run (settleNapWindow) and counts them (countNapRead) as soon as the window is written, then builds the report from the window. The live
+// articles are read first: when that fails nothing has moved, and the next run does what this one would have. The error of moving the
+// window or of keeping the states does not stop the run: it is kept in the report for the command to return after printing, and the report
+// is built from the window as it is.
 func runNapReport(root, scope string) (napReport, error) {
+	book := notebook.Book{Root: root, Scope: scope}
+	// The live articles (not withdrawn, deleted or replaced, their sources intact), each with the files it watches checked: the ones that
+	// cite a conversation, and the ones whose premise changed.
+	live, err := book.Live()
+	if err != nil {
+		return napReport{}, err
+	}
+	sort.Slice(live, func(i, j int) bool { return live[i].ID < live[j].ID })
+	cited := napCitations(live)
 	unread, shownRaw, moved, settleErr := settleNapWindowRead(root)
-	r, err := buildNapReport(root, scope, unread, shownRaw, moved)
+	last, firstErr := countNapRead(root, moved, cited, time.Now())
+	r, err := buildNapReport(root, scope, live, cited, unread, shownRaw, last)
 	if err != nil {
 		return r, err
 	}
-	r.shownRaw, r.settleErr = shownRaw, settleErr
+	r.shownRaw, r.settleErr = shownRaw, errors.Join(settleErr, firstErr)
 	return r, nil
 }
 
@@ -367,12 +383,10 @@ func runNapReport(root, scope string) (napReport, error) {
 // have a reply, in the order they were written, the articles whose premise changed, and the memory upgrade's progress. The whole report
 // fits napOutputMax bytes (see fitNapReport): the articles that fit are listed and the rest counted in premise_changed_more, the
 // conversations that fit after them (at most napMaxConvs) are listed and the rest counted in newer_left. unread is the ids the last run
-// printed that were not read: shown_again counts those among the conversations printed. shownRaw is the content of .shikii/nap-shown the
-// run started with: last_nap looks again, with the same live articles, at the first moved of the conversations it lists, the ones the
-// window has just moved over (the ones that were not read are printed again and counted when they are). The places after the
-// conversations printed, and whether an article cited each when it was first printed (what the record of the last run says of it when it
-// printed it too, else the state now), are kept for recordNapShown.
-func buildNapReport(root, scope string, unread []string, shownRaw string, moved int) (napReport, error) {
+// printed that were not read: shown_again counts those among the conversations printed. last is what the run counted when it moved the
+// window (last_nap). shownRaw is the content of .shikii/nap-shown the run started with. The places after the conversations printed, and
+// the conversations printed for the first time with whether an article cites each now, are kept for recordNapShown and recordNapFirst.
+func buildNapReport(root, scope string, live []notebook.Page, cited map[string][]string, unread []string, shownRaw string, last *napLastNap) (napReport, error) {
 	var r napReport
 	var from store.FeedbackMark
 	r.endState, from = readNapWindowEnd(root)
@@ -381,15 +395,7 @@ func buildNapReport(root, scope string, unread []string, shownRaw string, moved 
 	if err != nil {
 		return r, err
 	}
-	// The live articles (not withdrawn, deleted or replaced, their sources intact), each with the files it watches checked: the ones that
-	// cite a conversation, and the ones whose premise changed.
-	live, err := book.Live()
-	if err != nil {
-		return r, err
-	}
-	sort.Slice(live, func(i, j int) bool { return live[i].ID < live[j].ID })
-	cited := napCitations(live)
-	r.LastNap = napPickupOf(shownRaw, cited, moved)
+	r.LastNap = last
 	r.PremiseChanged, r.PremiseChangedMore = napPremiseChangedOf(live)
 	// MemoryUpgrade also keeps its own checkpoint (the hook asks it on every request); it edits no article.
 	if u, err := book.MemoryUpgrade(); err != nil {
@@ -400,26 +406,35 @@ func buildNapReport(root, scope string, unread []string, shownRaw string, moved 
 	r.NextAction = napNextAction
 	convs := []napConversation{}
 	var ends []store.FeedbackMark // the place after the line of each conversation
-	var states []napCited         // whether an article cited it when it was first printed
-	first := napFirstPrinted(shownRaw)
+	var firsts []napFirstEntry    // the conversation, and whether an article cites it now, for the ones with no line in .shikii/nap-first yet
+	record := readNapFirst(root)
+	older := napFirstPrinted(shownRaw) // a record of what was shown from before .shikii/nap-first carried the state in its lines
 	for _, l := range lines {
 		if strings.TrimSpace(l.Reply) == "" {
 			continue
 		}
 		convs = append(convs, napConversation{l.ID, l.At, l.Session, cut(l.Request, napRequestLimit), cut(l.Summary, napSummaryLimit), cut(l.Reply, napReplyLimit), cited[l.ID]})
 		ends = append(ends, l.Mark)
-		state, known := first[l.ID] // a conversation printed again is what it was when it was first printed
-		if !known {
-			state = napWasUncited
+		entry := napFirstEntry{id: l.ID}
+		if _, known := record.state[l.ID]; !known {
+			entry.state = napWasUncited
 			if len(cited[l.ID]) > 0 {
-				state = napWasCited
+				entry.state = napWasCited
+			}
+			if was, ok := older[l.ID]; ok {
+				entry.state = was
 			}
 		}
-		states = append(states, state)
+		firsts = append(firsts, entry)
 	}
 	r.ShownAgain = len(unread) // while fitting: the count printed cannot take more bytes than this one
 	n := fitNapReport(&r, convs, napOutputMax, napMaxConvs)
-	r.ends, r.states = ends[:n], states[:n]
+	r.ends = ends[:n]
+	for _, e := range firsts[:n] {
+		if e.state != napCitedUnknown { // the others have their line already
+			r.firstNew = append(r.firstNew, e)
+		}
+	}
 	r.ShownAgain = 0
 	for _, c := range r.Conversations {
 		if slices.Contains(unread, c.ID) {
@@ -492,11 +507,13 @@ func encodeNapReport(w io.Writer, r napReport) error {
 
 func napShownPath(root string) string { return filepath.Join(root, napShownName) }
 
-// napShownConv is a conversation the last run printed, with the place just after its line in the record.
+// napShownConv is a conversation the last run printed, with the place just after its line in the record. cited is what a record of
+// what was shown from before .shikii/nap-first said of it (whether an article cited it when it was first printed); a record written now
+// says nothing there (the state is in .shikii/nap-first).
 type napShownConv struct {
 	id    string
 	mark  store.FeedbackMark
-	cited napCited // whether an article cited it when it was printed
+	cited napCited
 }
 
 // napShown is what .shikii/nap-shown holds: the content of .shikii/nap-window-end the last run started from, and the conversations it
@@ -507,20 +524,16 @@ type napShown struct {
 }
 
 // formatNapShown is the file's text: the window content in Go quotes on the first line (it can be any bytes up to napStateMax of them),
-// then one line per conversation printed, "id offset hash cited" and, when the same line is in the record before it too, " copy" (cited
-// is 1 when an article cited the conversation when it was first printed, else 0; a line of three fields, from before this was kept, reads
-// as not known; a line without the copy is the first copy).
-func formatNapShown(window string, convs []napConversation, ends []store.FeedbackMark, states []napCited) string {
+// then one line per conversation printed, "id offset hash" and, when the same line is in the record before it too, " - copy". The fourth
+// field was whether an article cited the conversation when it was first printed (0 or 1) in a file of an older version: it is "-" now,
+// the state being in .shikii/nap-first, and a line of three fields or with a 0 or 1 there is read as before.
+func formatNapShown(window string, convs []napConversation, ends []store.FeedbackMark) string {
 	var b strings.Builder
 	b.WriteString(strconv.Quote(window) + "\n")
 	for i, c := range convs {
-		cited := 0
-		if states[i] == napWasCited {
-			cited = 1
-		}
-		fmt.Fprintf(&b, "%s %d %s %d", c.ID, ends[i].Offset, ends[i].Hash, cited)
+		fmt.Fprintf(&b, "%s %d %s", c.ID, ends[i].Offset, ends[i].Hash)
 		if ends[i].Copy > 0 {
-			fmt.Fprintf(&b, " %d", ends[i].Copy)
+			fmt.Fprintf(&b, " - %d", ends[i].Copy)
 		}
 		b.WriteString("\n")
 	}
@@ -559,6 +572,7 @@ func parseNapShown(raw string) (napShown, bool) {
 				cited = napWasUncited
 			case "1":
 				cited = napWasCited
+			case "-":
 			default:
 				return napShown{}, false
 			}
@@ -568,10 +582,9 @@ func parseNapShown(raw string) (napShown, bool) {
 	return s, true
 }
 
-// napFirstPrinted is, for each conversation the record of the last run lists with a recorded state, whether an article cited it when it was
-// first printed. A conversation of that record that is printed again keeps that state: the articles saved from it since are what the run
-// caught, and are counted when the window moves over it. A record that cannot be read, and a line from before the state was kept, say
-// nothing.
+// napFirstPrinted is, for each conversation a record of what was shown from before .shikii/nap-first lists with a recorded state, whether
+// an article cited it when it was first printed: a conversation printed under that record, that has no line in .shikii/nap-first yet,
+// takes that state into its line. A record that cannot be read, a line from before any state was kept and a record written now say nothing.
 func napFirstPrinted(raw string) map[string]napCited {
 	shown, ok := parseNapShown(raw)
 	if !ok {
@@ -597,15 +610,15 @@ func settleNapWindow(root string) (unread []string, shownRaw string, err error) 
 	return unread, shownRaw, err
 }
 
-// settleNapWindowRead is settleNapWindow that also says how many conversations of .shikii/nap-shown this run moved the window over: the
+// settleNapWindowRead is settleNapWindow that also returns the conversations of .shikii/nap-shown this run moved the window over: the
 // ones read from the first printed on, when this run wrote the window. None when it did not (its lock was held, or another run moved the
 // window first: that run counted them): they print again, or are before the window the other run wrote, and are counted once, by the run
 // that writes the window over them.
-func settleNapWindowRead(root string) (unread []string, shownRaw string, moved int, err error) {
+func settleNapWindowRead(root string) (unread []string, shownRaw string, moved []napShownConv, err error) {
 	shownRaw = readNapStateAtLimit(napShownPath(root), napShownMax)
 	shown, ok := parseNapShown(shownRaw)
 	if !ok {
-		return nil, shownRaw, 0, nil
+		return nil, shownRaw, nil, nil
 	}
 	read := notebook.NapReadIDs(root)
 	n := 0
@@ -616,40 +629,42 @@ func settleNapWindowRead(root string) (unread []string, shownRaw string, moved i
 		unread = append(unread, c.id)
 	}
 	if n == 0 {
-		return unread, shownRaw, 0, nil
+		return unread, shownRaw, nil, nil
 	}
 	path := napWindowEndPath(root)
 	wrote, err := rewriteNapFile(path, shown.window, formatNapWindowEnd(shown.convs[n-1].mark))
 	if err != nil {
-		return unread, shownRaw, 0, fmt.Errorf("the conversations you read could not be moved past: %w; remove %s (it must be an ordinary file with one name that can be written) and the next `shikii nap` moves the window again", err, path)
+		return unread, shownRaw, nil, fmt.Errorf("the conversations you read could not be moved past: %w; remove %s (it must be an ordinary file with one name that can be written) and the next `shikii nap` moves the window again", err, path)
 	}
 	if !wrote {
-		return unread, shownRaw, 0, nil
+		return unread, shownRaw, nil, nil
 	}
-	return unread, shownRaw, n, nil
+	return unread, shownRaw, shown.convs[:n], nil
 }
 
 // recordNapShown is what the run writes once it has printed: it empties .shikii/nap-read (what was named before this output reached the
-// agent is not a sign that the agent read it), then replaces .shikii/nap-shown with the window this run started from and the conversations
-// it printed (nothing when it printed none), under the file's lock and only while the file still holds what the run started with. A run
+// agent is not a sign that the agent read it), adds a line to .shikii/nap-first for each conversation printed for the first time (with
+// whether an article cited it then), then replaces .shikii/nap-shown with the window this run started from and the conversations it
+// printed (nothing when it printed none), under the file's lock and only while the file still holds what the run started with. A run
 // that printed nothing leaves the window as it is. A file that cannot be used (not an ordinary file with one name) makes the error say to
 // remove it, also when the run printed nothing and had nothing to replace: no later run could record what it prints.
 func recordNapShown(root string, r napReport) error {
 	if err := notebook.ClearNapRead(root); err != nil {
 		return fmt.Errorf("%w; remove %s (it must be an ordinary file with one name that can be written) and the next `shikii nap` records what it printed again", err, filepath.Join(root, notebook.NapReadName))
 	}
+	firstErr := updateNapFirst(root, nil, r.firstNew)
 	state := ""
 	if len(r.Conversations) > 0 {
-		state = formatNapShown(r.endState, r.Conversations, r.ends, r.states)
+		state = formatNapShown(r.endState, r.Conversations, r.ends)
 	}
 	path := napShownPath(root)
 	if state == "" && r.shownRaw == "" {
-		return checkNapShownUsable(path) // nothing to replace: only say whether a later run could
+		return errors.Join(firstErr, checkNapShownUsable(path)) // nothing to replace: only say whether a later run could
 	}
 	if _, err := rewriteNapFileLimit(path, r.shownRaw, state, napShownMax); err != nil {
-		return fmt.Errorf("%w; remove %s (it must be an ordinary file with one name that can be written) and the next `shikii nap` records what it printed again", err, path)
+		return errors.Join(firstErr, fmt.Errorf("%w; remove %s (it must be an ordinary file with one name that can be written) and the next `shikii nap` records what it printed again", err, path))
 	}
-	return nil
+	return firstErr
 }
 
 // checkNapShownUsable is nil when .shikii/nap-shown is not there or is an ordinary file with one name, and else the error that says why
@@ -688,15 +703,12 @@ func cmdNap(args []string) error {
 	return finishNap(root, r)
 }
 
-// finishNap is the rest of a run once its report is built: it adds the line for the log, prints the report and records what was printed.
+// finishNap is the rest of a run once its report is built: it prints the report and records what was printed.
 //
-// The log line is added by the run that moved the window over the conversations it counts (r.LastNap is only set then), before the output
-// is printed: they are counted when the window moves over them, once, whatever happens to the printing or to the record of what was shown
-// after that. A count that waited for this run to replace that record would be lost when another run, which moved nothing, replaced it first.
+// The conversations the run moved the window over were counted, and the line for the log added, when the window was written
+// (countNapRead), before the report was built: whatever happens to the report, the printing or the record of what was shown after that
+// cannot lose the count, and the run that wrote the window is the only one that counts.
 func finishNap(root string, r napReport) error {
-	if r.LastNap != nil {
-		appendNapLog(root, *r.LastNap, time.Now()) // never fails the run
-	}
 	if err := encodeNapReport(stdout, r); err != nil {
 		return err // nothing was shown, so nothing is recorded: the next run starts at the same window
 	}

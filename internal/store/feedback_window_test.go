@@ -399,7 +399,7 @@ func TestFeedbackAfterCountsCopiesFromTheBeginningOfTheFile(t *testing.T) {
 	}
 }
 
-// When fewer copies are in the file than the mark names (shikii forget removed lines, or the file was replaced), the read goes on after
+// When fewer copies are in the file than the mark names (lines were removed by hand, or the file was replaced), the read goes on after
 // the first copy: a conversation may be read again, none is skipped. A mark with no copy (one made before the field) is the first copy.
 func TestFeedbackAfterGoesOnAfterTheFirstCopyWhenTheNamedCopyIsGone(t *testing.T) {
 	s, scope := feedbackWindowFixture(t, 0)
@@ -428,5 +428,49 @@ func TestFeedbackAfterGoesOnAfterTheFirstCopyWhenTheNamedCopyIsGone(t *testing.T
 	got, err := s.FeedbackAfter(scope, old)
 	if err != nil || fmt.Sprint(feedbackLineIDs(got)) != "[000000000000000b 000000000000000a 000000000000000c]" {
 		t.Errorf("a mark without a copy goes on after the first copy: %v %v", feedbackLineIDs(got), err)
+	}
+}
+
+// The copy is the number of the same lines before it in the file, and a named copy is used only where that line ends at the offset the mark
+// remembers. When a copy before the place is taken out by hand and more copies are after it, the named copy is a later line that ends
+// elsewhere, so the read goes on after the first copy and shows what lies between again: B is never skipped.
+func TestFeedbackAfterReadsAgainFromTheFirstCopyWhenAnEarlierCopyIsTakenOutByHand(t *testing.T) {
+	s, scope := feedbackWindowFixture(t, 0)
+	lineL := feedbackLine(t, "000000000000000a", "L-reply", 10)
+	lineA := feedbackLine(t, "000000000000000b", "A-reply", 20)
+	lineB := feedbackLine(t, "000000000000000c", "B-reply", 30)
+	writeFeedbackLines(t, s, scope, lineL, lineA, lineL) // what the run read: the window is on the second copy
+	got, err := s.FeedbackAfter(scope, FeedbackMark{})
+	if err != nil || len(got) != 2 || got[1].Mark.Copy != 1 {
+		t.Fatalf("premise: %v %+v %v", feedbackLineIDs(got), got, err)
+	}
+	mark := got[1].Mark
+	writeFeedbackLines(t, s, scope, lineA, lineL, lineB, lineL) // B and a copy of L written after; the first copy taken out by hand
+	rest, err := s.FeedbackAfter(scope, mark)
+	if err != nil || fmt.Sprint(feedbackLineIDs(rest)) != "[000000000000000c 000000000000000a]" {
+		t.Fatalf("B was written after the place and must be read: %v %v", feedbackLineIDs(rest), err)
+	}
+}
+
+// A line before the named copy that is not a copy was removed (shikii forget does that to a finished session's lines): the named copy ends
+// somewhere else, so the read goes on after the first copy and the conversations between the copies come again, none is skipped.
+func TestFeedbackAfterReadsAgainFromTheFirstCopyWhenAnotherLineBeforeTheNamedCopyWasRemoved(t *testing.T) {
+	s, scope := feedbackWindowFixture(t, 0)
+	lineX := feedbackLine(t, "000000000000000d", "X-reply", 5)
+	lineL := feedbackLine(t, "000000000000000a", "L-reply", 10)
+	lineA := feedbackLine(t, "000000000000000b", "A-reply", 20)
+	writeFeedbackLines(t, s, scope, lineX, lineL, lineA, lineL)
+	got, err := s.FeedbackAfter(scope, FeedbackMark{})
+	if err != nil || len(got) != 3 || got[2].Mark.Copy != 1 {
+		t.Fatalf("premise: %v %+v %v", feedbackLineIDs(got), got, err)
+	}
+	mark := got[2].Mark
+	if rest, err := s.FeedbackAfter(scope, mark); err != nil || len(rest) != 0 {
+		t.Fatalf("on the file the mark was made on nothing is left: %v %v", feedbackLineIDs(rest), err)
+	}
+	writeFeedbackLines(t, s, scope, lineL, lineA, lineL) // X removed
+	rest, err := s.FeedbackAfter(scope, mark)
+	if err != nil || fmt.Sprint(feedbackLineIDs(rest)) != "[000000000000000b 000000000000000a]" {
+		t.Fatalf("after the first copy, so A is read again: %v %v", feedbackLineIDs(rest), err)
 	}
 }

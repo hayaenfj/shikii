@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -429,5 +430,86 @@ func TestNapSaysNothingWhenNoConversationIsPrintedAndTheShownRecordIsUsable(t *t
 	}
 	if _, _, err := napPrintedRun(t, st); err != nil {
 		t.Fatalf("an empty ordinary file: %v", err)
+	}
+}
+
+// A conversation printed uncited, then left out of the next run (the articles whose premise changed took the room), then printed again:
+// what it was when first printed is kept in a file of its own that no run in between touches, so the article saved from it in between is
+// counted as caught.
+func TestNapKeepsWhatAConversationWasWhenFirstPrintedThroughARunThatDidNotPrintIt(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	book := notebook.Book{Root: st.Dir, Scope: scope}
+	long := strings.Repeat("t", 190)
+	for i := 0; i < 32; i++ {
+		watchedNapArticle(t, book, draft, fmt.Sprintf("%02d %s", i, long), fmt.Sprintf("w%02d.txt", i), "before")
+	}
+	now := time.Now()
+	for i := 2; i <= 40; i++ {
+		saveConversation(t, st, scope, fmt.Sprintf("%016x", i), now.Add(-time.Duration(100-i)*time.Minute), strings.Repeat("r", 1500))
+	}
+	first := decodeNap(t)
+	ids := conversationIDs(first)
+	if first.NewerLeft == 0 || len(ids) < 3 {
+		t.Fatalf("premise: the first run is cut by size: %v newer_left %d", ids, first.NewerLeft)
+	}
+	x := ids[len(ids)-1]
+	if len(lessonsOf(first)[x]) != 0 {
+		t.Fatalf("premise: %s is printed uncited", x)
+	}
+	saveNapArticle(t, book, napDraft(draft, "Article from X", x)) // 1 is not read: the window does not move
+	for i := 0; i < 32; i++ {
+		os.WriteFile(filepath.Join(scope, fmt.Sprintf("w%02d.txt", i)), []byte("after"), 0o600)
+	}
+	second := decodeNap(t)
+	if slices.Contains(conversationIDs(second), x) || len(second.PremiseChanged) == 0 {
+		t.Fatalf("premise: the changed premises take the room and %s is not printed: %v %d", x, conversationIDs(second), len(second.PremiseChanged))
+	}
+	for i := 0; i < 32; i++ {
+		os.WriteFile(filepath.Join(scope, fmt.Sprintf("w%02d.txt", i)), []byte("before"), 0o600)
+	}
+	third := decodeNap(t)
+	if !slices.Contains(conversationIDs(third), x) {
+		t.Fatalf("premise: %s is printed again: %v (premise %d)", x, conversationIDs(third), len(third.PremiseChanged))
+	}
+	napSendSources(t, st, scope, conversationIDs(third)...)
+	_, out := decodeNapOutput(t)
+	last := napLastNapOf(t, out)
+	if last["picked_up"] < 1 {
+		t.Fatalf("%s was printed uncited by the first run and an article cites it now, but last_nap counts no pick-up: %v", x, last)
+	}
+}
+
+// The conversations the window moved over are counted when the window is written, before the report is built: when building it fails
+// (here the record of conversations cannot be opened for a moment), the count is in the log all the same, and the next run counts nothing
+// again.
+func TestNapCountsTheConversationsTheWindowMovedOverEvenWhenTheReportFailsAfterwards(t *testing.T) {
+	st, scope, _, draft, _ := memoryEffectFixture(t)
+	book := notebook.Book{Root: st.Dir, Scope: scope}
+	saveConversation(t, st, scope, "0000000000000002", time.Now().Add(-time.Hour), "second")
+	decodeNap(t)
+	saveNapArticle(t, book, napDraft(draft, "Second article", "0000000000000002"))
+	napSendSources(t, st, scope, hexIDList(1, 2)...)
+	path := st.FeedbackFile(scope)
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	_, err := captureErr(func() error { return cmdNap(nil) })
+	os.Chmod(path, 0o600)
+	if err == nil {
+		t.Fatal("premise: the run fails while the record cannot be opened")
+	}
+	if rows := napLogRows(t, st); len(rows) != 1 {
+		t.Fatalf("the window moved over the 2 conversations, so the log counts them: %v", rows)
+	}
+	_, out := decodeNapOutput(t)
+	if napLastNapOf(t, out) != nil {
+		t.Fatalf("the next run counts nothing again: %s", out)
+	}
+	shown := 0
+	for _, row := range napLogRows(t, st) {
+		shown += int(row["shown"].(float64))
+	}
+	if shown != 2 {
+		t.Fatalf("2 conversations were read and the window moved over them, but the log counts %d shown: %v", shown, napLogRows(t, st))
 	}
 }

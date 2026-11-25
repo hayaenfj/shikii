@@ -147,17 +147,18 @@ func decodeFeedbackLine(line []byte) (Feedback, bool) {
 
 // FeedbackMark is a place in the history of conversations: the SHA-256 (hex) of one line's bytes without its newline, which copy of that
 // line it is, and the byte offset just after that line when the mark was made. A read after the mark goes on after the line of the file
-// that has the hash and is that copy, found by hashing the lines from the beginning; when the file has fewer copies than the mark names,
-// it goes on after the first copy, and from the beginning when no line has the hash: the offset is not used to find the place, because
-// shikii forget rewrites the file (removing the lines of a finished session) and a copy of the same line may then end at the old offset
-// with lines between the copies never read. The history is only appended to, under its lock, so a line written after the marked one is
-// after it in the file, whatever time it carries. Offset and Copy are kept in the stored form of a mark (a zero Offset or an empty Hash is
-// the zero mark, the beginning).
+// that has the hash, found by hashing the lines from the beginning: the copy the mark names when that line still ends at the mark's offset,
+// else the first copy (a conversation may then be read again, none is skipped); from the beginning when no line has the hash. A copy after
+// the first is trusted only where its line ends at the offset the mark remembers: when lines before it were removed or rewritten, a later
+// line becomes the named copy and what lies between would never be read. The history is only appended to, under its lock, so a line written after the marked one is after it in the file, whatever
+// time it carries. Offset and Copy are kept in the stored form of a mark (a zero Offset or an empty Hash is the zero mark, the beginning).
 //
 // Copy is how many lines with the same bytes come before the line in the file: 0 for the first (and for a mark from before the field,
 // which always went on after the first copy). shikii itself never writes the same bytes twice (a line holds the time to the nanosecond and
-// the id of its turn); a copy comes from a file put back by hand or merged from a backup. Without Copy, a run that read up to the last of
-// two copies would go on after the first of them and show what lies between them again, on every run.
+// the id of its turn), and shikii forget removes a line with all its copies; a copy comes from a file put back by hand or merged from a
+// backup. Without Copy, a run that read up to the last of two copies would go on after the first of them and show what lies between them
+// again, on every run. With a Copy that is not checked, a copy taken out by hand before the place would make the named copy a later line,
+// and what lies between would never be read: so the named copy is used only where the line ends at the offset the mark remembers.
 type FeedbackMark struct {
 	Offset int64
 	Hash   string
@@ -176,8 +177,8 @@ type FeedbackLine struct {
 // has piled up. A line is taken by the same rules: a broken or too long line is skipped, a last line that is not ended by a newline yet is
 // not taken (so no mark is ever past it), and of a repeated ID only the newest line stands, at its own place.
 //
-// The read goes on after the line of the file that has the mark's hash and is the copy the mark names (the first copy when the file has
-// fewer copies, so a conversation may be read again and none is lost), and from the beginning when no line has the hash. The file is hashed
+// The read goes on after the line of the file that has the mark's hash and is the copy the mark names when that line ends at the mark's
+// offset (else after the first copy, so a conversation may be read again and none is lost), and from the beginning when no line has the hash. The file is hashed
 // from the beginning for it, and once more up to the place the read starts at, to number the copies of the lines it returns: the daily run of
 // shikii nap can afford both.
 func (s Store) FeedbackAfter(scope string, mark FeedbackMark) ([]FeedbackLine, error) {
@@ -300,13 +301,11 @@ func feedbackLineHash(line []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// feedbackResume is the offset a read after mark starts from: the end of the line of the file (from its beginning) that has the mark's hash
-// and is the copy the mark names; the end of the first line that has the hash when the file has fewer copies than that; else 0. The mark's
-// own offset is not trusted even when the line that ends there has the hash: the same line may be in the file twice, and after shikii
-// forget removed lines before the mark, the offset may be the end of the second copy, with what lies between the copies never read. A
-// mark that names no copy (Copy 0) goes on after the first copy, and so does one whose copy is gone: that reads a conversation again at
-// worst, and skips none. (Forget removes a line with all its copies, since copies are one session's, so the copies left are the ones the
-// mark counted.)
+// feedbackResume is the offset a read after mark starts from: the end of the line of the file (from its beginning) that has the mark's
+// hash and is the copy the mark names, when that line ends at the mark's offset; the end of the first line that has the hash otherwise
+// (the named copy is not there, or it ends elsewhere because lines before it were removed or rewritten, which can make a later line the
+// named copy); else 0. The first copy is also what a mark that names no copy (Copy 0) goes on after: its offset is not checked. Starting
+// after the first copy reads a conversation again at worst, and skips none.
 func feedbackResume(f *os.File, mark FeedbackMark) (int64, error) {
 	if mark.Offset <= 0 || mark.Hash == "" {
 		return 0, nil
@@ -327,10 +326,10 @@ func feedbackResume(f *os.File, mark FeedbackMark) (int64, error) {
 		copies++
 		return true
 	})
-	if named == 0 {
-		named = first
+	if want > 0 && named == mark.Offset {
+		return named, err
 	}
-	return named, err
+	return first, err
 }
 
 // countFeedbackCopies counts, for each hash of wanted, the lines of f from its beginning up to the offset upTo (the end of a line) that
