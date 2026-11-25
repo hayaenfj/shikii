@@ -6,7 +6,8 @@
 
 ### Fixes
 
-- Fixed the agent passing over the memory nap request (`shikii nap`) when you reopen an earlier conversation in OpenCode and carry on, so the review never started. This request is part of the text shikii gives the agent at the start of a session. It used to appear on the first request of the conversation, not on the one you had just sent, so the agent took it as old text. It now comes with the request you just sent, and the agent starts the review right away. Claude Code already received it this way.
+- When you reopened an earlier conversation in OpenCode and carried on, the agent could pass over the request for a memory nap (`shikii nap`, where the agent reads the work results that have piled up and reviews what it remembers). The request was on the first request of the conversation, so the agent took it as old text. It now comes with the request you send after reopening, and the agent starts the review right away.
+- When you moved a conversation to another folder in OpenCode, the text shikii gives at the start of a session (the project's rules, and the memory nap request) could stay on the first request of the conversation, where the agent passed over it as old text. It now comes with the first request you send in the new folder.
 
 ## 0.43.0 — The memory nap counts the missed corrections it caught
 
