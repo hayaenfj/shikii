@@ -89,6 +89,9 @@ export default Plugin.define({
     // sessionID -> how many times the brief was asked for again with no request of the person's (a move, a summary): a newer ask
     // (generation) replaces an older one. A request's own ask is of the generation there is when it comes.
     const askGen = new Map<string, number>()
+    // sessionID -> the number of the first request this plugin instance numbered since the session came to this folder: a move asks
+    // again at that number, so a request sent here before session.moved reached the plugin is where the brief of the move goes
+    const hereFrom = new Map<string, number>()
     // sessionID -> where the brief goes. gen, ask: the generation and the number the answered ask was made at (an ask with no request is
     // made at the number the next request will get). summary: asked after a summary, so the brief stays on the summary. target: the
     // message id of the request the brief belongs on, the first one numbered ask or more (found once and kept; none until one comes; ""
@@ -203,7 +206,7 @@ export default Plugin.define({
     const refreshBrief = async (sessionID: string, summary: boolean) => {
       const gen = (askGen.get(sessionID) ?? 0) + 1
       askGen.set(sessionID, gen)
-      const ask = (requests.get(sessionID)?.count ?? 0) + 1 // the number the next request gets
+      const ask = (!summary && hereFrom.get(sessionID)) || (requests.get(sessionID)?.count ?? 0) + 1
       const out = await hook("session-start", sessionID)
       if (out === undefined) return
       answerBrief(sessionID, gen, ask, summary, additional(out))
@@ -294,6 +297,7 @@ export default Plugin.define({
         // numbered before anything is waited for: the number is the order the requests came in. A brief asked for again with no request
         // (a move) goes on the first request numbered after the ask, and this may be it.
         const n = noteRequest(sessionID, id)
+        if (!hereFrom.has(sessionID)) hereFrom.set(sessionID, n)
         resolveBrief(sessionID)
         const gen = askGen.get(sessionID) ?? 0
         // both at once: one after the other would add session-start's time to the first request (shikii's writes for the two are the
@@ -454,7 +458,7 @@ export default Plugin.define({
 
     // a deleted session is gone for good: nothing of it is kept, so the tables do not grow with every session the server ever had
     const forget = (sessionID: string) => {
-      for (const table of [brief, briefOn, requests, askGen, notes, current, continued, chain, generation, sessions, ends, texts, wakes]) table.delete(sessionID)
+      for (const table of [brief, briefOn, requests, askGen, hereFrom, notes, current, continued, chain, generation, sessions, ends, texts, wakes]) table.delete(sessionID)
       for (const set of [running, seen, inherited, briefed, working, reported]) set.delete(sessionID)
     }
 
@@ -476,7 +480,8 @@ export default Plugin.define({
         else if (ev.type === "session.moved") {
           const endsBefore = ends.get(sid) ?? 0
           sessions.delete(sid) // ask again where it is now
-          if (await mine(sid)) {
+          if (!(await mine(sid))) hereFrom.delete(sid)
+          else {
             // a turn that runs as it comes is the old folder's: its stop runs there, and a report that joins it wakes nothing here
             // (unless that execution ended while this asked)
             if (sessions.get(sid)?.busy && (ends.get(sid) ?? 0) === endsBefore) inherited.add(sid)

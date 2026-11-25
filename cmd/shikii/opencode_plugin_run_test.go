@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -2564,4 +2565,85 @@ func TestOpenCodePluginTheIdleHookNeverThrowsWhenShikiiFails(t *testing.T) {
 			}
 		})
 	}
+}
+
+// the person's request in the new folder comes before session.moved has reached the plugin (the window the
+// harness's relocate step stands for). B's instance numbers it (1) and asks session-start for it; then session.moved asks again at
+// number 2. The move's answer is a newer generation and replaces the place with "the first request numbered 2 or more": there is none,
+// so the brief goes on the conversation's first message, the place confirmed 1 of the first audit was about.
+func TestOpenCodePluginPutsTheBriefOnTheRequestSentBeforeTheMoveEventCame(t *testing.T) {
+	b := newPluginBox(t)
+	projectA := b.otherProject(t)
+	b.answer(t, "session-start", 1, additionalJSON("BRIEF-OF-A"))
+	b.answer(t, "session-start", 2, additionalJSON("BRIEF-OF-B-PROMPT"))
+	b.answer(t, "session-start", 3, additionalJSON("BRIEF-OF-B-MOVE"))
+	steps := resumedHistory("s1", 3) // messages 0 to 5
+	steps = append(steps,
+		map[string]any{"op": "prompt", "at": "A", "sid": "s1", "text": "request 4"}, // message 6
+		map[string]any{"op": "history", "sid": "s1", "role": "assistant", "text": "answer 4"},
+		map[string]any{"op": "succeeded", "sid": "s1"},
+		map[string]any{"op": "relocate", "sid": "s1", "dir": b.project},
+		map[string]any{"op": "prompt", "at": "B", "sid": "s1", "text": "request 5"}, // message 8, before session.moved reaches B
+		map[string]any{"op": "event", "type": "session.moved", "sid": "s1"},
+		map[string]any{"op": "context", "at": "B", "sid": "s1"})
+	run, calls := b.play(t, map[string]any{
+		"locations": map[string]any{"A": projectA, "B": b.project},
+		"sessions":  map[string]any{"s1": map[string]any{"id": "s1", "location": map[string]any{"directory": projectA}}},
+		"steps":     steps,
+	})
+	if len(run.Errors) != 0 || len(run.Requests) != 1 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	t.Logf("session-start was asked %d times", countCalls(calls, "session-start"))
+	r := run.Requests[0]
+	last := len(r.Messages) - 1
+	for _, text := range []string{"BRIEF-OF-B-PROMPT", "BRIEF-OF-B-MOVE"} {
+		if got := briefMessages(r, text); len(got) != 0 && !slices.Equal(got, []int{last}) {
+			t.Errorf("%s is on message %v (%q), not on request 5 (message %d)", text, got, textsOf(r, got[0])[0], last)
+		}
+	}
+}
+
+// Every table the plugin keeps by session at its top level (a Map or Set declared with 4 spaces of indentation) is emptied of a
+// deleted session in forget, so the tables do not grow with every session the server ever had. A table may stay out of forget only
+// when it is listed here with the reason.
+func TestOpenCodePluginForgetsEveryTableOfADeletedSession(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("opencode_plugin", "index.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	notKeptBySession := map[string]string{}
+	missing := opencodeTablesForgetMisses(string(src), notKeptBySession)
+	if len(missing) != 0 {
+		t.Fatalf("tables kept by session that forget does not empty: %v", missing)
+	}
+	// a table declared at the top level and left out of forget is seen
+	broken := strings.Replace(string(src), "askGen, hereFrom, notes,", "askGen, notes,", 1)
+	if broken == string(src) {
+		t.Fatal("premise: forget lists hereFrom")
+	}
+	if got := opencodeTablesForgetMisses(broken, notKeptBySession); !slices.Equal(got, []string{"hereFrom"}) {
+		t.Fatalf("a table taken out of forget is not seen: %v", got)
+	}
+}
+
+func opencodeTablesForgetMisses(src string, allowed map[string]string) []string {
+	decl := regexp.MustCompile(`(?m)^    const ([A-Za-z]+) = new (?:Map|Set)\b`)
+	i := strings.Index(src, "const forget = (sessionID: string) => {")
+	if i < 0 {
+		return []string{"<no forget>"}
+	}
+	end := strings.Index(src[i:], "\n    }\n")
+	body := src[i : i+end]
+	var missing []string
+	for _, m := range decl.FindAllStringSubmatch(src, -1) {
+		name := m[1]
+		if _, ok := allowed[name]; ok {
+			continue
+		}
+		if !regexp.MustCompile(`[\[ ,]` + name + `[,\]]`).MatchString(body) {
+			missing = append(missing, name)
+		}
+	}
+	return missing
 }
