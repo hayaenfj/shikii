@@ -210,6 +210,28 @@ func (s Store) FeedbackAfter(scope string, mark FeedbackMark) ([]FeedbackLine, e
 	return out, nil
 }
 
+// FeedbackByID is the conversation with the id from the whole history, not only the newest 256 of it (the newest line when the id was
+// written more than once), read line by line. false when no line of the history holds it.
+func (s Store) FeedbackByID(scope, id string) (Feedback, bool, error) {
+	f, err := s.openFile(s.feedbackPath(scope), os.O_RDONLY)
+	if os.IsNotExist(err) {
+		return Feedback{}, false, nil
+	}
+	if err != nil {
+		return Feedback{}, false, err
+	}
+	defer f.Close()
+	var found Feedback
+	ok := false
+	err = scanFeedbackLines(f, 0, func(line []byte, _ int64) bool {
+		if v, good := decodeFeedbackLine(line); good && v.ID == id {
+			found, ok = v, true
+		}
+		return true
+	})
+	return found, ok, err
+}
+
 // scanFeedbackLines gives fn each complete line of f from the offset from (its newline included) and the offset just after it, until fn
 // returns false. A line longer than the history keeps is not given, and neither is a last line with no newline yet.
 func scanFeedbackLines(f *os.File, from int64, fn func(line []byte, end int64) bool) error {

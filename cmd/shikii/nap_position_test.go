@@ -58,6 +58,7 @@ func napRunsUntilDone(t *testing.T, st store.Store, maxRuns int) map[string]int 
 		if len(r.Conversations) == 0 && r.NewerLeft == 0 {
 			return shown
 		}
+		napReadAndSettle(t, st, r) // the agent read what was printed
 	}
 }
 
@@ -184,13 +185,14 @@ func TestNapRunPrintsAtMost24000BytesAndNewerLeftIsExact(t *testing.T) {
 		if r.NewerLeft != total-seen {
 			t.Fatalf("run %d: newer_left %d, but %d conversations come after the last one shown", runs, r.NewerLeft, total-seen)
 		}
+		napReadAndSettle(t, st, r) // the agent read what was printed
 	}
 	if runs < 2 {
 		t.Fatalf("the 41 conversations do not fit one run: %d runs", runs)
 	}
 }
 
-// A run that cannot record its place (the file has a second name: a hard link) reads from the beginning each time and refuses to write
+// A run that cannot move the window (the file has a second name: a hard link) reads from the beginning each time and refuses to write
 // through the link; the error tells the person to remove the file, and the conversations are still printed.
 func TestNapHardLinkedEndFileReadsFromTheStartAndTheErrorSaysWhatToDo(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
@@ -198,15 +200,20 @@ func TestNapHardLinkedEndFileReadsFromTheStartAndTheErrorSaysWhatToDo(t *testing
 		saveConversation(t, st, scope, fmt.Sprintf("%016x", i), time.Now().Add(-time.Hour), "reply")
 	}
 	other := linkToAPersonsFile(t, napWindowEndFilePath(st), napPersonsFile)
-	for run := 0; run < 2; run++ {
+	for run := 0; run < 3; run++ {
 		r, _, err := napPrintedRun(t, st)
 		if got := sortedConversationIDs(r); fmt.Sprint(got) != hexIDs(1, 3) {
 			t.Fatalf("run %d: every conversation is printed from the start: %v", run, got)
 		}
-		if err == nil || !strings.Contains(err.Error(), "remove") || !strings.Contains(err.Error(), "nap-window-end") {
+		if run == 0 {
+			if err != nil { // nothing was read yet, so no window is to be moved
+				t.Fatalf("run 0: %v", err)
+			}
+		} else if err == nil || !strings.Contains(err.Error(), "remove") || !strings.Contains(err.Error(), "nap-window-end") {
 			t.Fatalf("run %d: the error tells the person to remove .shikii/nap-window-end: %v", run, err)
 		}
 		requireFileHolds(t, other, napPersonsFile)
+		notebook.Book{Root: st.Dir}.RecordNapRead(conversationIDs(r)) // the agent read what was printed
 	}
 }
 
@@ -550,9 +557,11 @@ func TestNapRunWithMoreChangedPremisesThanFitListsArticlesUpToTheLimitShowsNoCon
 	for i := 0; i < 32; i++ {
 		watchedNapArticle(t, book, draft, fmt.Sprintf("%s%010d", strings.Repeat("\x01", 190), i), "shared.txt", "before")
 	}
-	if r, _, err := napPrintedRun(t, st); err != nil || fmt.Sprint(conversationIDs(r)) != hexIDs(1, 1) || len(r.PremiseChanged) != 0 {
-		t.Fatalf("premise: the first run shows the fixture's conversation, no premise has changed yet: %v %v %d", conversationIDs(r), err, len(r.PremiseChanged))
+	first, _, err := napPrintedRun(t, st)
+	if err != nil || fmt.Sprint(conversationIDs(first)) != hexIDs(1, 1) || len(first.PremiseChanged) != 0 {
+		t.Fatalf("premise: the first run shows the fixture's conversation, no premise has changed yet: %v %v %d", conversationIDs(first), err, len(first.PremiseChanged))
 	}
+	napReadAndSettle(t, st, first) // the agent read it
 	place := readNapWindowEndFile(t, st)
 	for i := 2; i <= 4; i++ {
 		saveConversation(t, st, scope, fmt.Sprintf("%016x", i), time.Now().Add(-time.Hour), strings.Repeat("x", store.FeedbackTextLimit))
@@ -583,6 +592,7 @@ func TestNapRunWithMoreChangedPremisesThanFitListsArticlesUpToTheLimitShowsNoCon
 	if err != nil || len(r.PremiseChanged) != 0 || fmt.Sprint(conversationIDs(r)) != hexIDs(2, 4) || r.NewerLeft != 0 {
 		t.Fatalf("with no premise changed the 3 waiting conversations are shown: %v, %d articles, newer_left %d, %v", conversationIDs(r), len(r.PremiseChanged), r.NewerLeft, err)
 	}
+	napReadAndSettle(t, st, r) // the agent read them
 	if got, want := readNapWindowEndFile(t, st), feedbackPlaceAfter(t, st, scope, 4); got != want {
 		t.Fatalf("the place is the end of the last conversation shown:\n%q\n%q", want, got)
 	}

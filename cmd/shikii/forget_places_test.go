@@ -51,6 +51,8 @@ var forgetPlaces = []forgetPlace{
 	{`^store/records/(store-name|store-id)$`, "outside", ""},
 	{`^store/records/forgotten/`, "outside", ""},
 	{`^store/(project\.json|hook\.log|hook\.log\.[0-9]+)$`, "undecided", ""},
+	// shikii nap's own files: conversation ids and places in the record, emptied or rewritten by every run of shikii nap
+	{`^store/(nap|nap-window-end|nap-shown|nap-read)$`, "undecided", ""},
 	{`^store/(wiki|decisions|handoff|guards)/`, "outside", ""},
 	{`^home/agent/`, "outside", ""},
 }

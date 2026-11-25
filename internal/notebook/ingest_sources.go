@@ -44,6 +44,11 @@ func (b Book) loadIngestSources(sourceDir string, d Draft) (loadedIngestSources,
 		if os.IsNotExist(err) {
 			f, ok := available[id]
 			if !ok {
+				if f, ok, err = b.napShownConversation(id); err != nil {
+					return loadedIngestSources{}, err
+				}
+			}
+			if !ok {
 				return loadedIngestSources{}, fmt.Errorf("wiki source %s does not belong to this project's observations or recent conversations (send the other ids again without it)", id)
 			}
 			data, err = json.Marshal(f.WithoutSession())

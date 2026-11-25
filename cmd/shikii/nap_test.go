@@ -296,16 +296,49 @@ func readNapWindowEndFile(t *testing.T, st store.Store) string {
 	return string(b)
 }
 
-// napRun is what `shikii nap` does without printing: the report is built and the place it stopped at is recorded.
-func napRun(t *testing.T, st store.Store, scope string) napReport {
+// napRunUnread is what `shikii nap` does without printing, for an agent that read none of it: the window is settled, the report is built
+// and what was printed is recorded (.shikii/nap-shown), as the command does it.
+func napRunUnread(t *testing.T, st store.Store, scope string) napReport {
 	t.Helper()
-	r, err := buildNapReport(st.Dir, scope)
+	r, err := runNapReport(st.Dir, scope)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := recordNapWindowEnd(st.Dir, r); err != nil {
+	if err := recordNapShown(st.Dir, r); err != nil {
 		t.Fatal(err)
 	}
+	if r.settleErr != nil {
+		t.Fatal(r.settleErr)
+	}
+	return r
+}
+
+// napReadAndSettle is what an agent that read everything a run printed leaves behind: the id of every conversation in the report is named
+// as a source in a save (recorded here the way a save records it, so that more than the newest 256 conversations can be named), and the
+// window is moved over them, which the next run does first anyway (doing it twice changes nothing: the second move finds the window
+// already moved).
+func napReadAndSettle(t *testing.T, st store.Store, r napReport) {
+	t.Helper()
+	notebook.Book{Root: st.Dir}.RecordNapRead(conversationIDs(r))
+	if _, _, err := settleNapWindow(st.Dir); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// napRun is a run of `shikii nap` by an agent that read all it printed, with the window already moved over it: the report is built, what
+// was printed is recorded, and the place after the last conversation printed is in .shikii/nap-window-end.
+func napRun(t *testing.T, st store.Store, scope string) napReport {
+	t.Helper()
+	r := napRunUnread(t, st, scope)
+	napReadAndSettle(t, st, r)
+	return r
+}
+
+// decodeNapRead is decodeNap for an agent that read all it printed: the window is moved over it.
+func decodeNapRead(t *testing.T, st store.Store) napReport {
+	t.Helper()
+	r := decodeNap(t)
+	napReadAndSettle(t, st, r)
 	return r
 }
 
@@ -347,12 +380,12 @@ func TestNapListsOnlyTheConversationsAfterThePlaceTheLastRunRecorded(t *testing.
 	saveConversation(t, st, scope, "0000000000000002", now.Add(-60*time.Hour), "second, older")
 	saveConversation(t, st, scope, "0000000000000003", now.Add(-30*time.Hour), "third")
 	notices := writeNapState(t, st, now.Add(-24*time.Hour), now.Add(-80*time.Hour))
-	r := decodeNap(t)
+	r := decodeNapRead(t, st)
 	if got := conversationIDs(r); fmt.Sprint(got) != hexIDs(1, 3) {
 		t.Fatalf("the first run lists every conversation, in the order they were written: %v", got)
 	}
 	if got, want := readNapWindowEndFile(t, st), feedbackPlaceAfter(t, st, scope, 3); got != want {
-		t.Fatalf("the place after the last conversation printed is recorded once it is printed:\n%q\n%q", want, got)
+		t.Fatalf("the place after the last conversation printed is recorded once the agent has read them:\n%q\n%q", want, got)
 	}
 	if got := readNapStateFile(t, st); got != notices {
 		t.Fatalf("the notice's file is left as it was:\n%q\n%q", notices, got)
@@ -369,7 +402,7 @@ func TestNapListsOnlyTheConversationsAfterThePlaceTheLastRunRecorded(t *testing.
 	}
 	saveConversation(t, st, scope, "0000000000000004", now.Add(-2*time.Hour), "after the place")
 	saveConversation(t, st, scope, "0000000000000005", now.Add(-time.Hour), "after the place, newer")
-	r = decodeNap(t)
+	r = decodeNapRead(t, st)
 	if got := conversationIDs(r); fmt.Sprint(got) != hexIDs(4, 5) {
 		t.Fatalf("the next run lists the two written after the place, none before it: %v", got)
 	}
@@ -391,7 +424,7 @@ func TestNapListsOnlyTheConversationsAfterThePlaceTheLastRunRecorded(t *testing.
 		"an offset of 0": func() { _ = os.WriteFile(napWindowEndFilePath(st), []byte("0\n"+strings.Repeat("a", 64)+"\n"), 0o600) },
 	} {
 		prepare()
-		r = decodeNap(t)
+		r = decodeNapRead(t, st)
 		if got := conversationIDs(r); fmt.Sprint(got) != hexIDs(1, 5) {
 			t.Fatalf("%s: every conversation is listed: %v", name, got)
 		}
@@ -406,7 +439,7 @@ func TestNapListsOnlyTheConversationsAfterThePlaceTheLastRunRecorded(t *testing.
 func TestNapShowsTheConversationsOfANoticeThatWasNotActedOn(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
 	now := time.Now()
-	decodeNap(t) // the last shikii nap showed the fixture's conversation
+	decodeNapRead(t, st) // the last shikii nap showed the fixture's conversation, and the agent read it
 	place := readNapWindowEndFile(t, st)
 	saveConversation(t, st, scope, "0000000000000002", now.Add(-70*time.Hour), "before the notice nobody acted on")
 	writeNapState(t, st, now.Add(-50*time.Hour), now.Add(-120*time.Hour)) // that notice, and the one before it
@@ -429,7 +462,7 @@ func TestNapShowsTheConversationsOfANoticeThatWasNotActedOn(t *testing.T) {
 func TestNapRunTwiceInARowShowsTheSecondOnlyWhatCameAfterTheFirst(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
 	saveConversation(t, st, scope, "0000000000000002", time.Now().Add(-2*time.Hour), "second")
-	first := decodeNap(t) // through the command: it prints, then records
+	first := decodeNapRead(t, st) // through the command: it prints, then records what it printed; the agent read it
 	if got := conversationIDs(first); fmt.Sprint(got) != hexIDs(1, 2) {
 		t.Fatalf("the first run lists everything: %v", got)
 	}
@@ -501,9 +534,9 @@ func TestNapOutputMaxIs24000(t *testing.T) {
 	}
 }
 
-// The place is written under the file's lock and only while the file holds what the run read. A run that finds the lock held, or another
-// run's place recorded, writes nothing; its conversations are then listed again by the next run, never lost.
-func TestNapWindowEndIsRecordedUnderTheLockAndOnlyWhileTheFileIsAsRead(t *testing.T) {
+// The window is moved under the file's lock and only while the file still holds what the run that printed started from. A run that finds
+// the lock held, or another run's place in the file, moves nothing; the conversations are then listed again, never lost.
+func TestNapWindowEndIsMovedUnderTheLockAndOnlyWhileTheFileIsAsTheLastRunStartedFromIt(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
 	if err := os.WriteFile(napWindowEndFilePath(st), nil, 0o600); err != nil {
 		t.Fatal(err)
@@ -516,8 +549,10 @@ func TestNapWindowEndIsRecordedUnderTheLockAndOnlyWhileTheFileIsAsRead(t *testin
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
 		t.Fatal(err)
 	}
+	decodeNap(t) // prints the fixture's conversation
+	notebook.Book{Root: st.Dir}.RecordNapRead([]string{"0000000000000001"})
 	if got := conversationIDs(decodeNap(t)); fmt.Sprint(got) != hexIDs(1, 1) {
-		t.Fatalf("with the lock held the conversations are still printed: %v", got)
+		t.Fatalf("with the lock held the conversations are still printed, and the one that was read cannot be moved past: %v", got)
 	}
 	if got := readNapWindowEndFile(t, st); got != "" {
 		t.Fatalf("with the lock held nothing is recorded: %q", got)
@@ -525,26 +560,28 @@ func TestNapWindowEndIsRecordedUnderTheLockAndOnlyWhileTheFileIsAsRead(t *testin
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_UN); err != nil {
 		t.Fatal(err)
 	}
-	if got := conversationIDs(decodeNap(t)); fmt.Sprint(got) != hexIDs(1, 1) {
-		t.Fatalf("what was not recorded is listed again: %v", got)
+	notebook.Book{Root: st.Dir}.RecordNapRead([]string{"0000000000000001"}) // the agent read it again, in the output of the run above
+	if got := conversationIDs(decodeNap(t)); len(got) != 0 {
+		t.Fatalf("with the lock free the conversation read is moved past: %v", got)
 	}
 	if recorded := readNapWindowEndFile(t, st); recorded != feedbackPlaceAfter(t, st, scope, 1) {
 		t.Fatalf("with the lock free the place is recorded: %q", recorded)
 	}
 	saveConversation(t, st, scope, "0000000000000002", time.Now().Add(-30*time.Minute), "a reply saved after that run")
-	r, err := buildNapReport(st.Dir, scope)
-	if err != nil || fmt.Sprint(conversationIDs(r)) != hexIDs(2, 2) {
-		t.Fatalf("premise: the next run shows the new conversation: %v %v", conversationIDs(r), err)
+	r := napRunUnread(t, st, scope)
+	if fmt.Sprint(conversationIDs(r)) != hexIDs(2, 2) {
+		t.Fatalf("premise: the next run shows the new conversation: %v", conversationIDs(r))
 	}
-	other := formatNapWindowEnd(store.FeedbackMark{Offset: 99999, Hash: strings.Repeat("a", 64)}) // another run records its place between the read and the write
+	notebook.Book{Root: st.Dir}.RecordNapRead([]string{"0000000000000002"})
+	other := formatNapWindowEnd(store.FeedbackMark{Offset: 99999, Hash: strings.Repeat("a", 64)}) // another run records its place between the print and the move
 	if err := os.WriteFile(napWindowEndFilePath(st), []byte(other), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := recordNapWindowEnd(st.Dir, r); err != nil {
+	if _, _, err := settleNapWindow(st.Dir); err != nil {
 		t.Fatal(err)
 	}
 	if got := readNapWindowEndFile(t, st); got != other {
-		t.Fatalf("a file that is no longer as it was read is left to the run that wrote it:\n%q\n%q", other, got)
+		t.Fatalf("a file that is no longer as the last run started from it is left to the run that wrote it:\n%q\n%q", other, got)
 	}
 }
 
@@ -566,6 +603,9 @@ func TestNapRecordsNothingWhenTheWindowCouldNotBePrinted(t *testing.T) {
 	if got := readNapWindowEndFile(t, st); got != "" {
 		t.Fatalf("nothing was shown, so nothing is recorded: %q", got)
 	}
+	if _, err := os.Lstat(filepath.Join(st.Dir, napShownName)); !os.IsNotExist(err) {
+		t.Fatalf("nothing was shown, so what was shown is not recorded either: %v", err)
+	}
 	if got := conversationIDs(decodeNap(t)); fmt.Sprint(got) != hexIDs(1, 1) {
 		t.Fatalf("the next run lists the conversation: %v", got)
 	}
@@ -578,8 +618,8 @@ func TestNapDocsDescribeThePlaceAndTheFileThatRecordsIt(t *testing.T) {
 		file, heading string
 		words         []string
 	}{
-		{"../../docs/guide.md", "### Memory nap", []string{"`.shikii/nap-window-end`", "`newer_left`", "about 24,000 bytes", "at most 64", "starts where the last one stopped", "SHA-256", "no time is compared", "remove `.shikii/nap-window-end`", "`lessons`", "`premise_changed`", "`premise_changed_more`", "up to 32 in id order", "at most about 24,000 bytes in all", "`next_action` and the articles whose premise changed (below) included", "that run prints no conversation"}},
-		{"../../docs/guide.ja.md", "### \u8a18\u61b6\u306e\u3072\u3068\u4f11\u307f", []string{"`.shikii/nap-window-end`", "`newer_left`", "\u304a\u3088\u305d 24,000 \u30d0\u30a4\u30c8", "\u6700\u5927\u3067\u3082 64 \u4ef6", "\u524d\u56de\u304c\u6b62\u307e\u3063\u305f\u6240\u304b\u3089\u59cb\u307e\u308b", "SHA-256", "\u6642\u523b\u306f\u6bd4\u3079\u307e\u305b\u3093", "`.shikii/nap-window-end` \u3092\u6d88\u3059\u3088\u3046\u4f1d\u3048\u307e\u3059", "`lessons`", "`premise_changed`", "`premise_changed_more`", "id \u306e\u9806\u306b 32 \u4ef6\u307e\u3067", "\u51fa\u529b\u306e\u5168\u4f53\u3067\u304a\u3088\u305d 24,000 \u30d0\u30a4\u30c8\u307e\u3067", "`next_action` \u3068\u3001\u524d\u63d0\u306e\u5909\u308f\u3063\u305f\u8a18\u4e8b(\u4e0b\u306e `premise_changed`)\u3082\u3053\u306e\u5927\u304d\u3055\u306b\u6570\u3048\u307e\u3059", "\u8a18\u4e8b\u3067\u5927\u304d\u3055\u3092\u4f7f\u3044\u5207\u308b\u56de\u306f\u4f1a\u8a71\u3092\u51fa\u3055\u305a"}},
+		{"../../docs/guide.md", "### Memory nap", []string{"`.shikii/nap-window-end`", "`newer_left`", "about 24,000 bytes", "at most 64", "starts where the agent last read up to", "`.shikii/nap-read`", "`.shikii/nap-shown`", "`shown_again`", "Printing is not reading", "names its id among the sources of a wiki entry", "SHA-256", "no time is compared", "remove `.shikii/nap-window-end`", "`lessons`", "`premise_changed`", "`premise_changed_more`", "up to 32 in id order", "at most about 24,000 bytes in all", "`next_action` and the articles whose premise changed (below) included", "that run prints no conversation"}},
+		{"../../docs/guide.ja.md", "### \u8a18\u61b6\u306e\u3072\u3068\u4f11\u307f", []string{"`.shikii/nap-window-end`", "`newer_left`", "\u304a\u3088\u305d 24,000 \u30d0\u30a4\u30c8", "\u6700\u5927\u3067\u3082 64 \u4ef6", "\u30a8\u30fc\u30b8\u30a7\u30f3\u30c8\u304c\u6700\u5f8c\u306b\u8aad\u307f\u7d42\u3048\u305f\u6240\u304b\u3089\u59cb\u307e\u308b", "`.shikii/nap-read`", "`.shikii/nap-shown`", "`shown_again`", "\u51fa\u3057\u305f\u3060\u3051\u3067\u306f\u3001\u8aad\u3093\u3060\u3053\u3068\u306b\u306a\u308a\u307e\u305b\u3093", "SHA-256", "\u6642\u523b\u306f\u6bd4\u3079\u307e\u305b\u3093", "`.shikii/nap-window-end` \u3092\u6d88\u3059\u3088\u3046\u4f1d\u3048\u307e\u3059", "`lessons`", "`premise_changed`", "`premise_changed_more`", "id \u306e\u9806\u306b 32 \u4ef6\u307e\u3067", "\u51fa\u529b\u306e\u5168\u4f53\u3067\u304a\u3088\u305d 24,000 \u30d0\u30a4\u30c8\u307e\u3067", "`next_action` \u3068\u3001\u524d\u63d0\u306e\u5909\u308f\u3063\u305f\u8a18\u4e8b(\u4e0b\u306e `premise_changed`)\u3082\u3053\u306e\u5927\u304d\u3055\u306b\u6570\u3048\u307e\u3059", "\u8a18\u4e8b\u3067\u5927\u304d\u3055\u3092\u4f7f\u3044\u5207\u308b\u56de\u306f\u4f1a\u8a71\u3092\u51fa\u3055\u305a"}},
 	} {
 		text := string(mustRead(t, d.file))
 		at := strings.Index(text, d.heading)
@@ -619,7 +659,7 @@ func TestNapTakesNoArguments(t *testing.T) {
 	}
 	// Both texts say what the command records and what it counts for the next run, so neither calls it a plain read.
 	for name, text := range map[string]string{"the help of shikii": helpEntry(t, "shikii nap"), "the usage of the command": napUsage} {
-		for _, want := range []string{".shikii/nap-window-end", "newer_left", "lessons", "premise_changed", "premise_changed_more", "24,000 bytes", "The whole output, those articles included, stays within about 24,000 bytes"} {
+		for _, want := range []string{".shikii/nap-window-end", "newer_left", "shown_again", "reflect submit", "lessons", "premise_changed", "premise_changed_more", "24,000 bytes", "The whole output, those articles included, stays within about 24,000 bytes"} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("%s names the file that records the end of the window, newer_left, lessons and premise_changed; it lacks %q: %q", name, want, text)
 			}
@@ -984,14 +1024,15 @@ func TestNapWindowEndDoesNotWriteThroughAHardLink(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
 	saveConversation(t, st, scope, "0000000000000002", time.Now().Add(-time.Hour), "a reply")
 	other := linkToAPersonsFile(t, napWindowEndFilePath(st), napPersonsFile)
-	r, err := buildNapReport(st.Dir, scope)
-	if err != nil || len(r.Conversations) == 0 {
-		t.Fatalf("premise: the window is built and shows a conversation: %v %v", conversationIDs(r), err)
+	r := napRunUnread(t, st, scope)
+	if len(r.Conversations) == 0 {
+		t.Fatalf("premise: the window is built and shows a conversation: %v", conversationIDs(r))
 	}
-	err = recordNapWindowEnd(st.Dir, r)
+	notebook.Book{Root: st.Dir}.RecordNapRead(conversationIDs(r))
+	_, _, err := settleNapWindow(st.Dir)
 	requireFileHolds(t, other, napPersonsFile)
 	if err == nil {
-		t.Fatal("the end of the window is refused with an error: the next run then prints the window again")
+		t.Fatal("moving the window is refused with an error: the next run then prints the conversations again")
 	}
 }
 

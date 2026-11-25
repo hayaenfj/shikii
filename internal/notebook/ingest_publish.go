@@ -65,5 +65,8 @@ func (b Book) publishIngest(dir, sourceDir string, d Draft, result Result, raw, 
 		result.Reviewed = append(result.Reviewed, id)
 	}
 	sort.Strings(result.Reviewed)
+	// Every source this save named counts as read for `shikii nap`, not only the ones that became reviewed just now (the per-turn
+	// reflection marks a conversation reviewed before a nap prints it). Not recording it never fails the save.
+	b.RecordNapRead(unique(d.Sources))
 	return result, nil
 }
