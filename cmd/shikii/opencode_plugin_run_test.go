@@ -1987,7 +1987,7 @@ func TestOpenCodePluginPutsTheBriefOnTheSummaryWhenASummaryTookTheRequestThatAsk
 			}
 			keep := 0
 			if kept {
-				steps = append(steps, map[string]any{"op": "history", "sid": "s1", "role": "user", "text": "a newer request"})
+				steps = append(steps, map[string]any{"op": "prompt", "sid": "s1", "text": "a newer request"}) // the summary leaves this one
 				keep = 1
 			}
 			steps = append(steps,
@@ -2171,6 +2171,203 @@ func TestOpenCodePluginGivesTheBriefToTheNewestRequestWhenTheAskingRequestNeverA
 	}
 	if got := textsOf(run.Requests[1], 2); !slices.Equal(got, []string{"request 3", "BRIEF-OF-THE-SESSION"}) || countText(run.Requests[1], "BRIEF-OF-THE-SESSION") != 1 {
 		t.Errorf("the next request's model call has the brief on that request, once: %+v", run.Requests[1])
+	}
+}
+
+// briefMessages is the indexes of the messages of a model call that carry text.
+func briefMessages(r modelRequest, text string) []int {
+	var at []int
+	for i := range r.Messages {
+		for _, got := range textsOf(r, i) {
+			if strings.Contains(got, text) {
+				at = append(at, i)
+				break
+			}
+		}
+	}
+	return at
+}
+
+// A request of the person's that is sent in the new folder while the move's session-start is still being answered takes the brief, and
+// the move's answer, which comes after it, does not take the brief away: where the brief goes follows from the order in which the
+// requests came and the number the plugin was at when it asked, not from the order in which the answers come back. The same holds when
+// the folder is one the session was in before (B, A, B again): the answer of the move back is late, and the request sent meanwhile
+// keeps the brief.
+func TestOpenCodePluginKeepsTheBriefOnTheRequestSentWhileTheAnswerOfAMoveIsPending(t *testing.T) {
+	for _, back := range []bool{false, true} { // false: B had not seen the session; true: the session comes back to B
+		b := newPluginBox(t)
+		projectA := b.otherProject(t)
+		start, held := projectA, 2 // the folder the session is in at first, and which session-start call is the move's (held)
+		if back {
+			start, held = b.project, 3
+		}
+		b.answer(t, "session-start", 1, additionalJSON("BRIEF-OF-THE-FIRST-ASK"))
+		b.answer(t, "session-start", 2, additionalJSON("BRIEF-OF-A"))
+		b.answer(t, "session-start", held, additionalJSON("BRIEF-OF-THE-MOVE"))
+		b.hold(t, "session-start", held)
+		steps := resumedHistory("s1", 3) // messages 0 to 5
+		if back {
+			// B asks at its first request; the session goes to A (A asks again, answered at once) and then comes back to B
+			steps = append(steps,
+				map[string]any{"op": "prompt", "at": "B", "sid": "s1", "text": "request 4"}, // message 6
+				map[string]any{"op": "history", "sid": "s1", "role": "assistant", "text": "answer 4"},
+				map[string]any{"op": "move", "sid": "s1", "dir": projectA},
+				map[string]any{"op": "prompt", "at": "A", "sid": "s1", "text": "request 5"}, // message 8
+				map[string]any{"op": "history", "sid": "s1", "role": "assistant", "text": "answer 5"})
+		} else {
+			steps = append(steps,
+				map[string]any{"op": "prompt", "at": "A", "sid": "s1", "text": "request 4"}, // message 6
+				map[string]any{"op": "history", "sid": "s1", "role": "assistant", "text": "answer 4"},
+				map[string]any{"op": "succeeded", "sid": "s1"})
+		}
+		steps = append(steps,
+			map[string]any{"op": "relocate", "sid": "s1", "dir": b.project},
+			map[string]any{"op": "event", "type": "session.moved", "sid": "s1", "nowait": true}, // session.moved, without waiting for its hook
+			map[string]any{"op": "waitCalls", "event": "session-start", "count": held, "within": 3000},
+			map[string]any{"op": "prompt", "at": "B", "sid": "s1", "text": "request in B"},
+			map[string]any{"op": "release", "event": "session-start", "n": held},
+			map[string]any{"op": "settle"},
+			map[string]any{"op": "context", "at": "B", "sid": "s1"})
+		run, _ := b.play(t, map[string]any{
+			"locations": map[string]any{"A": projectA, "B": b.project},
+			"sessions":  map[string]any{"s1": map[string]any{"id": "s1", "location": map[string]any{"directory": start}}},
+			"steps":     steps,
+		})
+		if len(run.Errors) != 0 || len(run.Requests) == 0 {
+			t.Fatalf("back %v: the steps ran: %+v", back, run)
+		}
+		r := run.Requests[len(run.Requests)-1]
+		last := len(r.Messages) - 1
+		if got := briefMessages(r, "BRIEF-OF-THE-MOVE"); !slices.Equal(got, []int{last}) {
+			t.Errorf("back %v: the brief of the move goes on the request sent in the new folder (message %d), it is on %v: %+v", back, last, got, r.Messages)
+		}
+		if got := briefMessages(r, "BRIEF-OF-THE-FIRST-ASK"); len(got) != 0 {
+			t.Errorf("back %v: the first brief is replaced by the move's: %v", back, got)
+		}
+	}
+}
+
+// What the plugin asks shikii for at a move or a summary is a newer ask than the one before: an answer to an older ask that comes back
+// after it is of the past and is dropped, with its text. Here the first request's session-start is slow, a summary asks again and is
+// answered at once, and then the slow answer comes.
+func TestOpenCodePluginDropsTheAnswerOfAnOlderAskThatComesAfterANewerOne(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "session-start", 1, additionalJSON("BRIEF-OF-THE-SLOW-ASK"))
+	b.answer(t, "session-start", 2, additionalJSON("BRIEF-AFTER-THE-SUMMARY"))
+	b.hold(t, "session-start", 1)
+	run, _ := b.play(t, map[string]any{"steps": []map[string]any{
+		{"op": "prompt", "sid": "s1", "text": "request 1", "nowait": true},
+		{"op": "waitCalls", "event": "session-start", "count": 1, "within": 3000},
+		{"op": "compaction", "sid": "s1", "nowait": true},
+		{"op": "waitCalls", "event": "session-start", "count": 2, "within": 3000},
+		{"op": "release", "event": "session-start", "n": 1},
+		{"op": "settle"},
+		{"op": "context", "sid": "s1"},
+	}})
+	if len(run.Errors) != 0 || len(run.Requests) != 1 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	r := run.Requests[0]
+	if got := textsOf(r, 0); !slices.Equal(got, []string{"SUMMARY-OF-THE-CONVERSATION", "BRIEF-AFTER-THE-SUMMARY"}) || countText(r, "BRIEF-OF-THE-SLOW-ASK") != 0 {
+		t.Errorf("the answer of the older ask came last and is dropped: %+v", r)
+	}
+}
+
+// Where the brief goes while the request it belongs on has not reached the model is fixed once: the newest of the person's requests the
+// model has then, and it stays there in every later call, also when more requests come (the request that asked may never arrive).
+func TestOpenCodePluginDoesNotMoveTheBriefWithEveryRequestWhenTheAskingOneNeverArrives(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "session-start", 0, additionalJSON("BRIEF-OF-THE-SESSION"))
+	steps := resumedHistory("s1", 1) // messages 0 and 1
+	steps = append(steps,
+		map[string]any{"op": "prompt", "sid": "s1", "text": "request 2", "queued": true}, // never delivered
+		map[string]any{"op": "prompt", "sid": "s1", "text": "request 3"},                 // message 2
+		map[string]any{"op": "context", "sid": "s1"},
+		map[string]any{"op": "history", "sid": "s1", "role": "assistant", "text": "answer 3"}, // message 3
+		map[string]any{"op": "prompt", "sid": "s1", "text": "request 4"},                      // message 4
+		map[string]any{"op": "context", "sid": "s1"})
+	run, _ := b.play(t, map[string]any{"steps": steps})
+	if len(run.Errors) != 0 || len(run.Requests) != 2 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	for i, r := range run.Requests {
+		if got := briefMessages(r, "BRIEF-OF-THE-SESSION"); !slices.Equal(got, []int{2}) {
+			t.Errorf("model call %d: the brief stays on request 3 (message 2), it is on %v", i+1, got)
+		}
+	}
+}
+
+// The request the brief belongs on arrives after a newer request did: the brief, which was on the newest request meanwhile, goes to the
+// request that asked for it, once, and stays there in the later calls.
+func TestOpenCodePluginMovesTheBriefOnceToTheRequestThatAskedForItWhenItArrivesAfterANewerOne(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "session-start", 0, additionalJSON("BRIEF-OF-THE-SESSION"))
+	steps := resumedHistory("s1", 1) // messages 0 and 1
+	steps = append(steps,
+		map[string]any{"op": "prompt", "sid": "s1", "text": "request 2", "queued": true}, // waits
+		map[string]any{"op": "prompt", "sid": "s1", "text": "request 3"},                 // message 2
+		map[string]any{"op": "context", "sid": "s1"},
+		map[string]any{"op": "deliver", "sid": "s1"}, // request 2 arrives, message 3
+		map[string]any{"op": "context", "sid": "s1"},
+		map[string]any{"op": "history", "sid": "s1", "role": "assistant", "text": "an answer"}, // message 4
+		map[string]any{"op": "context", "sid": "s1"})
+	run, _ := b.play(t, map[string]any{"steps": steps})
+	if len(run.Errors) != 0 || len(run.Requests) != 3 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	for i, want := range []int{2, 3, 3} {
+		if got := briefMessages(run.Requests[i], "BRIEF-OF-THE-SESSION"); !slices.Equal(got, []int{want}) {
+			t.Errorf("model call %d: the brief is on message %d, it is on %v", i+1, want, got)
+		}
+	}
+}
+
+// The brief stays on the request it belongs on in a long session: the plugin keeps the last requests only, and what it found for the
+// brief does not depend on the oldest of them.
+func TestOpenCodePluginKeepsTheBriefOnItsRequestInALongSession(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "session-start", 0, additionalJSON("BRIEF-OF-THE-SESSION"))
+	var steps []map[string]any
+	for i := 1; i <= 70; i++ {
+		steps = append(steps,
+			map[string]any{"op": "prompt", "sid": "s1", "text": fmt.Sprintf("request %d", i)},
+			map[string]any{"op": "history", "sid": "s1", "role": "assistant", "text": fmt.Sprintf("answer %d", i)})
+	}
+	steps = append(steps, map[string]any{"op": "context", "sid": "s1"})
+	run, _ := b.play(t, map[string]any{"steps": steps})
+	if len(run.Errors) != 0 || len(run.Requests) != 1 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	if got := briefMessages(run.Requests[0], "BRIEF-OF-THE-SESSION"); !slices.Equal(got, []int{0}) {
+		t.Errorf("the brief stays on the first request (message 0), it is on %v", got)
+	}
+}
+
+// Only a message that came as a request of the person's (the plugin numbered it) can take the brief while the request it belongs on has
+// not arrived. A tool result that comes as a user message, and a message that comes with no request, are not requests: they do not
+// take the brief and do not move it.
+func TestOpenCodePluginDoesNotPutTheBriefOnAUserMessageThatIsNotARequest(t *testing.T) {
+	b := newPluginBox(t)
+	b.answer(t, "session-start", 0, additionalJSON("BRIEF-OF-THE-SESSION"))
+	steps := resumedHistory("s1", 1) // messages 0 and 1
+	steps = append(steps,
+		map[string]any{"op": "prompt", "sid": "s1", "text": "request 2", "queued": true}, // never delivered
+		map[string]any{"op": "prompt", "sid": "s1", "text": "request 3"},                 // message 2
+		map[string]any{"op": "context", "sid": "s1"},
+		map[string]any{"op": "history", "sid": "s1", "role": "assistant", "text": "a tool call"}, // message 3
+		map[string]any{"op": "history", "sid": "s1", "role": "user", "text": "THE-TOOL-RESULT"},  // message 4, a user role that is no request
+		map[string]any{"op": "context", "sid": "s1"})
+	run, _ := b.play(t, map[string]any{"steps": steps})
+	if len(run.Errors) != 0 || len(run.Requests) != 2 {
+		t.Fatalf("the steps ran: %+v", run)
+	}
+	for i, r := range run.Requests {
+		if got := briefMessages(r, "BRIEF-OF-THE-SESSION"); !slices.Equal(got, []int{2}) {
+			t.Errorf("model call %d: the brief stays on request 3 (message 2), it is on %v", i+1, got)
+		}
+	}
+	if got := textsOf(run.Requests[1], 4); !slices.Equal(got, []string{"THE-TOOL-RESULT"}) {
+		t.Errorf("the tool result is sent as it was: %q", got)
 	}
 }
 

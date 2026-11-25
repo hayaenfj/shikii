@@ -21,14 +21,19 @@
 // instance per project folder, and every instance is told every session's events: an instance acts only on sessions of its own folder.
 // What the hooks give is not kept in the conversation, so the plugin adds it to every model call again, at the same place: each
 // request's text on that request's own message (as Claude Code keeps it in the conversation), and the session's brief (the text of
-// session-start) on the first request that comes after that text came out. That is the request that asked for it (a new conversation's
-// first; in a session resumed in a new process, the first request that process saw, not the conversation's first message, where the
-// model would read a due memory nap as an old text of a request long past), or, when the text was asked for again with no request
-// (the conversation moved to this folder), the next request. Until that request is among the model's messages the brief is on the newest
-// request there is. A summary of the conversation is itself the first message after the text came out: the brief asked for again then
-// stays on the summary. The system text is left as it is: a provider caches the start of a request, and a system text that changed
-// with every request made it start over each time. Every hook is wrapped in try/catch and a failure or a timeout adds nothing: a hook
-// must never stop the work (a throw in the prompt or context hook would make OpenCode refuse the request).
+// session-start) on the first request that comes after the plugin asked shikii for it. The plugin numbers the person's requests as
+// they come, and keeps with each ask the number it was at (the request's own, or the next request's for an ask with no request: after
+// a move or a summary). So where the brief goes is worked out from numbers, not from the order the answers come back in: an answer
+// that comes late does not take the brief away from a request that came before it; of two asks of one time the smaller number (the
+// request that asked first) wins; a newer ask (a move, a summary) replaces an older one. In a new conversation that is its first
+// request; in a session resumed in a new process, the first request that process saw, not the conversation's first message, where the
+// model would read a due memory nap as an old text of a request long past; after a move, the next request. Until that request is among
+// the model's messages the brief is on the newest of the person's requests the model has (fixed at the first call that needs it, and
+// moved once, to the request, when it comes; a message that is no request, a tool result that has the user role, is never chosen).
+// A summary of the conversation is itself the first message after the text came out: the brief asked for again then stays on the
+// summary. The system text is left as it is: a provider caches the start of a request, and a system text that changed with every
+// request made it start over each time. Every hook is wrapped in try/catch and a failure or a timeout adds nothing: a hook must never
+// stop the work (a throw in the prompt or context hook would make OpenCode refuse the request).
 import { Plugin } from "@opencode/plugin"
 import { spawn } from "node:child_process"
 
@@ -40,6 +45,7 @@ const CONTINUE_MAX = 8 // a safety net: after this many continuations in a row f
 // measured on 2.3.0: OpenCode puts this line before the task the parent gave a subagent. The task is passed without it (since 0.37.2
 // shikii no longer picks lessons by the task: a subagent starts with the rules for every request)
 const SUBAGENT_PREFACE = "You are a subagent spawned by another session.\n"
+const REQUESTS_KEPT = 64 // the person's last requests kept per session (the number and the message id of each)
 
 // run starts `shikii hook <event>` in the project's folder (cwd; as Claude Code and Codex run their hooks), passes input as JSON on
 // stdin and returns the JSON it prints (undefined when it prints none, fails or times out).
@@ -76,11 +82,19 @@ export default Plugin.define({
     // in a session resumed in a new process that process's first). "" when that gave nothing (none, a failure, a timeout): it is not
     // asked for again until a summary or a move asks again, as Claude Code runs SessionStart only at those times
     const brief = new Map<string, string>()
-    // sessionID -> the request the brief goes on, the first one that came after the text came out: its message id ("" when OpenCode gave
-    // none: the brief goes into the system text, as a request's text does then), and whether that message was in a model call yet. id null:
-    // the text was asked for again after a move and no request has come since (the next one takes it; until then the first message the
-    // model gets has it). None: the first message the model gets (a summary is the first message after the text came out).
-    const briefOn = new Map<string, { id: string | null; seen: boolean }>()
+    // sessionID -> the person's requests this instance saw: how many (the last number given; a request is numbered as its prompt hook
+    // runs, so the numbers are the order the requests came in) and the last REQUESTS_KEPT of them with their message ids ("" when OpenCode
+    // gave none)
+    const requests = new Map<string, { count: number; list: { id: string; n: number }[] }>()
+    // sessionID -> how many times the brief was asked for again with no request of the person's (a move, a summary): a newer ask
+    // (generation) replaces an older one. A request's own ask is of the generation there is when it comes.
+    const askGen = new Map<string, number>()
+    // sessionID -> where the brief goes. gen, ask: the generation and the number the answered ask was made at (an ask with no request is
+    // made at the number the next request will get). summary: asked after a summary, so the brief stays on the summary. target: the
+    // message id of the request the brief belongs on, the first one numbered ask or more (found once and kept; none until one comes; ""
+    // when OpenCode gave none: the brief goes into the system text, as a request's text does then). seen: that message was in a model
+    // call. fixed: where the brief is until the request has reached the model: the newest of the person's requests the model had then.
+    const briefOn = new Map<string, { gen: number; ask: number; summary: boolean; target?: string; seen: boolean; fixed?: string }>()
     // sessionID -> the person's requests: messageID -> the user-prompt-submit text, and whether that message was in a model call yet.
     // "" is the messageID when OpenCode gave none. current is the person's last request.
     const notes = new Map<string, Map<string, { text: string; seen: boolean }>>()
@@ -152,14 +166,47 @@ export default Plugin.define({
       return typeof text === "string" ? text : ""
     }
 
-    // ask shikii for the session's brief again with no request of the person's, and keep it; until it answers, the old one stays where it
-    // was. After a summary it goes on the summary. After a move the first request that comes takes it.
-    const refreshBrief = async (sessionID: string, moved = false) => {
+    // a request of the person's is numbered as it comes, and its message id is kept; the number is returned
+    const noteRequest = (sessionID: string, id: string): number => {
+      let r = requests.get(sessionID)
+      if (!r) requests.set(sessionID, (r = { count: 0, list: [] }))
+      r.list.push({ id, n: ++r.count })
+      if (r.list.length > REQUESTS_KEPT) r.list.shift()
+      return r.count
+    }
+
+    // the request the brief belongs on is the first one numbered at or after the number it was asked for at; once there is one it is kept
+    // (a long session drops its old requests from the list)
+    const resolveBrief = (sessionID: string) => {
+      const on = briefOn.get(sessionID)
+      if (!on || on.summary || on.target !== undefined) return
+      const found = requests.get(sessionID)?.list.find((q) => q.n >= on.ask)
+      if (found) on.target = found.id
+    }
+
+    // an answer of session-start. Where it goes is worked out from the numbers, not from the order the answers come in: an answer of an
+    // older generation than the one placed is of the past and is dropped, a newer generation replaces the place, and of one generation
+    // the smaller number wins (the request that asked first, also when its answer comes last; for one number the ask after a summary).
+    const answerBrief = (sessionID: string, gen: number, ask: number, summary: boolean, text: string) => {
+      const on = briefOn.get(sessionID)
+      if (on && on.gen > gen) return
+      brief.set(sessionID, text)
+      if (!on || on.gen < gen || ask < on.ask || (ask === on.ask && summary && !on.summary)) {
+        briefOn.set(sessionID, { gen, ask, summary, seen: false })
+        resolveBrief(sessionID)
+      }
+    }
+
+    // ask shikii for the session's brief again with no request of the person's; until it answers, the old one stays where it was. After a
+    // summary it goes on the summary. After a move it goes on the first request that comes after the ask, also one that came before the
+    // answer.
+    const refreshBrief = async (sessionID: string, summary: boolean) => {
+      const gen = (askGen.get(sessionID) ?? 0) + 1
+      askGen.set(sessionID, gen)
+      const ask = (requests.get(sessionID)?.count ?? 0) + 1 // the number the next request gets
       const out = await hook("session-start", sessionID)
       if (out === undefined) return
-      brief.set(sessionID, additional(out))
-      if (moved) briefOn.set(sessionID, { id: null, seen: false })
-      else briefOn.delete(sessionID)
+      answerBrief(sessionID, gen, ask, summary, additional(out))
     }
 
     const turnNumber = (sessionID: string): number => generation.get(sessionID) ?? 0
@@ -243,17 +290,17 @@ export default Plugin.define({
         continued.set(sessionID, false)
         chain.set(sessionID, 0)
         bump(sessionID)
+        const id = typeof e.messageID === "string" ? e.messageID : ""
+        // numbered before anything is waited for: the number is the order the requests came in. A brief asked for again with no request
+        // (a move) goes on the first request numbered after the ask, and this may be it.
+        const n = noteRequest(sessionID, id)
+        resolveBrief(sessionID)
+        const gen = askGen.get(sessionID) ?? 0
         // both at once: one after the other would add session-start's time to the first request (shikii's writes for the two are the
         // same and safe to run side by side, as they run for two conversations of one project)
-        const id = typeof e.messageID === "string" ? e.messageID : ""
-        // The brief goes on the first request that comes after the text came out: this one when it asks for the text (a request that asks
-        // while an earlier one's ask is still open is not first: the earlier one keeps it, whichever answer comes last), or when the text
-        // was asked for again after a move and no request has come since
-        const on = briefOn.get(sessionID)
-        if (brief.has(sessionID) ? on?.id === null : !on) briefOn.set(sessionID, { id, seen: false })
         const first = brief.has(sessionID) ? undefined : hook("session-start", sessionID)
         const [started, prepared] = await Promise.all([first, hook("user-prompt-submit", sessionID, { prompt: e.prompt?.text ?? "", turn_key: typeof e.messageID === "string" ? e.messageID : "" })])
-        if (first) brief.set(sessionID, additional(started))
+        if (first) answerBrief(sessionID, gen, n, false, additional(started)) // asked at this request's number
         current.set(sessionID, id)
         const text = additional(prepared)
         if (text) {
@@ -266,7 +313,7 @@ export default Plugin.define({
       }
     })
 
-    // every model call gets the brief on the first request that came after its text came out and each request's text on that request's
+    // every model call gets the brief on the first request that came after it was asked for and each request's text on that request's
     // message, the same way each time
     ctx.session.hook("context", async (e: any) => {
       try {
@@ -281,15 +328,25 @@ export default Plugin.define({
           else add.set(i, [...(add.get(i) ?? []), text])
         }
         const byId = new Map(users.map((i) => [String(list[i]?.id), i]))
+        resolveBrief(sessionID)
         const on = briefOn.get(sessionID)
         const text = brief.get(sessionID)
-        if (!on || on.id === null) put(users[0], text) // after a summary: the summary; after a move, until a request comes: the first message
-        else if (!on.id) put(undefined, text) // OpenCode gave no messageID
-        else if (byId.has(on.id)) {
+        if (!on || on.summary || on.target === undefined) put(users[0], text) // after a summary: the summary. No request since it was asked for: the first message the model gets
+        else if (!on.target) put(undefined, text) // OpenCode gave no messageID
+        else if (byId.has(on.target)) {
           on.seen = true
-          put(byId.get(on.id), text)
+          put(byId.get(on.target), text)
         } else if (on.seen) put(users[0], text) // a summary took the message: the rest of the session still needs the brief
-        else put(users[users.length - 1], text) // not among the model's messages yet (it waits for a step boundary, or was dropped): the newest request, until it comes
+        else {
+          // that request is not among the model's messages yet (it waits for a step boundary, or was dropped): the newest of the person's
+          // requests the model has, chosen once and kept; a user message that came with no request (a tool result) is not one
+          let at = on.fixed === undefined ? undefined : byId.get(on.fixed)
+          if (at === undefined) {
+            const ids = new Set((requests.get(sessionID)?.list ?? []).map((q) => q.id).filter((id) => id))
+            for (const [id, i] of byId) if (ids.has(id) && (at === undefined || i > at)) { at = i; on.fixed = id }
+          }
+          put(at ?? users[0], text)
+        }
         const mine = notes.get(sessionID)
         if (mine) {
           for (const [id, note] of mine) {
@@ -397,7 +454,7 @@ export default Plugin.define({
 
     // a deleted session is gone for good: nothing of it is kept, so the tables do not grow with every session the server ever had
     const forget = (sessionID: string) => {
-      for (const table of [brief, briefOn, notes, current, continued, chain, generation, sessions, ends, texts, wakes]) table.delete(sessionID)
+      for (const table of [brief, briefOn, requests, askGen, notes, current, continued, chain, generation, sessions, ends, texts, wakes]) table.delete(sessionID)
       for (const set of [running, seen, inherited, briefed, working, reported]) set.delete(sessionID)
     }
 
@@ -426,7 +483,7 @@ export default Plugin.define({
             // it came to this folder: take it over. The rest of a turn that was running goes on under this instance's context hook, so
             // it gets this project's brief now (the request's own text cannot be handed over: the request was counted where it was made)
             seen.add(sid)
-            await refreshBrief(sid, true)
+            await refreshBrief(sid, false)
           }
         }
         else if (ev.type === "session.text.ended" && running.has(sid) && typeof ev.data?.text === "string") {
@@ -439,7 +496,7 @@ export default Plugin.define({
           for (const note of notes.get(sid)?.values() ?? []) note.seen = true
           const on = briefOn.get(sid)
           if (on) on.seen = true // the same for the message that asked for the brief: if the summary took it, the old brief goes on the summary
-          await refreshBrief(sid) // the summary replaced the past the brief was in: the rest of the turn needs it
+          await refreshBrief(sid, true) // the summary replaced the past the brief was in: the rest of the turn needs it
         }
       } catch {
         // add nothing
