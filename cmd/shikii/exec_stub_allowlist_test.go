@@ -19,14 +19,19 @@ import (
 // these are refused, except in a function of execWriteAllowed (an entry with a third part allows only the permission written there):
 //   - a call of os.WriteFile, os.OpenFile, os.Chmod or io/ioutil.WriteFile (under every name the file imports the package by) whose
 //     permission has an execute bit (any of 0o111), or whose permission this check cannot work out (a parameter, a field, a call);
+//   - a call of os.CopyFS, which has no permission to look at: it writes each file with the permission of the file it copies, so it can
+//     write one with an execute bit whatever the call says (an entry with the third part os.CopyFS allows it in one function);
 //   - a use of one of those functions that is not a call (a method value), because its permission is not seen;
 //   - an import of os or io/ioutil with a dot, because a call of its functions then looks like a call of any function (no entry allows it).
 //
-// The permission is worked out from a number, os.FileMode(...) of one, os.ModePerm, | + & &^ of those, a constant of the package, and a
+// The permission is worked out from a number, os.FileMode(...) of one, os.ModePerm, + | & &^ of those, a constant of the package, and a
 // variable whose every assignment can be worked out. A name is looked up from the function that holds the use outwards (a closure first,
 // then the functions around it): a parameter, a result or a receiver of one of them is unknown (it hides what is outside, even a constant
 // of the package of the same name), a variable or a constant that one of them declares is worked out, and only a name that none of them
 // declares is a constant of the package. A variable whose address is taken, that is incremented, or that is changed by op= is unknown.
+// A variable that is given more than one value stands for all of them together, which is the most the permission can have (the bits of
+// every value), and that is right only where more bits mean more bits in the result: + is worked out as a real sum, and the right side of
+// &^ takes bits away, so both need a value that is one number: a variable given more than one value there is unknown.
 // There is no type check (it is slow), so a local variable that hides the package's name os is not told from the package.
 //
 // os.Chmod is checked like the writes, and the tests do use it to give a folder its permissions back (a folder needs the execute bit),
@@ -114,8 +119,9 @@ func inspectWithScopes(root ast.Node, base []execScope, visit func(n ast.Node, s
 	})
 }
 
-// execPermissionArg is the position of the permission among the arguments of each function the check looks at.
-var execPermissionArg = map[string]int{"WriteFile": 2, "OpenFile": 2, "Chmod": 1}
+// execPermissionArg is the position of the permission among the arguments of each function the check looks at; a function with no
+// permission among its arguments (os.CopyFS, which copies the permission of the files) is -1, and every call of it is reported.
+var execPermissionArg = map[string]int{"WriteFile": 2, "OpenFile": 2, "Chmod": 1, "CopyFS": -1}
 
 // execWritesOutsideTheAllowlist parses the given files (name -> source) and returns where a file is written, opened or chmod-ed with an
 // execute bit, an unknown permission, or as a value, outside the functions of allowed; and which keys of allowed were used.
@@ -199,9 +205,11 @@ func execWritesOutsideTheAllowlist(t *testing.T, files map[string]string, allowe
 					if fname, ok := permissionFunction(x.Fun, pkgNames); ok {
 						callees[x.Fun] = true
 						at := execPermissionArg[fname]
-						if len(x.Args) != at+1 {
+						if at < 0 {
+							report(x.Pos(), types.ExprString(x.Fun)+" writes each file with the permission of the file it copies, which may have an execute bit: copy with writeStub, or list the function with os.CopyFS", types.ExprString(x.Fun))
+						} else if len(x.Args) != at+1 {
 							report(x.Pos(), fmt.Sprintf("a call of %s whose permission is not argument %d", types.ExprString(x.Fun), at+1), "")
-						} else if v, ok := evalPermission(x.Args[at], scopes, consts, 0); !ok {
+						} else if v, ok := evalPermission(x.Args[at], scopes, consts, 0, false); !ok {
 							report(x.Pos(), "the permission of "+types.ExprString(x.Fun)+" cannot be worked out: "+types.ExprString(x.Args[at]), types.ExprString(x.Args[at]))
 						} else if v&0o111 != 0 && fname == "Chmod" {
 							report(x.Pos(), fmt.Sprintf("%s gives an execute bit (%#o): make a file to be run with writeStub, or one never run with writeUnrunExecutable", types.ExprString(x.Fun), v), types.ExprString(x.Args[at]))
@@ -239,8 +247,11 @@ func permissionFunction(e ast.Expr, pkgNames map[string]bool) (string, bool) {
 }
 
 // evalPermission works out the number an expression of a permission stands for, or says that it cannot. scopes are the functions that
-// hold the expression, the innermost first.
-func evalPermission(e ast.Expr, scopes []execScope, consts map[string]ast.Expr, depth int) (int64, bool) {
+// hold the expression, the innermost first. A variable that is given more than one value stands for the bits of all of them together
+// (at most the bits it has), unless exact is set: then the expression must be one number, and such a variable is unknown. + and the right
+// side of &^ are worked out with exact set, since more bits there do not mean more bits in the result (0o644+0o044 carries into an execute
+// bit; 0o755&^0o111 loses them).
+func evalPermission(e ast.Expr, scopes []execScope, consts map[string]ast.Expr, depth int, exact bool) (int64, bool) {
 	if depth > 8 {
 		return 0, false
 	}
@@ -252,7 +263,7 @@ func evalPermission(e ast.Expr, scopes []execScope, consts map[string]ast.Expr, 
 		v, err := strconv.ParseInt(x.Value, 0, 64)
 		return v, err == nil
 	case *ast.ParenExpr:
-		return evalPermission(x.X, scopes, consts, depth+1)
+		return evalPermission(x.X, scopes, consts, depth+1, exact)
 	case *ast.CallExpr: // os.FileMode(0o755), fs.FileMode(...), FileMode(...)
 		name := ""
 		switch f := x.Fun.(type) {
@@ -262,21 +273,24 @@ func evalPermission(e ast.Expr, scopes []execScope, consts map[string]ast.Expr, 
 			name = f.Sel.Name
 		}
 		if name == "FileMode" && len(x.Args) == 1 {
-			return evalPermission(x.Args[0], scopes, consts, depth+1)
+			return evalPermission(x.Args[0], scopes, consts, depth+1, exact)
 		}
 	case *ast.SelectorExpr:
 		if x.Sel.Name == "ModePerm" {
 			return 0o777, true
 		}
 	case *ast.BinaryExpr:
-		l, lok := evalPermission(x.X, scopes, consts, depth+1)
-		r, rok := evalPermission(x.Y, scopes, consts, depth+1)
+		lExact, rExact := exact || x.Op == token.ADD, exact || x.Op == token.ADD || x.Op == token.AND_NOT
+		l, lok := evalPermission(x.X, scopes, consts, depth+1, lExact)
+		r, rok := evalPermission(x.Y, scopes, consts, depth+1, rExact)
 		if !lok || !rok {
 			return 0, false
 		}
 		switch x.Op {
-		case token.OR, token.ADD:
+		case token.OR:
 			return l | r, true
+		case token.ADD:
+			return l + r, true
 		case token.AND:
 			return l & r, true
 		case token.AND_NOT:
@@ -287,12 +301,12 @@ func evalPermission(e ast.Expr, scopes []execScope, consts map[string]ast.Expr, 
 			if s.declares(x.Name) {
 				return 0, false
 			}
-			if v, ok, found := evalLocalVariable(x.Name, scopes[i:], consts, depth); found {
+			if v, ok, found := evalLocalVariable(x.Name, scopes[i:], consts, depth, exact); found {
 				return v, ok
 			}
 		}
 		if c, ok := consts[x.Name]; ok {
-			return evalPermission(c, nil, consts, depth+1)
+			return evalPermission(c, nil, consts, depth+1, exact)
 		}
 	}
 	return 0, false
@@ -301,19 +315,22 @@ func evalPermission(e ast.Expr, scopes []execScope, consts map[string]ast.Expr, 
 // evalLocalVariable works out a variable of the function scopes[0] from every place it is given a value (name := v, name = v, var name = v,
 // const name = v): the bits of all of them together. A closure inside that declares the name itself is left out, since what it assigns is
 // its own. found is false when the function never gives the name a value (a constant of the package, or a name of a function around it),
-// and ok is false when one of the values cannot be worked out, or the variable is changed in a way that is not an assignment of a value.
-func evalLocalVariable(name string, scopes []execScope, consts map[string]ast.Expr, depth int) (v int64, ok, found bool) {
+// and ok is false when one of the values cannot be worked out, or the variable is changed in a way that is not an assignment of a value,
+// or, with exact set, when the variable is given more than one value (it is not one number).
+func evalLocalVariable(name string, scopes []execScope, consts map[string]ast.Expr, depth int, exact bool) (v int64, ok, found bool) {
 	ok = true
 	if scopes[0].body == nil {
 		return 0, true, false
 	}
 	unknown := func() { found, ok = true, false }
+	values := 0
 	inspectWithScopes(scopes[0].body, scopes, func(n ast.Node, at []execScope) bool {
 		take := func(e ast.Expr) {
 			found = true
-			w, good := evalPermission(e, at, consts, depth+1)
+			values++
+			w, good := evalPermission(e, at, consts, depth+1, exact)
 			v |= w
-			ok = ok && good
+			ok = ok && good && !(exact && values > 1)
 		}
 		isName := func(e ast.Expr) bool {
 			id, isID := e.(*ast.Ident)
@@ -439,6 +456,26 @@ func TestWhatTheExecutableWriteAllowlistMustFind(t *testing.T) {
 		{"io/ioutil.WriteFile", "x_test.go", "package main\nimport \"io/ioutil\"\nfunc TestX() { ioutil.WriteFile(\"a\", nil, 0o755) }\n", 1},
 		{"a chmod after a plain write", "x_test.go", head + "func TestX() { os.WriteFile(\"a\", nil, 0o644); os.Chmod(\"a\", 0o755) }\n", 1},
 		{"os imported twice, under two names", "x_test.go", "package main\nimport (\n\t\"os\"\n\to \"os\"\n)\nfunc TestX() { os.WriteFile(\"a\", nil, 0o755) }\n", 1},
+		// audit of 0.42.1: a sum that carries into an execute bit, a mask taken away that is not always the same, and a copy that keeps the permission
+		{"an addition that carries into the execute bit", "x_test.go", head + "func TestX() { os.WriteFile(\"a\", nil, 0o644+0o044) }\n", 1},
+		{"an addition whose sum has no execute bit though an or of the two would", "x_test.go", head + "func TestX() { os.WriteFile(\"a\", nil, 0o377+0o001) }\n", 0},
+		{"an addition whose sum has no execute bit", "x_test.go", head + "func TestX() { os.WriteFile(\"a\", nil, 0o600+0o044) }\n", 0},
+		{"an addition of a variable that is not always the same", "x_test.go", head + "func TestX(c bool) { m := os.FileMode(0o044); if c { m = 0 }; os.WriteFile(\"a\", nil, 0o644+m) }\n", 1},
+		{"an addition of a variable that is set once", "x_test.go", head + "func TestX() { m := os.FileMode(0o004); os.WriteFile(\"a\", nil, 0o640+m) }\n", 0},
+		{"a mask taken away that is not always set", "x_test.go", head + "func TestX(c bool) { m := os.FileMode(0o111); if c { m = 0 }; os.WriteFile(\"a\", nil, 0o755&^m) }\n", 1},
+		{"a mask taken away that is set once", "x_test.go", head + "func TestX() { m := os.FileMode(0o111); os.WriteFile(\"a\", nil, 0o755&^m) }\n", 0},
+		{"a mask taken away that is a constant", "x_test.go", head + "const m = 0o111\nfunc TestX() { os.WriteFile(\"a\", nil, 0o755&^m) }\n", 0},
+		{"a mask taken away through a variable made from a variable that is not always set", "x_test.go", head + "func TestX(c bool) { m := os.FileMode(0o111); if c { m = 0 }; n := m; os.WriteFile(\"a\", nil, 0o755&^n) }\n", 1},
+		{"a mask taken away that holds an addition of a variable that is not always set", "x_test.go", head + "func TestX(c bool) { m := os.FileMode(0o100); if c { m = 0 }; os.WriteFile(\"a\", nil, 0o755&^(m+0o011)) }\n", 1},
+		{"a variable that is not always set on the left of a mask taken away", "x_test.go", head + "func TestX(c bool) { m := os.FileMode(0o755); if c { m = 0o644 }; os.WriteFile(\"a\", nil, m&^0o001) }\n", 1},
+		{"a variable that is not always set, kept by and", "x_test.go", head + "func TestX(c bool) { m := os.FileMode(0o111); if c { m = 0 }; os.WriteFile(\"a\", nil, 0o755&m) }\n", 1},
+		{"os.CopyFS of an executable file", "x_test.go", "package main\nimport (\n\t\"os\"\n\t\"testing/fstest\"\n)\nfunc TestX() { os.CopyFS(\"d\", fstest.MapFS{\"a\": {Mode: 0o755}}) }\n", 1},
+		{"os.CopyFS of a plain file", "x_test.go", "package main\nimport (\n\t\"os\"\n\t\"testing/fstest\"\n)\nfunc TestX() { os.CopyFS(\"d\", fstest.MapFS{\"a\": {Mode: 0o644}}) }\n", 1},
+		{"os.CopyFS of a folder of the machine", "x_test.go", head + "func TestX() { os.CopyFS(\"d\", os.DirFS(\"s\")) }\n", 1},
+		{"os.CopyFS under another name", "x_test.go", "package main\nimport o \"os\"\nfunc TestX() { o.CopyFS(\"d\", o.DirFS(\"s\")) }\n", 1},
+		{"os.CopyFS kept as a value", "x_test.go", head + "var copyFS = os.CopyFS\n", 1},
+		{"os.CopyFS in a closure", "x_test.go", head + "func TestX() { func() { os.CopyFS(\"d\", os.DirFS(\"s\")) }() }\n", 1},
+		{"os.DirFS alone", "x_test.go", head + "func TestX() { _ = os.DirFS(\"s\") }\n", 0},
 		// the same holes in other forms, and what must stay quiet
 		{"a range variable named like a constant of the package", "x_test.go", head + "const perm = 0o644\nfunc TestX() { for _, perm := range []os.FileMode{0o755} { os.WriteFile(\"a\", nil, perm) } }\n", 1},
 		{"a named result named like a constant of the package", "x_test.go", head + "const perm = 0o644\nfunc put() (perm os.FileMode) { os.WriteFile(\"a\", nil, perm); return }\n", 1},
@@ -508,6 +545,42 @@ func TestAChmodWithAnExecuteBitIsAllowedOnlyWhereTheAllowlistSaysSo(t *testing.T
 		{"TestX allowed for another permission", map[string]string{"x_test.go:TestX:0o700": reason}, 2, ""},
 		{"another function allowed", map[string]string{"x_test.go:TestZ:0o755": reason}, 2, ""},
 		{"another file allowed", map[string]string{"y_test.go:TestX:0o755": reason}, 2, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			found, used := execWritesOutsideTheAllowlist(t, map[string]string{"x_test.go": src}, c.allowed)
+			if len(found) != c.want {
+				t.Fatalf("found %d (want %d): %v", len(found), c.want, found)
+			}
+			var usedKeys []string
+			for key := range used {
+				usedKeys = append(usedKeys, key)
+			}
+			sort.Strings(usedKeys)
+			if got := strings.Join(usedKeys, ","); got != c.wantUsed {
+				t.Fatalf("used entries = %q, want %q", got, c.wantUsed)
+			}
+		})
+	}
+}
+
+// os.CopyFS writes each file with the permission of the file it copies, so it can write one with an execute bit whatever the call says. It
+// is refused everywhere except in a function the allowlist names for it (file:function:os.CopyFS), like a chmod.
+func TestACopyFSIsAllowedOnlyWhereTheAllowlistSaysSo(t *testing.T) {
+	const src = "package main\nimport \"os\"\nfunc TestX() { os.CopyFS(\"d\", os.DirFS(\"s\")) }\nfunc TestY() { os.CopyFS(\"d\", os.DirFS(\"s\")) }\n"
+	const reason = "copies a folder of plain text files"
+	for _, c := range []struct {
+		name     string
+		allowed  map[string]string
+		want     int
+		wantUsed string // the keys that must be counted as used, joined by ","
+	}{
+		{"nothing allowed", map[string]string{}, 2, ""},
+		{"TestX allowed for os.CopyFS", map[string]string{"x_test.go:TestX:os.CopyFS": reason}, 1, "x_test.go:TestX:os.CopyFS"},
+		{"the whole of TestX allowed", map[string]string{"x_test.go:TestX": reason}, 1, "x_test.go:TestX"},
+		{"both allowed for os.CopyFS", map[string]string{"x_test.go:TestX:os.CopyFS": reason, "x_test.go:TestY:os.CopyFS": reason}, 0, "x_test.go:TestX:os.CopyFS,x_test.go:TestY:os.CopyFS"},
+		{"TestX allowed for another call", map[string]string{"x_test.go:TestX:os.Chmod": reason}, 2, ""},
+		{"another function allowed", map[string]string{"x_test.go:TestZ:os.CopyFS": reason}, 2, ""},
+		{"another file allowed", map[string]string{"y_test.go:TestX:os.CopyFS": reason}, 2, ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			found, used := execWritesOutsideTheAllowlist(t, map[string]string{"x_test.go": src}, c.allowed)
