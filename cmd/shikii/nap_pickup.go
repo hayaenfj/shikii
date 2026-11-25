@@ -11,7 +11,7 @@ package main
 // run, that are all in .shikii/nap-read). A conversation that was not read prints again and is counted by the run that moves the window
 // over it, once, whatever happened to it in between (a run that left it out, or printed it again).
 //
-// A run that wrote the window over conversations with a recorded state counts them there and then (countNapRead): it adds one JSON line to
+// A run that wrote the window over conversations with a recorded state counts them there and then (settleAndCountNapRead): it adds one JSON line to
 // .shikii/nap-log (the time, the three counts and the ids picked up) and prints the counts as last_nap. That is before the report is built,
 // so nothing that fails after the window moved can lose the count, and only the run that wrote the window counts, so two runs at the same
 // time count the conversations once. `shikii status` sums every line of the log. The log is an ordinary file with one name or nothing: a

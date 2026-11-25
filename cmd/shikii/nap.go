@@ -42,14 +42,16 @@ package main
 // to the last of two equal lines would go on after the first of them and show what lies between them again on every run. Each of these
 // files is read and written only when it is an ordinary file with one name (a symbolic link or a hard link is a file of the person's,
 // never written through); a file that cannot be used means nothing read or shown, and the error says to remove the file. Each file is its
-// own: the notice's rewrite of .shikii/nap carries no third line, and the writes never wait for each other.
+// own: the notice's rewrite of .shikii/nap carries no third line, and the writes never wait for each other (but for .shikii/nap-first, below).
 //
 // What the run before caught is counted from two places (nap_pickup.go, nap_first.go). .shikii/nap-first keeps, for each conversation,
 // whether an article cited it when it was first printed: a run adds the line when it prints the conversation for the first time, and
 // takes it out when it moves the window over the conversation and counts it, so no run in between can lose it (a conversation printed
 // again, or left out of a run, keeps its line, and so an article saved from it in between is what the run caught). The run that wrote
 // the window over the conversations read counts them there and then, before it builds the report: last_nap says how many of them were
-// printed uncited and an article cites now, and a line is added to .shikii/nap-log. Only the run that wrote the window counts the
+// printed uncited and an article cites now, and a line is added to .shikii/nap-log. Two runs at the same time cannot lose or repeat a count:
+// every change of .shikii/nap-first is made under its lock, which is waited for and then not skipped, and the file is replaced whole by a
+// rename (nap_first.go). Only the run that wrote the window counts the
 // conversations: one whose lock was held, or that found the window moved by another run, counts none, and a conversation that was not
 // read is counted when a later run moves the window over it, once. A failure later in the run (the report, the printing, the record of
 // what was shown) cannot lose or repeat the count. The agent is asked for nothing more.
@@ -355,10 +357,10 @@ func napPremiseChangedOf(pages []notebook.Page) ([]napPremiseChanged, int) {
 }
 
 // runNapReport is a run of `shikii nap` up to the printing: it moves the window over the conversations the agent has read since the last
-// run (settleNapWindow) and counts them (countNapRead) as soon as the window is written, then builds the report from the window. The live
-// articles are read first: when that fails nothing has moved, and the next run does what this one would have. The error of moving the
-// window or of keeping the states does not stop the run: it is kept in the report for the command to return after printing, and the report
-// is built from the window as it is.
+// run and counts them as soon as the window is written (settleAndCountNapRead, under the lock of .shikii/nap-first), then builds the
+// report from the window. The live articles are read first: when that fails nothing has moved, and the next run does what this one would
+// have. The error of moving the window or of keeping the states does not stop the run: it is kept in the report for the command to
+// return after printing, and the report is built from the window as it is.
 func runNapReport(root, scope string) (napReport, error) {
 	book := notebook.Book{Root: root, Scope: scope}
 	// The live articles (not withdrawn, deleted or replaced, their sources intact), each with the files it watches checked: the ones that
@@ -369,13 +371,23 @@ func runNapReport(root, scope string) (napReport, error) {
 	}
 	sort.Slice(live, func(i, j int) bool { return live[i].ID < live[j].ID })
 	cited := napCitations(live)
-	unread, shownRaw, moved, settleErr := settleNapWindowRead(root)
-	last, firstErr := countNapRead(root, moved, cited, time.Now())
+	shownRaw, shown, n, ok := planNapSettle(root)
+	var unread []string
+	var last *napLastNap
+	var settleErr error
+	if ok {
+		for _, c := range shown.convs[n:] {
+			unread = append(unread, c.id)
+		}
+		if n > 0 {
+			unread, last, settleErr = settleAndCountNapRead(root, shown, n, cited, time.Now())
+		}
+	}
 	r, err := buildNapReport(root, scope, live, cited, unread, shownRaw, last)
 	if err != nil {
 		return r, err
 	}
-	r.shownRaw, r.settleErr = shownRaw, errors.Join(settleErr, firstErr)
+	r.shownRaw, r.settleErr = shownRaw, settleErr
 	return r, nil
 }
 
@@ -605,41 +617,50 @@ func napFirstPrinted(raw string) map[string]napCited {
 // window file's lock and only while the file still holds what the last run started from: when another run has moved it, nothing is
 // written and that run's window stands. When the window cannot be written, the error says to remove the file, and every conversation
 // is printed from where the window is.
+//
+// `shikii nap` itself goes through settleAndCountNapRead, which also counts what it moved over, under the lock of .shikii/nap-first; this is
+// the move alone, for what a test wants of the window.
 func settleNapWindow(root string) (unread []string, shownRaw string, err error) {
-	unread, shownRaw, _, err = settleNapWindowRead(root)
-	return unread, shownRaw, err
-}
-
-// settleNapWindowRead is settleNapWindow that also returns the conversations of .shikii/nap-shown this run moved the window over: the
-// ones read from the first printed on, when this run wrote the window. None when it did not (its lock was held, or another run moved the
-// window first: that run counted them): they print again, or are before the window the other run wrote, and are counted once, by the run
-// that writes the window over them.
-func settleNapWindowRead(root string) (unread []string, shownRaw string, moved []napShownConv, err error) {
-	shownRaw = readNapStateAtLimit(napShownPath(root), napShownMax)
-	shown, ok := parseNapShown(shownRaw)
+	shownRaw, shown, n, ok := planNapSettle(root)
 	if !ok {
-		return nil, shownRaw, nil, nil
-	}
-	read := notebook.NapReadIDs(root)
-	n := 0
-	for n < len(shown.convs) && read[shown.convs[n].id] {
-		n++
+		return nil, shownRaw, nil
 	}
 	for _, c := range shown.convs[n:] {
 		unread = append(unread, c.id)
 	}
 	if n == 0 {
-		return unread, shownRaw, nil, nil
+		return unread, shownRaw, nil
 	}
+	_, err = moveNapWindow(root, shown, n)
+	return unread, shownRaw, err
+}
+
+// planNapSettle reads what .shikii/nap-shown says the last run printed and works out how many of those conversations, from the first one
+// printed, the agent has read (all of their ids are in .shikii/nap-read). ok is false when there is no record of what was shown that can
+// be read: nothing is then moved over, and every conversation prints again.
+func planNapSettle(root string) (shownRaw string, shown napShown, n int, ok bool) {
+	shownRaw = readNapStateAtLimit(napShownPath(root), napShownMax)
+	shown, ok = parseNapShown(shownRaw)
+	if !ok {
+		return shownRaw, napShown{}, 0, false
+	}
+	read := notebook.NapReadIDs(root)
+	for n < len(shown.convs) && read[shown.convs[n].id] {
+		n++
+	}
+	return shownRaw, shown, n, true
+}
+
+// moveNapWindow writes the place after the n-th conversation of shown (n above 0) to .shikii/nap-window-end, under the window file's lock
+// and only while it still holds what the last run started from. wrote is false, with no error, when the lock is held or another run has
+// moved the window.
+func moveNapWindow(root string, shown napShown, n int) (wrote bool, err error) {
 	path := napWindowEndPath(root)
-	wrote, err := rewriteNapFile(path, shown.window, formatNapWindowEnd(shown.convs[n-1].mark))
+	wrote, err = rewriteNapFile(path, shown.window, formatNapWindowEnd(shown.convs[n-1].mark))
 	if err != nil {
-		return unread, shownRaw, nil, fmt.Errorf("the conversations you read could not be moved past: %w; remove %s (it must be an ordinary file with one name that can be written) and the next `shikii nap` moves the window again", err, path)
+		return false, fmt.Errorf("the conversations you read could not be moved past: %w; remove %s (it must be an ordinary file with one name that can be written) and the next `shikii nap` moves the window again", err, path)
 	}
-	if !wrote {
-		return unread, shownRaw, nil, nil
-	}
-	return unread, shownRaw, shown.convs[:n], nil
+	return wrote, nil
 }
 
 // recordNapShown is what the run writes once it has printed: it empties .shikii/nap-read (what was named before this output reached the
@@ -649,10 +670,15 @@ func settleNapWindowRead(root string) (unread []string, shownRaw string, moved [
 // that printed nothing leaves the window as it is. A file that cannot be used (not an ordinary file with one name) makes the error say to
 // remove it, also when the run printed nothing and had nothing to replace: no later run could record what it prints.
 func recordNapShown(root string, r napReport) error {
-	if err := notebook.ClearNapRead(root); err != nil {
-		return fmt.Errorf("%w; remove %s (it must be an ordinary file with one name that can be written) and the next `shikii nap` records what it printed again", err, filepath.Join(root, notebook.NapReadName))
+	firstErr := addNapFirst(root, r.firstNew)
+	if errors.Is(firstErr, errNapFirstBusy) {
+		// The lines of the conversations printed now could not be added, and they cannot be counted without them. Nothing is recorded, as if
+		// the run had not printed: the next run prints them again from the same window and adds their lines then.
+		return fmt.Errorf("%w, so the first state of the conversations printed now could not be kept; nothing of this print is recorded and the next `shikii nap` prints them again", firstErr)
 	}
-	firstErr := updateNapFirst(root, nil, r.firstNew)
+	if err := notebook.ClearNapRead(root); err != nil {
+		return errors.Join(firstErr, fmt.Errorf("%w; remove %s (it must be an ordinary file with one name that can be written) and the next `shikii nap` records what it printed again", err, filepath.Join(root, notebook.NapReadName)))
+	}
 	state := ""
 	if len(r.Conversations) > 0 {
 		state = formatNapShown(r.endState, r.Conversations, r.ends)
@@ -667,9 +693,8 @@ func recordNapShown(root string, r napReport) error {
 	return firstErr
 }
 
-// checkNapShownUsable is nil when .shikii/nap-shown is not there or is an ordinary file with one name, and else the error that says why
-// it cannot be used, ending with what to do.
-func checkNapShownUsable(path string) error {
+// napFileProblem is nil when the file at path is not there or is an ordinary file with one name, and else why it cannot be used.
+func napFileProblem(path string) error {
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if os.IsNotExist(err) {
 		return nil
@@ -681,7 +706,16 @@ func checkNapShownUsable(path string) error {
 		}
 		err = errors.New("the nap state must be a regular file with one name")
 	}
-	return fmt.Errorf("%w; remove %s (it must be an ordinary file with one name that can be written) and the next `shikii nap` records what it printed again", err, path)
+	return err
+}
+
+// checkNapShownUsable is nil when .shikii/nap-shown is not there or is an ordinary file with one name, and else the error that says why
+// it cannot be used, ending with what to do.
+func checkNapShownUsable(path string) error {
+	if err := napFileProblem(path); err != nil {
+		return fmt.Errorf("%w; remove %s (it must be an ordinary file with one name that can be written) and the next `shikii nap` records what it printed again", err, path)
+	}
+	return nil
 }
 
 func cmdNap(args []string) error {
@@ -706,7 +740,7 @@ func cmdNap(args []string) error {
 // finishNap is the rest of a run once its report is built: it prints the report and records what was printed.
 //
 // The conversations the run moved the window over were counted, and the line for the log added, when the window was written
-// (countNapRead), before the report was built: whatever happens to the report, the printing or the record of what was shown after that
+// (settleAndCountNapRead), before the report was built: whatever happens to the report, the printing or the record of what was shown after that
 // cannot lose the count, and the run that wrote the window is the only one that counts.
 func finishNap(root string, r napReport) error {
 	if err := encodeNapReport(stdout, r); err != nil {

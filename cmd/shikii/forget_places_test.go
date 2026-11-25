@@ -54,8 +54,14 @@ var forgetPlaces = []forgetPlace{
 	{`^store/records/(store-name|store-id)$`, "outside", ""},
 	{`^store/records/forgotten/`, "outside", ""},
 	{`^store/(project\.json|hook\.log|hook\.log\.[0-9]+)$`, "undecided", ""},
-	// shikii nap's own files: conversation ids and places in the record, emptied or rewritten by every run of shikii nap (nap-log only grows: counts and ids of conversations an article cited later; nap-first holds a conversation's id until the run that counts it takes it out)
-	{`^store/(nap|nap-window-end|nap-shown|nap-read|nap-log|nap-first)$`, "undecided", ""},
+	// shikii nap's own files: conversation ids and places in the record, emptied or rewritten by every run of shikii nap (nap-log only grows: counts and ids of conversations an article cited later)
+	{`^store/(nap|nap-window-end|nap-shown|nap-read|nap-log)$`, "undecided", ""},
+	// nap-first holds a conversation's id (and whether an article cited it) until the run that counts it takes it out; the conversation's
+	// record says which session it is of, so forget takes the line out in its step of the conversations; its temp file is the same lines
+	// on their way in (a run that stopped leaves it), and its lock file holds nothing
+	{`^store/nap-first$`, "via", "feedback"},
+	{`^store/nap-first\.tmp$`, "undecided", ""},
+	{`^store/nap-first\.lock$`, "outside", ""},
 	{`^store/(wiki|decisions|handoff|guards)/`, "outside", ""},
 	{`^home/agent/`, "outside", ""},
 }
@@ -210,7 +216,7 @@ func TestForgetKnowsEveryFileShikiiNapWrites(t *testing.T) {
 			paths = append(paths, "store/"+e.Name())
 		}
 	}
-	for _, name := range []string{napStateName, napWindowEndName, napShownName, notebook.NapReadName, napLogName, napFirstName} {
+	for _, name := range []string{napStateName, napWindowEndName, napShownName, notebook.NapReadName, napLogName, napFirstName, napFirstLockName, napFirstTmpName} {
 		paths = append(paths, "store/"+name)
 	}
 	if len(paths) < 8 {

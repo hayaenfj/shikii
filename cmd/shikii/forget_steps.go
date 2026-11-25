@@ -40,9 +40,7 @@ func (r *forgetRun) steps() []forgetStep {
 			return r.rewrite("records/coverage", r.st.CoverageFile(r.scope), r.dropCoverage, "lines of the results the sessions made; a line that closed another work's row goes too, and that row is open again")
 		}, nil},
 		{"reviews", r.stepReviews, nil},
-		{"feedback", func() error {
-			return r.rewrite("records/feedback", r.st.FeedbackFile(r.scope), r.dropFeedback, "conversations of the sessions")
-		}, nil},
+		{"feedback", r.stepFeedback, nil},
 		{"reasoning", r.stepReasoning, nil},
 		{"guards", func() error {
 			return r.rewrite("records/guards.jsonl", guardRecordsPath(r.root), r.dropGuard, "checks of the sessions' turns")
@@ -73,6 +71,28 @@ func (r *forgetRun) rewrite(place, path string, drop func([]byte) bool, why stri
 	}
 	r.remove(place, "lines", n, why)
 	return nil
+}
+
+// stepFeedback removes the conversations of the sessions, and the lines of those conversations in .shikii/nap-first (what each was when
+// shikii nap first printed it: the line names the conversation, which only its record says belongs to the session). The lines of nap-first
+// go first, while the conversations are still in the record: a run that stops in the middle finds them again and takes them out.
+func (r *forgetRun) stepFeedback() error {
+	lines, err := r.st.JSONLLines(r.st.FeedbackFile(r.scope))
+	if err != nil {
+		return err
+	}
+	ids := map[string]bool{}
+	for _, line := range lines {
+		if f, ok := decodeRow[forgetFeedbackRow](line); ok && r.dropFeedback(line) {
+			ids[f.ID] = true
+		}
+	}
+	n, err := forgetNapFirst(r.root, ids, r.applying, func(removed [][]byte) error { return r.f.AppendLines(napFirstName, removed) })
+	if err != nil {
+		return err
+	}
+	r.remove("nap-first", "lines", n, "what shikii nap saw of the conversations of the sessions when it first printed them")
+	return r.rewrite("records/feedback", r.st.FeedbackFile(r.scope), r.dropFeedback, "conversations of the sessions")
 }
 
 // stepDecisions removes the decisions the sessions made, with the labels no person gave. A decision a person labeled stays, with all
