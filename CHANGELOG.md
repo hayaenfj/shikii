@@ -2,6 +2,17 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.43.0 — The memory nap counts the missed corrections it caught
+
+### Changes
+
+- The memory nap (`shikii nap`) now counts how many of your corrections that the wiki had missed a review caught. Of what you said that was not yet in any wiki article at the time of the review, it counts what later became an article, and shows the number in the output of `shikii nap` and in `shikii status`. It gives a sense of how much the reviews help.
+
+### Fixes
+
+- Fixed conversations shown by `shikii nap` dropping out of the next review when the agent finished without reading them. The next review starts after the conversations the agent says it has read, and the ones it did not read come again.
+- Fixed a review skipping conversations, or showing the same ones again and again, when the record of conversations that shikii keeps held two identical lines (after restoring it from a backup, for example).
+
 ## 0.42.0 — At most once a day, the agent goes through its memory
 
 ### Changes
