@@ -22,9 +22,9 @@ package main
 // fits it prints one item all the same. Once it has printed its conversations it records the end of the last one it printed, and when it
 // printed none the file is left as it was. So a notice the
 // agent did not act on, or more conversations than one run prints, loses nothing: the conversations stay after the offset until a
-// `shikii nap` has shown them. When the line that ends at the saved offset no longer has the saved hash (`shikii forget` rewrote the
-// record, or it was replaced), the next run goes on after the first line that has the hash, and from the beginning when none does:
-// a conversation may be shown again, none is lost. A file that cannot be used (missing, not an ordinary file, a hard link, content that is
+// `shikii nap` has shown them. The next run finds its place by the hash, not by the offset: it goes on after the first line of the
+// record that has the saved hash, and from the beginning when none does (`shikii forget` may have rewritten the record, or it was
+// replaced, or the same line is in it twice, and the offset can then end another line): a conversation may be shown again, none is lost. A file that cannot be used (missing, not an ordinary file, a hard link, content that is
 // not those two lines) means the beginning; when the place cannot be recorded the conversations are printed all the same, and the error
 // says to remove the file. It is a file of its own: the notice's rewrite of .shikii/nap carries no third line, and the two writes never
 // wait for each other.

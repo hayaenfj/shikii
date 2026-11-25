@@ -145,10 +145,13 @@ func decodeFeedbackLine(line []byte) (Feedback, bool) {
 	return v, true
 }
 
-// FeedbackMark is a place in the history of conversations: the byte offset just after a line, and the SHA-256 (hex) of that line's bytes
-// without its newline. The history is only appended to, under its lock, so a line written after the mark was read is after the offset,
-// whatever time it carries. The hash tells whether the offset still stands after the file was rewritten (shikii forget removes the lines
-// of a finished session) or replaced. The zero mark is the beginning.
+// FeedbackMark is a place in the history of conversations: the SHA-256 (hex) of one line's bytes without its newline, and the byte offset
+// just after that line when the mark was made. A read after the mark goes on after the first line of the file that has the hash, found by
+// hashing the lines from the beginning, and from the beginning when no line has it: the offset is not used to find the place, because
+// shikii forget rewrites the file (removing the lines of a finished session) and a copy of the same line may then end at the old offset
+// with lines between the copies never read. The history is only appended to, under its lock, so a line written after the marked one is
+// after it in the file, whatever time it carries. Offset is kept in the stored form of a mark (a zero Offset or an empty Hash is the
+// zero mark, the beginning).
 type FeedbackMark struct {
 	Offset int64
 	Hash   string
@@ -166,8 +169,8 @@ type FeedbackLine struct {
 // has piled up. A line is taken by the same rules: a broken or too long line is skipped, a last line that is not ended by a newline yet is
 // not taken (so no mark is ever past it), and of a repeated ID only the newest line stands, at its own place.
 //
-// When the line that ends at the mark's offset no longer hashes to the mark's hash, the file was rewritten or replaced: the read goes on
-// after the first line that has the hash, and from the beginning when no line has it (a conversation may then be read again, none is lost).
+// The read goes on after the first line of the file that has the mark's hash, and from the beginning when no line has it (a conversation
+// may then be read again, none is lost). The whole file is hashed once for it, which the daily run of shikii nap can afford.
 func (s Store) FeedbackAfter(scope string, mark FeedbackMark) ([]FeedbackLine, error) {
 	f, err := s.openFile(s.feedbackPath(scope), os.O_RDONLY)
 	if os.IsNotExist(err) {
@@ -247,14 +250,13 @@ func feedbackLineHash(line []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// feedbackResume is the offset a read after mark starts from: the mark's own while the line that ends there still has the mark's hash,
-// else the end of the first line that has it, else 0.
+// feedbackResume is the offset a read after mark starts from: the end of the first line of the file (from its beginning) that has the
+// mark's hash, else 0. The mark's own offset is not trusted even when the line that ends there has the hash: the same line may be in the
+// file twice, and after shikii forget removed lines before the mark, the offset may be the end of the second copy, with what lies between
+// the copies never read. Starting after the first copy reads a conversation again at worst, and skips none.
 func feedbackResume(f *os.File, mark FeedbackMark) (int64, error) {
 	if mark.Offset <= 0 || mark.Hash == "" {
 		return 0, nil
-	}
-	if line, ok := feedbackLineEndingAt(f, mark.Offset); ok && feedbackLineHash(line) == mark.Hash {
-		return mark.Offset, nil
 	}
 	found := int64(0)
 	err := scanFeedbackLines(f, 0, func(line []byte, end int64) bool {
@@ -265,20 +267,6 @@ func feedbackResume(f *os.File, mark FeedbackMark) (int64, error) {
 		return true
 	})
 	return found, err
-}
-
-// feedbackLineEndingAt is the line of f that ends just before the offset (its newline is the byte before it), or false when the offset
-// is not the end of a line that the history keeps: beyond the file, in the middle of a line, or after a line that is too long.
-func feedbackLineEndingAt(f *os.File, offset int64) ([]byte, bool) {
-	n := min(offset, feedbackLineMax+1) // the line, its newline, and the newline before it
-	buf := make([]byte, n)
-	if _, err := f.ReadAt(buf, offset-n); err != nil || buf[n-1] != '\n' {
-		return nil, false
-	}
-	if at := bytes.LastIndexByte(buf[:n-1], '\n'); at >= 0 {
-		return buf[at+1:], true
-	}
-	return buf, n == offset && n <= feedbackLineMax // no newline before it: the line starts the file, unless it is longer than the history keeps
 }
 
 // TextMatch is the share of query words that appear in the text.
