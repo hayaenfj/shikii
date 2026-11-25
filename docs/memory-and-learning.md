@@ -135,6 +135,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.41.0 | A person can remove what a finished agent session left in the project, and a tool can withdraw the articles it made from removed work, kept until the person restores or deletes them; removal from the command line or, after shikii asks them directly, over MCP. |
 | 0.42.0 | At most once a day, the agent goes through its memory: articles whose underlying files changed are checked against the files again, new or changed articles against their sources, and the person's recent replies are read for corrections the wiki does not hold yet. shikii edits no article itself. |
 | 0.43.0 | The memory nap counts the missed corrections it caught. Instead of an operation that checks whether the agent read, it counts what the person said that no article held when the agent was shown it and that later became an article. |
+| 0.43.1 | In OpenCode too, the memory nap notice goes on the request it came with. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -496,10 +497,12 @@ Two changes keep it light without losing accuracy. First, each conversation name
 
 With the real Claude Code, the agent that got the notice ran `shikii nap` in a background subagent and added one procedure that no article held yet. It did not rewrite a correction that already was an article. Codex reviewed the same way when the request asked for work, but finished without reviewing when the request was only "that's all for today". OpenCode could not be checked: the model provider's usage limit was reached.
 
-### In 0.43.0, count whether the reviews work
+### In 0.43.0 and 0.43.1, count whether the reviews work, and make sure the notice arrives
 
 After 0.42.0, a check with the real Claude Code showed the agent dropping the conversations from the output of `shikii nap` before reading it. The review moved on all the same, and those conversations never came again. So the review now moves on only past the conversations whose ids the agent sends back as read, and the ones it does not send come again in the next review.
 
 Still, all shikii can see is whether the ids were sent, not whether the agent really read them. In the next check, the agent did send the ids without ever showing the text of the conversations. An operation that checks the reading was considered, but an agent can satisfy such an operation cheaply, and new operations are rarely used by agents. Claude Code's similar feature does not have the agent read every transcript either, and does not check what it read.
 
 Instead, shikii counts whether the reviews work by their results. What you said that no article held when the agent was shown it is counted as caught once an article cites it as a source or a correction. Saying a conversation was read does not make it an article, so pretending to read does not raise the count. The count is shown in the output of `shikii nap` and in `shikii status`.
+
+The notice itself was also checked with real agents and fixed. With the 0.43.0 candidate, Claude Code sometimes finished a request without running the nap it was told about. So the notice now asks plainly for the nap to start in the background right away, and until a nap runs, the next session is told again at its start. 0.43.1 fixed OpenCode too. In OpenCode, a notice given partway through a session that goes on was put on the first request of the conversation, where the agent saw it as old text. It now goes on the request it came with, and the OpenCode agent ran the nap once it was told.

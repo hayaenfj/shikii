@@ -2,6 +2,12 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.43.1 — In OpenCode too, the memory nap notice reaches the current request
+
+### Fixes
+
+- Fixed OpenCode showing the agent a memory nap notice given partway through a session that goes on as if it were old text on the first request of the conversation, so `shikii nap` did not run. The text shikii gives at the start of a session now goes on the request it came with.
+
 ## 0.43.0 — The memory nap counts the missed corrections it caught
 
 ### Changes
