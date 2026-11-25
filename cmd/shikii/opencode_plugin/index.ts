@@ -19,14 +19,16 @@
 // interrupted or failed (Claude Code runs no Stop for those); a turn the person interrupts while its stop runs is not continued. One
 // OpenCode server runs a plugin
 // instance per project folder, and every instance is told every session's events: an instance acts only on sessions of its own folder.
-// What the hooks give is not kept in the conversation, so the plugin adds it to every model call again, at the same place: the session's
-// brief on the message of the request that asked shikii for it (the first message of a new conversation; in a session resumed in a new
-// process, the request that process saw first, not the conversation's first message, where the model would read a due memory nap as an
-// old text), each request's text on that request's own message (as Claude Code keeps it in the conversation). A summary of the
-// conversation took the message away: the brief, asked for again, goes on the first message the model gets, the summary. The system text
-// is left as it is: a provider caches the start of a request, and a system text that changed with every request made it start over each
-// time. Every hook is wrapped in try/catch and a failure or a timeout adds nothing: a hook must never stop the work (a throw in the
-// prompt or context hook would make OpenCode refuse the request).
+// What the hooks give is not kept in the conversation, so the plugin adds it to every model call again, at the same place: each
+// request's text on that request's own message (as Claude Code keeps it in the conversation), and the session's brief (the text of
+// session-start) on the first request that comes after that text came out. That is the request that asked for it (a new conversation's
+// first; in a session resumed in a new process, the first request that process saw, not the conversation's first message, where the
+// model would read a due memory nap as an old text of a request long past), or, when the text was asked for again with no request
+// (the conversation moved to this folder), the next request. Until that request is among the model's messages the brief is on the newest
+// request there is. A summary of the conversation is itself the first message after the text came out: the brief asked for again then
+// stays on the summary. The system text is left as it is: a provider caches the start of a request, and a system text that changed
+// with every request made it start over each time. Every hook is wrapped in try/catch and a failure or a timeout adds nothing: a hook
+// must never stop the work (a throw in the prompt or context hook would make OpenCode refuse the request).
 import { Plugin } from "@opencode/plugin"
 import { spawn } from "node:child_process"
 
@@ -74,10 +76,11 @@ export default Plugin.define({
     // in a session resumed in a new process that process's first). "" when that gave nothing (none, a failure, a timeout): it is not
     // asked for again until a summary or a move asks again, as Claude Code runs SessionStart only at those times
     const brief = new Map<string, string>()
-    // sessionID -> the message the brief goes on: the id of the request that asked for it ("" when OpenCode gave none: it goes into the
-    // system text, as a request's text does then), and whether that message was in a model call yet. None: the first message the model
-    // gets (the brief was asked for again after a summary or a move, which are no request's message).
-    const briefOn = new Map<string, { id: string; seen: boolean }>()
+    // sessionID -> the request the brief goes on, the first one that came after the text came out: its message id ("" when OpenCode gave
+    // none: the brief goes into the system text, as a request's text does then), and whether that message was in a model call yet. id null:
+    // the text was asked for again after a move and no request has come since (the next one takes it; until then the first message the
+    // model gets has it). None: the first message the model gets (a summary is the first message after the text came out).
+    const briefOn = new Map<string, { id: string | null; seen: boolean }>()
     // sessionID -> the person's requests: messageID -> the user-prompt-submit text, and whether that message was in a model call yet.
     // "" is the messageID when OpenCode gave none. current is the person's last request.
     const notes = new Map<string, Map<string, { text: string; seen: boolean }>>()
@@ -149,13 +152,14 @@ export default Plugin.define({
       return typeof text === "string" ? text : ""
     }
 
-    // ask shikii for the session's brief again and keep it, on the first message the model gets (no request asked for it); until it
-    // answers, the old one stays where it was
-    const refreshBrief = async (sessionID: string) => {
+    // ask shikii for the session's brief again with no request of the person's, and keep it; until it answers, the old one stays where it
+    // was. After a summary it goes on the summary. After a move the first request that comes takes it.
+    const refreshBrief = async (sessionID: string, moved = false) => {
       const out = await hook("session-start", sessionID)
       if (out === undefined) return
       brief.set(sessionID, additional(out))
-      briefOn.delete(sessionID)
+      if (moved) briefOn.set(sessionID, { id: null, seen: false })
+      else briefOn.delete(sessionID)
     }
 
     const turnNumber = (sessionID: string): number => generation.get(sessionID) ?? 0
@@ -241,13 +245,15 @@ export default Plugin.define({
         bump(sessionID)
         // both at once: one after the other would add session-start's time to the first request (shikii's writes for the two are the
         // same and safe to run side by side, as they run for two conversations of one project)
+        const id = typeof e.messageID === "string" ? e.messageID : ""
+        // The brief goes on the first request that comes after the text came out: this one when it asks for the text (a request that asks
+        // while an earlier one's ask is still open is not first: the earlier one keeps it, whichever answer comes last), or when the text
+        // was asked for again after a move and no request has come since
+        const on = briefOn.get(sessionID)
+        if (brief.has(sessionID) ? on?.id === null : !on) briefOn.set(sessionID, { id, seen: false })
         const first = brief.has(sessionID) ? undefined : hook("session-start", sessionID)
         const [started, prepared] = await Promise.all([first, hook("user-prompt-submit", sessionID, { prompt: e.prompt?.text ?? "", turn_key: typeof e.messageID === "string" ? e.messageID : "" })])
-        const id = typeof e.messageID === "string" ? e.messageID : ""
-        if (first) {
-          brief.set(sessionID, additional(started))
-          briefOn.set(sessionID, { id, seen: false }) // on this request's message, not on the conversation's first (a resumed session has older ones)
-        }
+        if (first) brief.set(sessionID, additional(started))
         current.set(sessionID, id)
         const text = additional(prepared)
         if (text) {
@@ -260,8 +266,8 @@ export default Plugin.define({
       }
     })
 
-    // every model call gets the brief on the message of the request that asked for it and each request's text on that request's message,
-    // the same way each time
+    // every model call gets the brief on the first request that came after its text came out and each request's text on that request's
+    // message, the same way each time
     ctx.session.hook("context", async (e: any) => {
       try {
         const sessionID: string = e.sessionID
@@ -276,13 +282,14 @@ export default Plugin.define({
         }
         const byId = new Map(users.map((i) => [String(list[i]?.id), i]))
         const on = briefOn.get(sessionID)
-        if (!on) put(users[0], brief.get(sessionID)) // asked for again after a summary or a move: the first message the model gets
-        else if (!on.id) put(undefined, brief.get(sessionID)) // OpenCode gave no messageID
+        const text = brief.get(sessionID)
+        if (!on || on.id === null) put(users[0], text) // after a summary: the summary; after a move, until a request comes: the first message
+        else if (!on.id) put(undefined, text) // OpenCode gave no messageID
         else if (byId.has(on.id)) {
           on.seen = true
-          put(byId.get(on.id), brief.get(sessionID))
-        } else if (on.seen) put(users[0], brief.get(sessionID)) // a summary took the message that asked: the rest of the session still needs it
-        // else: that request has not come to the model yet (a message sent while a turn runs waits): the brief goes on it when it comes
+          put(byId.get(on.id), text)
+        } else if (on.seen) put(users[0], text) // a summary took the message: the rest of the session still needs the brief
+        else put(users[users.length - 1], text) // not among the model's messages yet (it waits for a step boundary, or was dropped): the newest request, until it comes
         const mine = notes.get(sessionID)
         if (mine) {
           for (const [id, note] of mine) {
@@ -419,7 +426,7 @@ export default Plugin.define({
             // it came to this folder: take it over. The rest of a turn that was running goes on under this instance's context hook, so
             // it gets this project's brief now (the request's own text cannot be handed over: the request was counted where it was made)
             seen.add(sid)
-            await refreshBrief(sid)
+            await refreshBrief(sid, true)
           }
         }
         else if (ev.type === "session.text.ended" && running.has(sid) && typeof ev.data?.text === "string") {
