@@ -15,14 +15,25 @@ import (
 )
 
 // A file a test writes to be run must be made by writeStub (see exec_stub_test.go): the first run of a new file is slow on macOS, and
-// the hook gives its git only hookGitTimeout. This is an allowlist, not a list of bad spellings: in the *_test.go files of this
-// package, every call of os.WriteFile or os.OpenFile whose permission has an execute bit (any of 0o111), or whose permission this check
-// cannot work out (a parameter, a field, a call), and every use of either function that is not a call (a method value), is refused,
-// except in a function of execWriteAllowed (an entry with a third part allows only the permission written there). The permission is worked out from a number, os.FileMode(...) of one, os.ModePerm, | + & &^
-// of those, a constant of the package, and a variable of the same function whose every assignment can be worked out.
+// the hook gives its git only hookGitTimeout. This is an allowlist, not a list of bad spellings. In the *_test.go files of this package
+// these are refused, except in a function of execWriteAllowed (an entry with a third part allows only the permission written there):
+//   - a call of os.WriteFile, os.OpenFile, os.Chmod or io/ioutil.WriteFile (under every name the file imports the package by) whose
+//     permission has an execute bit (any of 0o111), or whose permission this check cannot work out (a parameter, a field, a call);
+//   - a use of one of those functions that is not a call (a method value), because its permission is not seen;
+//   - an import of os or io/ioutil with a dot, because a call of its functions then looks like a call of any function (no entry allows it).
 //
-// It does not look at os.Chmod: a file made with 0o644 and then chmod-ed is not seen, and chmod is also how the tests give a folder
-// back its permissions (a dozen of them), so a ban on it would need an allowlist of folders, not of functions.
+// The permission is worked out from a number, os.FileMode(...) of one, os.ModePerm, | + & &^ of those, a constant of the package, and a
+// variable whose every assignment can be worked out. A name is looked up from the function that holds the use outwards (a closure first,
+// then the functions around it): a parameter, a result or a receiver of one of them is unknown (it hides what is outside, even a constant
+// of the package of the same name), a variable or a constant that one of them declares is worked out, and only a name that none of them
+// declares is a constant of the package. A variable whose address is taken, that is incremented, or that is changed by op= is unknown.
+// There is no type check (it is slow), so a local variable that hides the package's name os is not told from the package.
+//
+// os.Chmod is checked like the writes, and the tests do use it to give a folder its permissions back (a folder needs the execute bit),
+// so each such function is listed with the permission it gives. The text of the permission names the permission, not the call, so an
+// entry for a chmod of 0o755 also lets a write of 0o755 pass in that function: keep an entry's function small. A file that a test makes
+// executable and never runs is made by writeUnrunExecutable, not by a chmod. Not seen: (*os.File).Chmod, the methods of os.Root, syscall,
+// and a command that is run to chmod.
 var execWriteAllowed = map[string]string{
 	"exec_stub_test.go:writeStub":            "the one place that writes a script to be run, and runs it once before it is used",
 	"exec_stub_test.go:writeUnrunExecutable": "a file with the execute bit that nothing runs, so there is no first run to be slow",
@@ -30,10 +41,84 @@ var execWriteAllowed = map[string]string{
 	"audit_0_31_e_codex_test.go:TestAuditECodexPreviewAndInstallOverManyForms:mode": "the config file's mode comes from a table: 0o444 or 0o644",
 	"init_settings_cases_test.go:TestUnwritableCodexConfigLetsInitGoOn:perm":        "a stand-in for the product's openPersonFile passes the perm it was given through",
 	"init_settings_cases_test.go:TestUnwritableCodexConfigLetsInitGoOn:os.OpenFile": "the test puts the product's openPersonFile back to os.OpenFile",
+	// os.Chmod of a folder: a folder needs the execute bit to be entered (the permission is a constant, so the entry names its text)
+	"audit_0_11_confirm_test.go:TestConfirm011DecideReturnsTheRecordedDecisionWhenTheKnowledgeCannotBeRead:0o700": "gives a folder its permissions back (a folder needs the execute bit)",
+	"audit_0_36_test.go:TestAFailingToolLessonAddsNothingAndRefusesNothing:0o500":                                 "makes a folder read-only but enterable, so a write into it fails",
+	"audit_0_36_test.go:TestAFailingToolLessonAddsNothingAndRefusesNothing:0o755":                                 "gives the folder its permissions back",
+	"codex_toml_test.go:TestRe2InitGoesOnPastUnwritableCodexFolderOnFix:0o555":                                    "makes a folder read-only but enterable, so a write into it fails",
+	"codex_toml_test.go:TestRe2InitGoesOnPastUnwritableCodexFolderOnFix:0o755":                                    "gives the folder its permissions back",
+	"hook_git_layout_test.go:TestAGitFolderGitWouldRefuseIsNotDerived:0o755":                                      "gives the objects folder and the refs folder their permissions back (a folder needs the execute bit)",
+	"hook_setup_cases_test.go:TestHookSecondAuditRound:0o755":                                                     "other.txt is a text file that nothing runs: only the change of its mode is looked at, as a change of the tree",
+	"needs_plan_copy_safety_test.go:TestReadOnlyDecisionsFolderDoesNotStopSeeding:0o555":                          "makes a folder read-only but enterable, so a write into it fails",
+	"needs_plan_copy_safety_test.go:TestReadOnlyDecisionsFolderDoesNotStopSeeding:0o755":                          "gives the folder its permissions back",
+	"opencode_plugin_test.go:TestHookInstallGoesOnWhenTheOpenCodePluginCannotBeWritten:0o555":                     "makes a folder read-only but enterable, so a write into it fails",
+	"opencode_plugin_test.go:TestHookInstallGoesOnWhenTheOpenCodePluginCannotBeWritten:0o755":                     "gives the folder its permissions back",
+	"project_scope_registered_test.go:TestStorePlacedAboveByHandGetsNoRecordOfTheSession:0o777":                   "makes two folders writable by everyone (a umask would cut them), so a store planted above the project is as open as a shared one",
+	"project_test.go:TestRe1RelinkFailingAtProjectJSONRecoversNextTime:0o500":                                     "makes a folder read-only but enterable, so a write into it fails",
+	"project_test.go:TestRe1RelinkFailingAtProjectJSONRecoversNextTime:0o700":                                     "gives the folder its permissions back",
+	"work_missed_test.go:TestRecordStaysCompleteWhenTyingTheMissesFails:0o500":                                    "makes a folder read-only but enterable, so a write into it fails",
+	"work_missed_test.go:TestRecordStaysCompleteWhenTyingTheMissesFails:0o700":                                    "gives the folder its permissions back",
 }
 
-// execWritesOutsideTheAllowlist parses the given files (name -> source) and returns where a file is written or opened with an execute
-// bit, an unknown permission, or as a value, outside the functions of allowed; and which keys of allowed were used.
+// execScope is a function that holds a use: its receiver, its parameters and results (typ), and its body.
+type execScope struct {
+	recv *ast.FieldList
+	typ  *ast.FuncType
+	body *ast.BlockStmt
+}
+
+// declares says whether the receiver, a parameter or a result of the function has this name.
+func (s execScope) declares(name string) bool {
+	for _, fields := range []*ast.FieldList{s.recv, s.typ.Params, s.typ.Results} {
+		if fields == nil {
+			continue
+		}
+		for _, field := range fields.List {
+			for _, id := range field.Names {
+				if id.Name == name {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// inspectWithScopes walks root like ast.Inspect and tells visit the functions around each node, the innermost first, after the ones of
+// base. When visit returns false the node's children are not visited.
+func inspectWithScopes(root ast.Node, base []execScope, visit func(n ast.Node, scopes []execScope) bool) {
+	scopes := base
+	var pushed []bool
+	ast.Inspect(root, func(n ast.Node) bool {
+		if n == nil {
+			if pushed[len(pushed)-1] {
+				scopes = scopes[1:]
+			}
+			pushed = pushed[:len(pushed)-1]
+			return true
+		}
+		push := false
+		switch f := n.(type) {
+		case *ast.FuncDecl:
+			scopes, push = append([]execScope{{recv: f.Recv, typ: f.Type, body: f.Body}}, scopes...), true
+		case *ast.FuncLit:
+			scopes, push = append([]execScope{{typ: f.Type, body: f.Body}}, scopes...), true
+		}
+		descend := visit(n, scopes)
+		if !descend && push {
+			scopes = scopes[1:]
+		} else {
+			pushed = append(pushed, push)
+		}
+		return descend
+	})
+}
+
+// execPermissionArg is the position of the permission among the arguments of each function the check looks at.
+var execPermissionArg = map[string]int{"WriteFile": 2, "OpenFile": 2, "Chmod": 1}
+
+// execWritesOutsideTheAllowlist parses the given files (name -> source) and returns where a file is written, opened or chmod-ed with an
+// execute bit, an unknown permission, or as a value, outside the functions of allowed; and which keys of allowed were used.
 func execWritesOutsideTheAllowlist(t *testing.T, files map[string]string, allowed map[string]string) (found []string, used map[string]bool) {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -66,23 +151,36 @@ func execWritesOutsideTheAllowlist(t *testing.T, files map[string]string, allowe
 	sort.Strings(names)
 	for _, name := range names {
 		f := parsed[name]
-		osName := ""
+		// every name the file gives os and io/ioutil (the same package may be imported under two names)
+		pkgNames := map[string]bool{}
+		dotImport := false
 		for _, imp := range f.Imports {
-			if p, _ := strconv.Unquote(imp.Path.Value); p == "os" {
-				osName = "os"
-				if imp.Name != nil {
-					osName = imp.Name.Name
+			p, _ := strconv.Unquote(imp.Path.Value)
+			local := map[string]string{"os": "os", "io/ioutil": "ioutil"}[p]
+			if local == "" {
+				continue
+			}
+			if imp.Name != nil {
+				local = imp.Name.Name
+			}
+			switch local {
+			case "_": // nothing of the package can be used through it
+			case ".":
+				if !dotImport {
+					found = append(found, fmt.Sprintf("%s: %s is imported with a dot, so its calls are not seen", fset.Position(imp.Pos()), p))
 				}
+				dotImport = true
+			default:
+				pkgNames[local] = true
 			}
 		}
-		if osName == "" || osName == "_" || osName == "." {
+		if len(pkgNames) == 0 {
 			continue
 		}
 		for _, d := range f.Decls {
-			var fn *ast.FuncDecl
 			owner := ""
 			if fd, ok := d.(*ast.FuncDecl); ok {
-				fn, owner = fd, fd.Name.Name
+				owner = fd.Name.Name
 			}
 			key := filepath.Base(name) + ":" + owner
 			report := func(pos token.Pos, what, perm string) {
@@ -95,21 +193,24 @@ func execWritesOutsideTheAllowlist(t *testing.T, files map[string]string, allowe
 				found = append(found, fmt.Sprintf("%s: %s", fset.Position(pos), what))
 			}
 			callees := map[ast.Expr]bool{}
-			ast.Inspect(d, func(n ast.Node) bool {
+			inspectWithScopes(d, nil, func(n ast.Node, scopes []execScope) bool {
 				switch x := n.(type) {
 				case *ast.CallExpr:
-					if osFunction(x.Fun, osName) {
+					if fname, ok := permissionFunction(x.Fun, pkgNames); ok {
 						callees[x.Fun] = true
-						if len(x.Args) != 3 {
-							report(x.Pos(), "a call whose permission is not the third argument", "")
-						} else if v, ok := evalPermission(x.Args[2], fn, consts, 0); !ok {
-							report(x.Pos(), "the permission of "+types.ExprString(x.Fun)+" cannot be worked out: "+types.ExprString(x.Args[2]), types.ExprString(x.Args[2]))
+						at := execPermissionArg[fname]
+						if len(x.Args) != at+1 {
+							report(x.Pos(), fmt.Sprintf("a call of %s whose permission is not argument %d", types.ExprString(x.Fun), at+1), "")
+						} else if v, ok := evalPermission(x.Args[at], scopes, consts, 0); !ok {
+							report(x.Pos(), "the permission of "+types.ExprString(x.Fun)+" cannot be worked out: "+types.ExprString(x.Args[at]), types.ExprString(x.Args[at]))
+						} else if v&0o111 != 0 && fname == "Chmod" {
+							report(x.Pos(), fmt.Sprintf("%s gives an execute bit (%#o): make a file to be run with writeStub, or one never run with writeUnrunExecutable", types.ExprString(x.Fun), v), types.ExprString(x.Args[at]))
 						} else if v&0o111 != 0 {
-							report(x.Pos(), fmt.Sprintf("%s writes a file with an execute bit (%#o): use writeStub", types.ExprString(x.Fun), v), types.ExprString(x.Args[2]))
+							report(x.Pos(), fmt.Sprintf("%s writes a file with an execute bit (%#o): use writeStub", types.ExprString(x.Fun), v), types.ExprString(x.Args[at]))
 						}
 					}
 				case *ast.SelectorExpr:
-					if osFunction(x, osName) && !callees[x] {
+					if _, ok := permissionFunction(x, pkgNames); ok && !callees[x] {
 						report(x.Pos(), types.ExprString(x)+" is used as a value, so its permission is not seen", types.ExprString(x))
 					}
 				}
@@ -120,18 +221,26 @@ func execWritesOutsideTheAllowlist(t *testing.T, files map[string]string, allowe
 	return found, used
 }
 
-// osFunction says whether e is os.WriteFile or os.OpenFile (the package under the name the file imports it by).
-func osFunction(e ast.Expr, osName string) bool {
+// permissionFunction says whether e is os.WriteFile, os.OpenFile, os.Chmod or ioutil.WriteFile (the package under a name the file imports
+// it by, any of them), and which function it is.
+func permissionFunction(e ast.Expr, pkgNames map[string]bool) (string, bool) {
 	s, ok := e.(*ast.SelectorExpr)
-	if !ok || (s.Sel.Name != "WriteFile" && s.Sel.Name != "OpenFile") {
-		return false
+	if !ok {
+		return "", false
+	}
+	if _, known := execPermissionArg[s.Sel.Name]; !known {
+		return "", false
 	}
 	id, ok := s.X.(*ast.Ident)
-	return ok && id.Name == osName
+	if !ok || !pkgNames[id.Name] {
+		return "", false
+	}
+	return s.Sel.Name, true
 }
 
-// evalPermission works out the number an expression of a permission stands for, or says that it cannot.
-func evalPermission(e ast.Expr, fn *ast.FuncDecl, consts map[string]ast.Expr, depth int) (int64, bool) {
+// evalPermission works out the number an expression of a permission stands for, or says that it cannot. scopes are the functions that
+// hold the expression, the innermost first.
+func evalPermission(e ast.Expr, scopes []execScope, consts map[string]ast.Expr, depth int) (int64, bool) {
 	if depth > 8 {
 		return 0, false
 	}
@@ -143,7 +252,7 @@ func evalPermission(e ast.Expr, fn *ast.FuncDecl, consts map[string]ast.Expr, de
 		v, err := strconv.ParseInt(x.Value, 0, 64)
 		return v, err == nil
 	case *ast.ParenExpr:
-		return evalPermission(x.X, fn, consts, depth+1)
+		return evalPermission(x.X, scopes, consts, depth+1)
 	case *ast.CallExpr: // os.FileMode(0o755), fs.FileMode(...), FileMode(...)
 		name := ""
 		switch f := x.Fun.(type) {
@@ -153,15 +262,15 @@ func evalPermission(e ast.Expr, fn *ast.FuncDecl, consts map[string]ast.Expr, de
 			name = f.Sel.Name
 		}
 		if name == "FileMode" && len(x.Args) == 1 {
-			return evalPermission(x.Args[0], fn, consts, depth+1)
+			return evalPermission(x.Args[0], scopes, consts, depth+1)
 		}
 	case *ast.SelectorExpr:
 		if x.Sel.Name == "ModePerm" {
 			return 0o777, true
 		}
 	case *ast.BinaryExpr:
-		l, lok := evalPermission(x.X, fn, consts, depth+1)
-		r, rok := evalPermission(x.Y, fn, consts, depth+1)
+		l, lok := evalPermission(x.X, scopes, consts, depth+1)
+		r, rok := evalPermission(x.Y, scopes, consts, depth+1)
 		if !lok || !rok {
 			return 0, false
 		}
@@ -174,38 +283,52 @@ func evalPermission(e ast.Expr, fn *ast.FuncDecl, consts map[string]ast.Expr, de
 			return l &^ r, true
 		}
 	case *ast.Ident:
-		if fn != nil && fn.Body != nil {
-			if v, ok, found := evalLocalVariable(x.Name, fn, consts, depth); found {
+		for i, s := range scopes {
+			if s.declares(x.Name) {
+				return 0, false
+			}
+			if v, ok, found := evalLocalVariable(x.Name, scopes[i:], consts, depth); found {
 				return v, ok
 			}
 		}
 		if c, ok := consts[x.Name]; ok {
-			return evalPermission(c, fn, consts, depth+1)
+			return evalPermission(c, nil, consts, depth+1)
 		}
 	}
 	return 0, false
 }
 
-// evalLocalVariable works out a variable of fn from every place it is given a value (name := v, name = v, var name = v): the bits of all of
-// them together. found is false when fn never gives the name a value (a parameter, a constant of the package), and ok is false when one of the
-// values cannot be worked out.
-func evalLocalVariable(name string, fn *ast.FuncDecl, consts map[string]ast.Expr, depth int) (v int64, ok, found bool) {
+// evalLocalVariable works out a variable of the function scopes[0] from every place it is given a value (name := v, name = v, var name = v,
+// const name = v): the bits of all of them together. A closure inside that declares the name itself is left out, since what it assigns is
+// its own. found is false when the function never gives the name a value (a constant of the package, or a name of a function around it),
+// and ok is false when one of the values cannot be worked out, or the variable is changed in a way that is not an assignment of a value.
+func evalLocalVariable(name string, scopes []execScope, consts map[string]ast.Expr, depth int) (v int64, ok, found bool) {
 	ok = true
-	take := func(e ast.Expr) {
-		found = true
-		w, good := evalPermission(e, fn, consts, depth+1)
-		v |= w
-		ok = ok && good
+	if scopes[0].body == nil {
+		return 0, true, false
 	}
-	ast.Inspect(fn.Body, func(n ast.Node) bool {
+	unknown := func() { found, ok = true, false }
+	inspectWithScopes(scopes[0].body, scopes, func(n ast.Node, at []execScope) bool {
+		take := func(e ast.Expr) {
+			found = true
+			w, good := evalPermission(e, at, consts, depth+1)
+			v |= w
+			ok = ok && good
+		}
+		isName := func(e ast.Expr) bool {
+			id, isID := e.(*ast.Ident)
+			return isID && id.Name == name
+		}
 		switch s := n.(type) {
+		case *ast.FuncLit:
+			return !at[0].declares(name)
 		case *ast.AssignStmt:
 			for i, l := range s.Lhs {
-				if id, isID := l.(*ast.Ident); isID && id.Name == name {
+				if isName(l) {
 					if len(s.Lhs) == len(s.Rhs) && (s.Tok == token.DEFINE || s.Tok == token.ASSIGN) {
 						take(s.Rhs[i])
 					} else {
-						found, ok = true, false
+						unknown()
 					}
 				}
 			}
@@ -215,9 +338,21 @@ func evalLocalVariable(name string, fn *ast.FuncDecl, consts map[string]ast.Expr
 					if i < len(s.Values) {
 						take(s.Values[i])
 					} else {
-						found, ok = true, false
+						unknown()
 					}
 				}
+			}
+		case *ast.RangeStmt:
+			if (s.Key != nil && isName(s.Key)) || (s.Value != nil && isName(s.Value)) {
+				unknown()
+			}
+		case *ast.IncDecStmt:
+			if isName(s.X) {
+				unknown()
+			}
+		case *ast.UnaryExpr:
+			if s.Op == token.AND && isName(s.X) {
+				unknown()
 			}
 		}
 		return true
@@ -289,7 +424,7 @@ func TestWhatTheExecutableWriteAllowlistMustFind(t *testing.T) {
 		{"a file nobody can use", "x_test.go", head + "func TestX() { os.WriteFile(\"a\", nil, 0) }\n", 0},
 		{"a constant that is not executable", "x_test.go", head + "const plain = 0o644\nfunc TestX() { os.WriteFile(\"a\", nil, plain) }\n", 0},
 		{"the execute bit taken out", "x_test.go", head + "func TestX() { os.WriteFile(\"a\", nil, 0o755&^0o111) }\n", 0},
-		{"a folder", "x_test.go", head + "func TestX() { os.MkdirAll(\"a\", 0o755); os.Chmod(\"a\", 0o755) }\n", 0},
+		{"a folder", "x_test.go", head + "func TestX() { os.MkdirAll(\"a\", 0o755); os.Mkdir(\"b\", 0o755) }\n", 0},
 		{"a file that does not use os", "x_test.go", "package main\nfunc TestX() { o := struct{ WriteFile func(string, []byte, int) }{}; o.WriteFile(\"a\", nil, 0o755) }\n", 0},
 		{"writeStub itself", "exec_stub_test.go", head + "func writeStub() { os.WriteFile(\"a\", nil, 0o755) }\n", 0},
 		{"writeUnrunExecutable itself", "exec_stub_test.go", head + "func writeUnrunExecutable() { os.WriteFile(\"a\", nil, 0o755) }\n", 0},
@@ -297,6 +432,42 @@ func TestWhatTheExecutableWriteAllowlistMustFind(t *testing.T) {
 		{"writeStub's name in another file", "x_test.go", head + "func writeStub() { os.WriteFile(\"a\", nil, 0o755) }\n", 1},
 		{"another function in writeStub's file", "exec_stub_test.go", head + "func other() { os.WriteFile(\"a\", nil, 0o755) }\n", 1},
 		{"a file-level variable in writeStub's file", "exec_stub_test.go", head + "var made = func() error { return os.WriteFile(\"a\", nil, 0o755) }\n", 1},
+		// the six ways round that the first version had (a name that is not looked up where it is used, a file that is skipped, a call that is not looked at)
+		{"a parameter named like a constant of the package", "x_test.go", head + "const perm = 0o644\nfunc put(perm os.FileMode) { os.WriteFile(\"a\", nil, perm) }\nfunc TestX() { put(0o755) }\n", 1},
+		{"a parameter of a closure that hides a variable of the function", "x_test.go", head + "func TestX() { perm := os.FileMode(0o644); func(perm os.FileMode) { os.WriteFile(\"a\", nil, perm) }(0o755) }\n", 1},
+		{"a dot import of os", "x_test.go", "package main\nimport . \"os\"\nfunc TestX() { WriteFile(\"a\", nil, 0o755) }\n", 1},
+		{"io/ioutil.WriteFile", "x_test.go", "package main\nimport \"io/ioutil\"\nfunc TestX() { ioutil.WriteFile(\"a\", nil, 0o755) }\n", 1},
+		{"a chmod after a plain write", "x_test.go", head + "func TestX() { os.WriteFile(\"a\", nil, 0o644); os.Chmod(\"a\", 0o755) }\n", 1},
+		{"os imported twice, under two names", "x_test.go", "package main\nimport (\n\t\"os\"\n\to \"os\"\n)\nfunc TestX() { os.WriteFile(\"a\", nil, 0o755) }\n", 1},
+		// the same holes in other forms, and what must stay quiet
+		{"a range variable named like a constant of the package", "x_test.go", head + "const perm = 0o644\nfunc TestX() { for _, perm := range []os.FileMode{0o755} { os.WriteFile(\"a\", nil, perm) } }\n", 1},
+		{"a named result named like a constant of the package", "x_test.go", head + "const perm = 0o644\nfunc put() (perm os.FileMode) { os.WriteFile(\"a\", nil, perm); return }\n", 1},
+		{"a closure parameter named like a constant of the package", "x_test.go", head + "const perm = 0o644\nfunc TestX() { func(perm os.FileMode) { os.WriteFile(\"a\", nil, perm) }(0o755) }\n", 1},
+		{"a file-level closure whose parameter is named like a constant", "x_test.go", head + "const perm = 0o644\nvar made = func(perm os.FileMode) error { return os.WriteFile(\"a\", nil, perm) }\n", 1},
+		{"a variable given its value in a closure from the closure's parameter", "x_test.go", head + "const x = 0o644\nfunc TestX() { perm := os.FileMode(0o644); func(x os.FileMode) { perm = x }(0o755); os.WriteFile(\"a\", nil, perm) }\n", 1},
+		{"a variable whose address is taken", "x_test.go", head + "func TestX() { perm := os.FileMode(0o644); p := &perm; *p = 0o755; os.WriteFile(\"a\", nil, perm) }\n", 1},
+		{"a variable that is incremented", "x_test.go", head + "func TestX() { perm := os.FileMode(0o644); perm++; os.WriteFile(\"a\", nil, perm) }\n", 1},
+		{"a variable changed by op=", "x_test.go", head + "func TestX() { perm := os.FileMode(0o644); perm |= 0o111; os.WriteFile(\"a\", nil, perm) }\n", 1},
+		{"a closure that has its own variable of the name", "x_test.go", head + "func TestX() { perm := os.FileMode(0o644); func(perm os.FileMode) { perm = 0o755; _ = perm }(0o600); os.WriteFile(\"a\", nil, perm) }\n", 0},
+		{"a constant of the function", "x_test.go", head + "func TestX() { const perm = 0o755; os.WriteFile(\"a\", nil, perm) }\n", 1},
+		{"a dot import of io/ioutil", "x_test.go", "package main\nimport . \"io/ioutil\"\nfunc TestX() { WriteFile(\"a\", nil, 0o755) }\n", 1},
+		{"a dot import of os in a file that writes nothing", "x_test.go", "package main\nimport . \"os\"\nfunc TestX() { Getenv(\"a\") }\n", 1},
+		{"io/ioutil under another name", "x_test.go", "package main\nimport u \"io/ioutil\"\nfunc TestX() { u.WriteFile(\"a\", nil, 0o755) }\n", 1},
+		{"both names of os used", "x_test.go", "package main\nimport (\n\t\"os\"\n\to \"os\"\n)\nfunc TestX() { os.WriteFile(\"a\", nil, 0o755); o.WriteFile(\"b\", nil, 0o755) }\n", 2},
+		{"a chmod with the owner's execute bit", "x_test.go", head + "func TestX() { os.Chmod(\"a\", 0o700) }\n", 1},
+		{"a chmod of os.FileMode of an executable number", "x_test.go", head + "func TestX() { os.Chmod(\"a\", os.FileMode(0o755)) }\n", 1},
+		{"a chmod with a parameter", "x_test.go", head + "func put(m os.FileMode) { os.Chmod(\"a\", m) }\n", 1},
+		{"a chmod with one argument too few", "x_test.go", head + "func put(a ...any) { os.Chmod(a...) }\n", 1},
+		{"os.Chmod kept as a value", "x_test.go", head + "var chmod = os.Chmod\n", 1},
+		{"a chmod inside a closure", "x_test.go", head + "func TestX() { t := func() { os.Chmod(\"a\", 0o755) }; t() }\n", 1},
+		{"a chmod to a plain mode", "x_test.go", head + "func TestX() { os.Chmod(\"a\", 0o644) }\n", 0},
+		{"a chmod that takes every permission away", "x_test.go", head + "func TestX() { os.Chmod(\"a\", 0) }\n", 0},
+		{"a chmod to read only", "x_test.go", head + "func TestX() { os.Chmod(\"a\", 0o444) }\n", 0},
+		{"io/ioutil.WriteFile of a plain file", "x_test.go", "package main\nimport \"io/ioutil\"\nfunc TestX() { ioutil.WriteFile(\"a\", nil, 0o644) }\n", 0},
+		{"a dot import of another package", "x_test.go", "package main\nimport . \"fmt\"\nfunc TestX() { Println(\"a\") }\n", 0},
+		{"a variable of the function read by a closure", "x_test.go", head + "func TestX() { perm := os.FileMode(0o644); func() { os.WriteFile(\"a\", nil, perm) }() }\n", 0},
+		{"a closure with a parameter that is not the permission", "x_test.go", head + "func TestX() { perm := os.FileMode(0o644); func(name string) { os.WriteFile(name, nil, perm) }(\"a\") }\n", 0},
+		{"a constant of the package next to a function with a parameter of that name", "x_test.go", head + "const perm = 0o644\nfunc other(perm os.FileMode) {}\nfunc TestX() { os.WriteFile(\"a\", nil, perm) }\n", 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			found, _ := execWritesOutsideTheAllowlist(t, map[string]string{c.file: c.src}, execWriteAllowed)
@@ -317,5 +488,40 @@ func TestAnAllowlistEntryThatWritesNothingExecutableIsFound(t *testing.T) {
 	_, used = execWritesOutsideTheAllowlist(t, map[string]string{"x_test.go": "package main\nimport \"os\"\nfunc TestX() { os.WriteFile(\"a\", nil, 0o755) }\n"}, allowed)
 	if !used["x_test.go:TestX"] {
 		t.Fatal("an entry of the allowlist for a function that writes an executable file is not counted as used")
+	}
+}
+
+// An entry of the allowlist for a chmod names the file, the function and the permission as written, so another function, another file
+// or another permission is still found.
+func TestAChmodWithAnExecuteBitIsAllowedOnlyWhereTheAllowlistSaysSo(t *testing.T) {
+	const src = "package main\nimport \"os\"\nfunc TestX() { os.Chmod(\"a\", 0o755) }\nfunc TestY() { os.Chmod(\"a\", 0o755) }\n"
+	const reason = "gives a folder its permissions back"
+	for _, c := range []struct {
+		name     string
+		allowed  map[string]string
+		want     int
+		wantUsed string // the keys that must be counted as used, joined by ","
+	}{
+		{"nothing allowed", map[string]string{}, 2, ""},
+		{"TestX allowed for this permission", map[string]string{"x_test.go:TestX:0o755": reason}, 1, "x_test.go:TestX:0o755"},
+		{"both allowed for this permission", map[string]string{"x_test.go:TestX:0o755": reason, "x_test.go:TestY:0o755": reason}, 0, "x_test.go:TestX:0o755,x_test.go:TestY:0o755"},
+		{"TestX allowed for another permission", map[string]string{"x_test.go:TestX:0o700": reason}, 2, ""},
+		{"another function allowed", map[string]string{"x_test.go:TestZ:0o755": reason}, 2, ""},
+		{"another file allowed", map[string]string{"y_test.go:TestX:0o755": reason}, 2, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			found, used := execWritesOutsideTheAllowlist(t, map[string]string{"x_test.go": src}, c.allowed)
+			if len(found) != c.want {
+				t.Fatalf("found %d (want %d): %v", len(found), c.want, found)
+			}
+			var usedKeys []string
+			for key := range used {
+				usedKeys = append(usedKeys, key)
+			}
+			sort.Strings(usedKeys)
+			if got := strings.Join(usedKeys, ","); got != c.wantUsed {
+				t.Fatalf("used entries = %q, want %q", got, c.wantUsed)
+			}
+		})
 	}
 }

@@ -371,10 +371,7 @@ func TestInitInstallsTheOpenCodePluginOnAFirstProject(t *testing.T) {
 func TestDoctorChecksTheBinaryTheOpenCodePluginRuns(t *testing.T) {
 	home := t.TempDir()
 	exe := filepath.Join(t.TempDir(), "shikii")
-	writeFileT(t, exe, "binary")
-	if err := os.Chmod(exe, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeUnrunExecutable(t, exe, "binary")
 	dir := wantPluginDir(home)
 	put := func(bin string) { writePluginT(t, dir, bin) }
 	put(exe)
@@ -824,10 +821,7 @@ func TestDoctorSaysWhenOpenCodeReadsPluginsFromAnotherConfigFolder(t *testing.T)
 	t.Setenv("XDG_CONFIG_HOME", "")
 	home := t.TempDir()
 	exe := filepath.Join(t.TempDir(), "shikii")
-	writeFileT(t, exe, "binary")
-	if err := os.Chmod(exe, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeUnrunExecutable(t, exe, "binary")
 	writePluginT(t, wantPluginDir(home), exe)
 	warned := func() string {
 		for _, line := range registeredBinaryLines(home, exe) {
@@ -995,10 +989,7 @@ func TestDoctorsLinkCommandForAnotherConfigFolderWorks(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "")
 	home := t.TempDir()
 	exe := filepath.Join(t.TempDir(), "shikii")
-	writeFileT(t, exe, "binary")
-	if err := os.Chmod(exe, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeUnrunExecutable(t, exe, "binary")
 	writePluginT(t, wantPluginDir(home), exe)
 	other := filepath.Join(t.TempDir(), "my opencode") // no plugins/ in it yet, and a space in the path
 	if err := os.MkdirAll(other, 0o755); err != nil {
