@@ -31,6 +31,7 @@ shikii handles it like this:
 | Use | Uses it as a reference in later conversations and work | Delivers the relevant articles before a request and right before a file is changed |
 | Enforce | Instructions that must always apply are to be written in `AGENTS.md` and similar files | Checks rules a machine can verify at the end of the work |
 | Correct | Lets you see and delete what it remembers | Stops delivering or corrects articles, based on reviews of whether they helped |
+| Review | Codex's local memory builds memories in the background once a conversation has been idle for a while, and consolidates them | At most once a day, rereads articles whose underlying files changed and what you said recently, and adds the corrections that were missed. It counts how many a review caught and shows the number |
 | Delegate | Answers with the remembered context in mind | Compares the AI's decisions with real answers to decide what the AI may decide alone |
 | Share | Each app has its own storage and settings | Claude Code, Codex and OpenCode connected to the same project use the same knowledge |
 
@@ -74,7 +75,11 @@ In OpenAI's public description, memory carries the context of earlier conversati
 
 OpenAI also advises keeping team instructions that must always apply in `AGENTS.md` and similar files, rather than relying on memory alone.
 
-This comparison is with the public description of the memory feature as checked on November 10, 2026. It is not a comparison with OpenAI's products as a whole, including their instructions, tools and permission controls. ([Memory](https://learn.chatgpt.com/docs/customization/memories), [Personalization](https://learn.chatgpt.com/docs/personalize))
+Codex's local memory is off at first, and you turn it on. Once it is on, after a conversation has been idle for a while, it builds memories from earlier conversations in the background and consolidates them (the description's word is consolidation). What the consolidation does is not described. Nor does the description mention a way to measure and show whether what it remembered helped or was used correctly, or a way to pick up later the corrections it missed in earlier conversations.
+
+shikii's memory nap (`shikii nap`) plays a role close to this consolidation, with two differences. First, it rereads what you said recently and picks up the corrections the wiki does not hold yet. Second, of what you said that was not yet in any article at the time of the review, it counts how many later became an article, and shows the number in `shikii status`. You can check by the results whether the reviews help.
+
+This comparison is with the public description of the memory feature as checked on November 10 and November 25, 2026. It is not a comparison with OpenAI's products as a whole, including their instructions, tools and permission controls. ([Memory](https://learn.chatgpt.com/docs/customization/memories), [Personalization](https://learn.chatgpt.com/docs/personalize), [Codex memories](https://learn.chatgpt.com/codex/customization/memories))
 
 ## What each version added
 
@@ -129,6 +134,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.40.2 | A search from the command that finds nothing is tied to its session in OpenCode too. |
 | 0.41.0 | A person can remove what a finished agent session left in the project, and a tool can withdraw the articles it made from removed work, kept until the person restores or deletes them; removal from the command line or, after shikii asks them directly, over MCP. |
 | 0.42.0 | At most once a day, the agent goes through its memory: articles whose underlying files changed are checked against the files again, new or changed articles against their sources, and the person's recent replies are read for corrections the wiki does not hold yet. shikii edits no article itself. |
+| 0.43.0 | The memory nap counts the missed corrections it caught. Instead of an operation that checks whether the agent read, it counts what the person said that no article held when the agent was shown it and that later became an article. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -489,3 +495,11 @@ shikii only lists what to review; it never edits an article. The first version s
 Two changes keep it light without losing accuracy. First, each conversation names the articles that cite it as a source. The agent only checks the conversations that already became articles, and reads the others most closely. Second, when the files an article is based on have changed, that article is shown first. The agent's replies were cut at 400 bytes from the start, and we also measured cutting them shorter. But most replies are under 200 bytes, and cut, a person's reply no longer shows what it corrects, so we did not do it.
 
 With the real Claude Code, the agent that got the notice ran `shikii nap` in a background subagent and added one procedure that no article held yet. It did not rewrite a correction that already was an article. Codex reviewed the same way when the request asked for work, but finished without reviewing when the request was only "that's all for today". OpenCode could not be checked: the model provider's usage limit was reached.
+
+### In 0.43.0, count whether the reviews work
+
+After 0.42.0, a check with the real Claude Code showed the agent dropping the conversations from the output of `shikii nap` before reading it. The review moved on all the same, and those conversations never came again. So the review now moves on only past the conversations whose ids the agent sends back as read, and the ones it does not send come again in the next review.
+
+Still, all shikii can see is whether the ids were sent, not whether the agent really read them. In the next check, the agent did send the ids without ever showing the text of the conversations. An operation that checks the reading was considered, but an agent can satisfy such an operation cheaply, and new operations are rarely used by agents. Claude Code's similar feature does not have the agent read every transcript either, and does not check what it read.
+
+Instead, shikii counts whether the reviews work by their results. What you said that no article held when the agent was shown it is counted as caught once an article cites it as a source or a correction. Saying a conversation was read does not make it an article, so pretending to read does not raise the count. The count is shown in the output of `shikii nap` and in `shikii status`.
