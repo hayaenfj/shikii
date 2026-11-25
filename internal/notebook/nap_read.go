@@ -25,7 +25,8 @@ const NapReadName = "nap-read"
 const napReadMax = 64 << 10
 
 // NapShownName is the file where `shikii nap` lists what it printed: a first line (the window it started from, in Go quotes), then one
-// line per conversation, "id offset hash". Only the ids are read here; cmd/shikii writes and parses the whole file.
+// line per conversation, "id offset hash cited" (older files have no fourth field). Only the ids are read here; cmd/shikii writes and
+// parses the whole file.
 const NapShownName = "nap-shown"
 
 // NapShownMax is the most bytes of .shikii/nap-shown that are read.
@@ -115,7 +116,7 @@ func (b Book) napShownConversation(id string) (store.Feedback, bool, error) {
 	data, _ := io.ReadAll(io.LimitReader(f, NapShownMax))
 	listed := false
 	for i, line := range bytes.Split(data, []byte("\n")) {
-		if fields := bytes.Split(line, []byte(" ")); i > 0 && len(fields) == 3 && string(fields[0]) == id {
+		if fields := bytes.Split(line, []byte(" ")); i > 0 && (len(fields) == 3 || len(fields) == 4) && string(fields[0]) == id {
 			listed = true
 			break
 		}

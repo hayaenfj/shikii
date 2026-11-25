@@ -51,6 +51,7 @@ func cmdStatus(args []string) error {
 			printWithdrawn(stdout, *storeDir, scope)
 		}
 		printGuardStats(stdout, *storeDir)
+		printNapPickup(stdout, *storeDir)
 		return nil
 	}
 	var total personWork
@@ -162,6 +163,7 @@ func cmdStatus(args []string) error {
 		printWithdrawn(stdout, *storeDir, scope)
 	}
 	printGuardStats(stdout, *storeDir)               // blocking checks (0.7.3): how many are on, how many blocked, how many fixed
+	printNapPickup(stdout, *storeDir)                // what the memory nap caught of the conversations it showed uncited
 	if scope := storeScope(*storeDir); scope != "" { // the page (0.8.0): one per project, on a free port
 		if url := livePage(scope); url != "" {
 			fmt.Fprintf(stdout, "page: %s/ (up)\n", url)
