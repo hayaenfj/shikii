@@ -22,7 +22,7 @@ import (
 // results since the last notice), rewrites .shikii/nap as the mark, and reopens a completed memory upgrade. No test starts an
 // agent or a server; the clock is the real one, so each test sets the times of the file and of the results relative to now.
 
-const napMarker = "it is time for a memory nap"
+const napMarker = "a memory nap is due"
 
 func napStatePath(st store.Store) string { return filepath.Join(st.Dir, "nap") }
 
@@ -159,20 +159,22 @@ func TestNapNoticeFollowsTheBriefOfTheProject(t *testing.T) {
 	}
 }
 
-// A second session opened right after the first is not told again: the mark was taken, and the 24 hours start from it.
-func TestNapNoticeIsNotRepeatedToTheNextSession(t *testing.T) {
+// Once a nap has run, a second session opened right after the first is not told again: the 24 hours start from the notice. (While no nap
+// has run since the notice, the next session is told again: see nap_notice_test.go.)
+func TestNapNoticeIsNotRepeatedToTheNextSessionOnceANapRan(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
 	saveWorkResults(t, st, scope, 0, 5, time.Now())
 	if out := startSession(t, scope, map[string]any{"session_id": "first"}); !strings.Contains(out, napMarker) {
 		t.Fatalf("the first session is told:\n%s", out)
 	}
+	decodeNap(t) // the agent runs the nap
 	taken := readNapStateFile(t, st)
 	saveWorkResults(t, st, scope, 50, 6, time.Now()) // even with more results since
 	if out := startSession(t, scope, map[string]any{"session_id": "second"}); out != "" {
 		t.Fatalf("the second session is not told again:\n%s", out)
 	}
 	if got := readNapStateFile(t, st); got != taken {
-		t.Fatalf("the second session leaves the mark as the first took it:\n%q\n%q", taken, got)
+		t.Fatalf("the second session leaves the mark as it was:\n%q\n%q", taken, got)
 	}
 }
 
@@ -373,7 +375,7 @@ func hexIDs(from, to int) string {
 }
 
 // shikii nap lists the conversations written after the place the last run recorded, in the order they were written, and nothing before
-// it. The notice's file (.shikii/nap) does not decide the place and is not touched by the command.
+// it. The notice's file (.shikii/nap) does not decide the place; the command only adds the time it ran to it, as the third line.
 func TestNapListsOnlyTheConversationsAfterThePlaceTheLastRunRecorded(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
 	now := time.Now()
@@ -387,8 +389,9 @@ func TestNapListsOnlyTheConversationsAfterThePlaceTheLastRunRecorded(t *testing.
 	if got, want := readNapWindowEndFile(t, st), feedbackPlaceAfter(t, st, scope, 3); got != want {
 		t.Fatalf("the place after the last conversation printed is recorded once the agent has read them:\n%q\n%q", want, got)
 	}
-	if got := readNapStateFile(t, st); got != notices {
-		t.Fatalf("the notice's file is left as it was:\n%q\n%q", notices, got)
+	// The notice's file keeps what the notices wrote; the run only adds the time it ran as the third line (see nap_notice_test.go).
+	if got := readNapStateFile(t, st); !strings.HasPrefix(got, notices) || len(strings.Split(got, "\n")) != 4 {
+		t.Fatalf("the notice's file keeps its two lines and gains the time of the run:\n%q\n%q", notices, got)
 	}
 	c := r.Conversations[1]
 	if c.Request != "request 0000000000000002" || c.Summary != "summary 0000000000000002" || c.Reply != "second, older" || c.Session != "session-0000000000000002" || c.At.IsZero() {

@@ -7,6 +7,7 @@
 ### Changes
 
 - The memory nap (`shikii nap`) now counts how many of your corrections that the wiki had missed a review caught. Of what you said that was not yet in any wiki article at the time of the review, it counts what later became an article, and shows the number in the output of `shikii nap` and in `shikii status`. It gives a sense of how much the reviews help.
+- When the agent is told it is time for a memory nap and does not run `shikii nap`, it is told again at the start of the next session. The notice now asks plainly for the nap to start in the background right away.
 
 ### Fixes
 

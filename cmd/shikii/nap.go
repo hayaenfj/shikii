@@ -9,9 +9,11 @@ package main
 // no new operation reports that the agent is done: the sources the agent names in a save say what it read, and what it leaves undone stays
 // in the memory upgrade's checkpoint and in the conversations' records, and the next window carries on.
 //
-// .shikii/nap holds two RFC 3339 times, one per line: the last time the agent was told, then the time before it. The notice
-// rewrites it under its lock, so a second session opened at the same time is not told again. The notice only decides when to tell; it does
-// not decide what `shikii nap` shows.
+// .shikii/nap holds up to three RFC 3339 times, one per line: the last time the agent was told, the time before it, and the time of the
+// first `shikii nap` that ran after that notice (empty until one has). The notice rewrites it under its lock, so a second session opened at
+// the same time is not told again. A notice that no `shikii nap` has followed is told again at the next session start, whatever the time and the
+// count, counting from where it counted before (the line before it), so the agent that was asked and did not do it is asked again; once a
+// run has marked it, the 24 hours and the 5 results apply. The notice only decides when to tell; it does not decide what `shikii nap` shows.
 //
 // .shikii/nap-window-end holds where the conversations the agent has read end, in two lines: the byte offset just after the last
 // conversation of the record of conversations that was read, and the SHA-256 hash (hex) of that line; a third line, a number above 0,
@@ -42,7 +44,7 @@ package main
 // to the last of two equal lines would go on after the first of them and show what lies between them again on every run. Each of these
 // files is read and written only when it is an ordinary file with one name (a symbolic link or a hard link is a file of the person's,
 // never written through); a file that cannot be used means nothing read or shown, and the error says to remove the file. Each file is its
-// own: the notice's rewrite of .shikii/nap carries no third line, and the writes never wait for each other (but for .shikii/nap-first, below).
+// own: the notice's rewrite of .shikii/nap carries nothing of the others (its own third line is the run that followed the notice, not the copy of nap-window-end), and the writes never wait for each other (but for .shikii/nap-first, below).
 //
 // What the run before caught is counted from two places (nap_pickup.go, nap_first.go). .shikii/nap-first keeps, for each conversation,
 // whether an article cited it when it was first printed: a run adds the line when it prints the conversation for the first time, and
@@ -111,21 +113,70 @@ const (
 
 func napPath(root string) string { return filepath.Join(root, napStateName) }
 
-// parseNapState reads the two times of .shikii/nap. A line that is not a time reads as zero (no earlier time), and a
-// first line that is not a time makes both zero: the file counts as not there, and the next notice writes it again.
-func parseNapState(raw string) (last, before time.Time) {
+// napMark is what .shikii/nap holds. Three lines, each ending in a newline: the time of the last notice, the time of the notice before it
+// (empty when there was none), and the time of the first `shikii nap` that ran after the last notice (empty while none has: the agent was
+// told and has not done it). A file from a version before the third line has one or two lines, and is read as a notice that was acted
+// on or not, no one can say: it is not told again until the usual 24 hours and 5 results.
+type napMark struct {
+	last, before time.Time // the last notice, the one before it (zero when there is none)
+	pending      bool      // the last notice was given and no `shikii nap` has run since: the next session is told again
+}
+
+// parseNapMark reads .shikii/nap. A line that is not a time reads as zero (no earlier time), and a first line that is not a time makes
+// everything zero: the file counts as not there, and the next notice writes it again.
+func parseNapMark(raw string) napMark {
 	lines := strings.Split(raw, "\n")
 	t, err := time.Parse(napTimeLayout, strings.TrimSpace(lines[0]))
 	if err != nil {
-		return time.Time{}, time.Time{}
+		return napMark{}
 	}
-	last = t
+	m := napMark{last: t}
 	if len(lines) > 1 {
 		if t, err := time.Parse(napTimeLayout, strings.TrimSpace(lines[1])); err == nil {
-			before = t
+			m.before = t
 		}
 	}
-	return last, before
+	if len(lines) == 4 && lines[3] == "" { // the form with the third line
+		_, err := time.Parse(napTimeLayout, strings.TrimSpace(lines[2]))
+		m.pending = err != nil
+	}
+	return m
+}
+
+// formatNapMark is the text of .shikii/nap for a notice given at last, with the notice before it, and the third line empty (no nap has run
+// since); ranAt is the time of the first nap that did, when it did.
+func formatNapMark(last, before, ranAt time.Time) string {
+	line := func(t time.Time) string {
+		if t.IsZero() {
+			return ""
+		}
+		return t.UTC().Format(napTimeLayout)
+	}
+	return line(last) + "\n" + line(before) + "\n" + line(ranAt) + "\n"
+}
+
+// recordNapRan is what a run of `shikii nap` adds to .shikii/nap once it has printed: the time it ran, as the third line, when the file holds
+// a notice that no nap has run since. The first run after a notice is kept: a later run leaves the file as it is. A file that is not there
+// (no notice was ever given) is not made. The file is rewritten under its lock and only while it holds what was read, so a notice
+// written in between (a session that started at the same moment) is read again and marked.
+func recordNapRan(root string, now time.Time) error {
+	path := napPath(root)
+	for try := 0; try < 3; try++ {
+		raw := readNapState(root)
+		m := parseNapMark(raw)
+		lines := strings.Split(raw, "\n")
+		if m.last.IsZero() || (len(lines) == 4 && lines[3] == "" && !m.pending) {
+			return nil // no notice to follow, or a nap already ran after it
+		}
+		wrote, err := rewriteNapFile(path, raw, formatNapMark(m.last, m.before, now))
+		if err != nil {
+			return fmt.Errorf("%w; remove %s (it must be an ordinary file with one name that can be written): until it is, the notice to run `shikii nap` comes again at every session start", err, path)
+		}
+		if wrote {
+			return nil
+		}
+	}
+	return nil
 }
 
 func napWindowEndPath(root string) string { return filepath.Join(root, napWindowEndName) }
@@ -241,23 +292,26 @@ func rewriteNapFileLimit(path, expected, state string, limit int64) (bool, error
 // is reopened, and the new articles join one that is not complete.
 func napNotice(root, scope string, now time.Time) (string, error) {
 	raw := readNapState(root)
-	last, _ := parseNapState(raw)
-	if last.After(now) {
-		last = time.Time{} // a time in the future (the clock was once set ahead) is no earlier notice: it would keep the notice silent until then
+	m := parseNapMark(raw)
+	if m.last.After(now) {
+		m = napMark{} // a time in the future (the clock was once set ahead) is no earlier notice: it would keep the notice silent until then
 	}
-	if !last.IsZero() && now.Sub(last) < napInterval {
+	if !m.pending && !m.last.IsZero() && now.Sub(m.last) < napInterval {
 		return "", nil
 	}
+	// A notice that no `shikii nap` has followed is given again, counting from where it counted (the notice before it, which stays the one
+	// before this), whatever the count is now: the agent was asked and has not done it, and it does not stop being asked because some
+	// sources were cleaned up since. Otherwise the results count from the last notice, and need napMinResults.
+	from := m.last
+	if m.pending {
+		from = m.before
+	}
 	book := notebook.Book{Root: root, Scope: scope}
-	n, err := book.CountWorkResultsSince(last)
-	if err != nil || n < napMinResults {
+	n, err := book.CountWorkResultsSince(from)
+	if err != nil || (!m.pending && n < napMinResults) {
 		return "", err
 	}
-	state := now.UTC().Format(napTimeLayout) + "\n"
-	if !last.IsZero() {
-		state += last.UTC().Format(napTimeLayout) + "\n"
-	}
-	taken, err := takeNapMark(root, raw, state)
+	taken, err := takeNapMark(root, raw, formatNapMark(now, from, time.Time{}))
 	if err != nil || !taken {
 		return "", err
 	}
@@ -265,10 +319,10 @@ func napNotice(root, scope string, now time.Time) (string, error) {
 		hookLog("nap: " + err.Error()) // the notice still goes out: the conversations are worth reading without the upgrade
 	}
 	since := "so far"
-	if !last.IsZero() {
-		since = "since " + last.UTC().Format(napTimeLayout)
+	if !from.IsZero() {
+		since = "since " + from.UTC().Format(napTimeLayout)
 	}
-	return fmt.Sprintf("shikii: it is time for a memory nap (%d work results %s). If your agent can, start a background subagent now that runs `shikii nap` in this project and follows its next_action; otherwise do it at a break after the current request.", n, since), nil
+	return fmt.Sprintf("shikii: a memory nap is due (%d work results %s). Start it now: launch one background subagent that runs `shikii nap` in this project and follows its next_action, then go on with the person's request without waiting for it. If your agent cannot run a background subagent, run `shikii nap` yourself after you answer this request, before you end.", n, since), nil
 }
 
 type napConversation struct {
@@ -737,7 +791,8 @@ func cmdNap(args []string) error {
 	return finishNap(root, r)
 }
 
-// finishNap is the rest of a run once its report is built: it prints the report and records what was printed.
+// finishNap is the rest of a run once its report is built: it prints the report, records what was printed, and marks the notice that
+// asked for this run as followed (recordNapRan).
 //
 // The conversations the run moved the window over were counted, and the line for the log added, when the window was written
 // (settleAndCountNapRead), before the report was built: whatever happens to the report, the printing or the record of what was shown after that
@@ -757,6 +812,10 @@ func finishNap(root string, r napReport) error {
 	}
 	if r.settleErr != nil {
 		problems = append(problems, fmt.Errorf("nap: %w", r.settleErr))
+	}
+	// The agent has the report: the notice that asked for this run is followed (the next session is not told again for 24 hours).
+	if err := recordNapRan(root, time.Now()); err != nil {
+		problems = append(problems, fmt.Errorf("nap: %w", err))
 	}
 	return errors.Join(problems...)
 }
