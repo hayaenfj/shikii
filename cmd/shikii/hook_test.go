@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -45,10 +47,28 @@ func patientProbe(t *testing.T) {
 }
 
 // hookEnv puts the tools in a temporary HOME, prepares .shikii for the given work, and replaces the model and the page.
+//
+// What hook install --yes and init leave behind is made for real once per test process and copied after that (prepareHookEnv and
+// hookEnvTemplate below; TestHookEnvCopyIsTheSameAsTheRealPreparation keeps the copy the same as the real run). A test whose subject is
+// install or init runs the real command itself in its body; hookEnv is only where it starts from.
 func hookEnv(t *testing.T, model *httptest.Server, roots ...string) (agent string) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	agent = filepath.Join(home, ".shikii", "agent")
+	hookEnvGlobals(t, model)
+	var root string
+	if len(roots) > 0 {
+		root = roots[0]
+	} else {
+		root = t.TempDir()
+	}
+	agent, _ = prepareHookEnv(t, home, root, true)
+	return agent
+}
+
+// hookEnvGlobals replaces what the hook reaches outside the process (the model, the page, the background starts, the browser), and
+// restores it when the test ends.
+func hookEnvGlobals(t *testing.T, model *httptest.Server) {
+	t.Helper()
 	oldLocal, oldPage, oldCal, oldTune, oldSpawn, oldOpen := hookLocalURL, hookPageURL, hookCalibrate, hookTune, hookSpawn, openBrowser
 	hookCalibrate = runCalibrateInProcess // tests draw lines in-process (production starts a detached process)
 	hookTune = runTuneInProcess
@@ -65,15 +85,221 @@ func hookEnv(t *testing.T, model *httptest.Server, roots ...string) (agent strin
 	t.Cleanup(func() {
 		hookLocalURL, hookPageURL, hookCalibrate, hookTune, hookSpawn, openBrowser = oldLocal, oldPage, oldCal, oldTune, oldSpawn, oldOpen // without restoring these, tests that check TestMain's replacements depend on test order (re-audit GH)
 	})
-	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
-	spawned = nil // what install started is not counted
-	root := t.TempDir()
-	if len(roots) > 0 {
-		root = roots[0]
+}
+
+// prepareHookEnv does what hookEnv does inside the home: hook install --yes there, then init in root. With useCopy it copies what a
+// real run leaves behind where it can (hookEnvCopyUsable, copyProjectInit), and runs the real command where it cannot. copied says
+// whether both were copied.
+func prepareHookEnv(t *testing.T, home, root string, useCopy bool) (store string, copied bool) {
+	t.Helper()
+	var tmpl *hookEnvTemplate
+	if useCopy && hookEnvCopyUsable() {
+		tmpl = hookEnvTemplateOf(t)
 	}
+	if tmpl != nil {
+		writeTree(t, home, tmpl.home)
+	} else {
+		capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+	}
+	spawned = nil // what install started is not counted
 	t.Chdir(root)
-	agent, _ = initTestProject(t, root)
-	return agent
+	if tmpl != nil {
+		if store, ok := copyProjectInit(t, tmpl, root); ok {
+			return store, true
+		}
+	}
+	store, _ = initTestProject(t, root)
+	return store, false
+}
+
+// treeEntry is one folder or file of a tree kept in memory: its path under the top of the tree, its permission bits and its bytes.
+type treeEntry struct {
+	rel  string
+	perm fs.FileMode
+	dir  bool
+	data []byte
+}
+
+// readTree keeps the folders and files under base, parents before their children, except the paths skip names. A link or any other kind
+// of file is an error: a copy of it would not be what it is.
+func readTree(base string, skip func(rel string) bool) ([]treeEntry, error) {
+	var out []treeEntry
+	err := filepath.WalkDir(base, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(base, path)
+		if err != nil || rel == "." {
+			return err
+		}
+		if skip != nil && skip(rel) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		switch {
+		case d.IsDir():
+			out = append(out, treeEntry{rel: rel, perm: info.Mode().Perm(), dir: true})
+		case info.Mode().IsRegular():
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			out = append(out, treeEntry{rel: rel, perm: info.Mode().Perm(), data: data})
+		default:
+			return fmt.Errorf("%s: only folders and regular files are copied, not %v", rel, info.Mode().Type())
+		}
+		return nil
+	})
+	return out, err
+}
+
+func mustReadTree(t *testing.T, base string, skip func(rel string) bool) []treeEntry {
+	t.Helper()
+	entries, err := readTree(base, skip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return entries
+}
+
+// writeTree writes the entries under base (which exists), with the permission bits they were read with. The file permissions it knows
+// are the three a real install, init and git init leave (a permission is written as a number, which TestAnExecutableWrittenOutside-
+// TheStubHelpersIsRefused needs, and a file with an execute bit goes through writeUnrunExecutable: the sample hooks of git are such
+// files, and nothing runs them); any other permission stops the test.
+func writeTree(t *testing.T, base string, entries []treeEntry) {
+	t.Helper()
+	for _, e := range entries {
+		path := filepath.Join(base, e.rel)
+		if e.dir {
+			if err := os.Mkdir(path, e.perm); err != nil && !errors.Is(err, fs.ErrExist) {
+				t.Fatal(err)
+			}
+			continue
+		}
+		var err error
+		switch e.perm {
+		case 0o600:
+			err = os.WriteFile(path, e.data, 0o600)
+		case 0o644:
+			err = os.WriteFile(path, e.data, 0o644)
+		case 0o755:
+			writeUnrunExecutable(t, path, string(e.data))
+		default:
+			t.Fatalf("%s has the permission %v, and the copy knows only 0600, 0644 and 0755", e.rel, e.perm)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// hookEnvTemplate is what a real hook install --yes and a real init leave behind, kept in memory. It holds no path of the folders it was
+// made in: everything that names a project (its registration, the kept answer of git, its mark and its id) is left out and made by the
+// code that makes it (copyProjectInit), so the copy has the paths and ids of the folders it is written to.
+type hookEnvTemplate struct {
+	home    []treeEntry // the home after install and init, without projects/ and places/ under ~/.shikii/agent
+	project []treeEntry // the project folder after init, without .shikii/project.json and .shikii/records/store-id (and no .git)
+}
+
+var hookEnvTemplates struct {
+	sync.Mutex
+	made *hookEnvTemplate
+}
+
+// hookEnvTemplateOf makes the template at the first call of the test process, by running install and init for real in a folder of its
+// own (a plain folder, so no git; copyProjectInit and the equivalence test do the git part), and returns it at every call.
+func hookEnvTemplateOf(t *testing.T) *hookEnvTemplate {
+	t.Helper()
+	hookEnvTemplates.Lock()
+	defer hookEnvTemplates.Unlock()
+	if hookEnvTemplates.made == nil {
+		hookEnvTemplates.made = buildHookEnvTemplate(t)
+	}
+	return hookEnvTemplates.made
+}
+
+func buildHookEnvTemplate(t *testing.T) *hookEnvTemplate {
+	t.Helper()
+	base, err := os.MkdirTemp("", "shikii-hookenv-template-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(base)
+	home, root := filepath.Join(base, "home"), filepath.Join(base, "root")
+	for _, dir := range []string{home, root} {
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// the real run changes the process's home, folder, and the records of what was started or opened: put them back after
+	oldHome, oldSpawned, oldOpened := os.Getenv("HOME"), spawned, opened
+	oldDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Setenv("HOME", home)
+	defer func() {
+		os.Setenv("HOME", oldHome)
+		spawned, opened = oldSpawned, oldOpened
+		_ = os.Chdir(oldDir)
+	}()
+	capture(t, func() error { return cmdHook([]string{"install", "--yes"}) })
+	initTestProject(t, root)
+	agent := filepath.Join(".shikii", "agent")
+	return &hookEnvTemplate{
+		home: mustReadTree(t, home, func(rel string) bool {
+			return rel == filepath.Join(agent, "projects") || rel == filepath.Join(agent, "places")
+		}),
+		project: mustReadTree(t, root, func(rel string) bool {
+			return rel == filepath.Join(".shikii", "project.json") || rel == filepath.Join(".shikii", "records", "store-id")
+		}),
+	}
+}
+
+// hookEnvCopyUsable says whether a real install and init would leave what the template holds. They would not where the plugin of
+// OpenCode goes outside the home (an absolute XDG_CONFIG_HOME), and where install starts the model (llama-server is found on PATH and
+// no model answers) and writes its guard file.
+func hookEnvCopyUsable() bool {
+	if filepath.IsAbs(os.Getenv("XDG_CONFIG_HOME")) {
+		return false
+	}
+	_, err := lookPath("llama-server")
+	return err != nil
+}
+
+// copyProjectInit does what init does in root, which has nothing of init's in it yet, by writing the folders and files a real init
+// writes (the template) and calling the code that names the project and asks git: where git says the repository is (and keeps that
+// answer), the exclude file, the registration with the store's id and the mark. ok is false, and nothing is written, where init would
+// do something else (a folder that is not the top of its working tree, one that holds init's files already).
+func copyProjectInit(t *testing.T, tmpl *hookEnvTemplate, root string) (store string, ok bool) {
+	t.Helper()
+	for _, name := range []string{".shikii", ".mcp.json", "opencode.json"} {
+		if _, err := os.Lstat(filepath.Join(root, name)); !errors.Is(err, fs.ErrNotExist) {
+			return "", false
+		}
+	}
+	scope := projectTopAt(root)
+	if scope == "" || !sameFolder(scope, root) || isSharedPlaceScope(scope) {
+		return "", false
+	}
+	writeTree(t, scope, tmpl.project)
+	if err := excludeProjectStore(scope); err != nil {
+		t.Fatal(err)
+	}
+	if err := finishProjectInitModel(filepath.Join(scope, ".shikii"), scope, projectInitVersionNow, ""); err != nil {
+		t.Fatal(err)
+	}
+	store, _, err := projectStoreAt(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store, true
 }
 
 func initTestProject(t *testing.T, root string) (string, string) {
@@ -104,6 +330,306 @@ func initTestProject(t *testing.T, root string) (string, string) {
 		t.Fatal(err)
 	}
 	return store, scope
+}
+
+// describeTree is the entries of a tree as text to compare: each path with its kind and permission bits, and the bytes of each file.
+// Three things differ between two preparations that are the same, and are replaced by a fixed word: the store's random id (also in the
+// name of its registration), the device and inode numbers shikii notes of a folder or file, and the times a kept answer of git was
+// written.
+func describeTree(side string, entries []treeEntry, storeID string, out map[string]string) {
+	storeDirRe := regexp.MustCompile(`"store_dir":"\d+:\d+"`)
+	placeTimeRe := regexp.MustCompile(`"at":\d+`)
+	placeFileRe := regexp.MustCompile(`"(i|m|c)":\d+`)
+	for _, e := range entries {
+		key := side + "/" + filepath.ToSlash(e.rel)
+		if storeID != "" {
+			key = strings.ReplaceAll(key, storeID, "<store-id>")
+		}
+		if e.dir {
+			out[key] = fmt.Sprintf("folder %v", e.perm)
+			continue
+		}
+		text := string(e.data)
+		if storeID != "" {
+			text = strings.ReplaceAll(text, storeID, "<store-id>")
+		}
+		switch {
+		case strings.HasPrefix(key, "home/.shikii/agent/projects/"):
+			text = storeDirRe.ReplaceAllString(text, `"store_dir":"<device:inode>"`)
+		case strings.HasPrefix(key, "home/.shikii/agent/places/"):
+			text = placeTimeRe.ReplaceAllString(text, `"at":<time>`)
+			text = placeFileRe.ReplaceAllString(text, `"$1":<number>`)
+		}
+		out[key] = fmt.Sprintf("file %v\n%s", e.perm, text)
+	}
+}
+
+// diffDescribed lists where two described trees differ.
+func diffDescribed(want, got map[string]string, wantName, gotName string) []string {
+	var out []string
+	for key, w := range want {
+		g, ok := got[key]
+		switch {
+		case !ok:
+			out = append(out, "only in the "+wantName+": "+key)
+		case g != w:
+			wl, gl := strings.Split(w, "\n"), strings.Split(g, "\n")
+			at := 0
+			for at < len(wl) && at < len(gl) && wl[at] == gl[at] {
+				at++
+			}
+			line := func(lines []string) string {
+				if at >= len(lines) {
+					return "(end)"
+				}
+				if len(lines[at]) > 100 {
+					return lines[at][:100] + "..."
+				}
+				return lines[at]
+			}
+			out = append(out, fmt.Sprintf("differs: %s (line %d: %s %q, %s %q)", key, at, wantName, line(wl), gotName, line(gl)))
+		}
+	}
+	for key := range got {
+		if _, ok := want[key]; !ok {
+			out = append(out, "only in the "+gotName+": "+key)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// staleTemplate is a copy of the template for a test to make stale: its bytes are its own.
+func staleTemplate(whole *hookEnvTemplate) *hookEnvTemplate {
+	stale := &hookEnvTemplate{}
+	for _, side := range []struct {
+		from []treeEntry
+		to   *[]treeEntry
+	}{{whole.home, &stale.home}, {whole.project, &stale.project}} {
+		for _, e := range side.from {
+			e.data = append([]byte(nil), e.data...)
+			*side.to = append(*side.to, e)
+		}
+	}
+	return stale
+}
+
+// preparedTrees runs the preparation hookEnv does (install in a home, init in a folder) twice, in the same two paths, once for real and
+// once as hookEnv does it, and returns both results as described trees. The same paths, so a path that a copy keeps from the folders the
+// template was made in, or a name made from a path, shows as a difference. A test that wants a stale template passes makeStale.
+func preparedTrees(t *testing.T, inGit bool, makeStale func(*hookEnvTemplate)) (real, copied map[string]string) {
+	t.Helper()
+	base := t.TempDir()
+	home, root := filepath.Join(base, "home"), filepath.Join(base, "root")
+	t.Setenv("HOME", home)
+	hookEnvGlobals(t, nil)
+	if makeStale != nil {
+		whole := hookEnvTemplateOf(t)
+		stale := staleTemplate(whole)
+		makeStale(stale)
+		hookEnvTemplates.Lock()
+		hookEnvTemplates.made = stale
+		hookEnvTemplates.Unlock()
+		t.Cleanup(func() {
+			hookEnvTemplates.Lock()
+			hookEnvTemplates.made = whole
+			hookEnvTemplates.Unlock()
+		})
+	}
+	prepare := func(useCopy bool) map[string]string {
+		t.Chdir(base)
+		for _, dir := range []string{home, root} {
+			if err := os.RemoveAll(dir); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if inGit {
+			if out, err := exec.Command("git", "-C", root, "init", "-q").CombinedOutput(); err != nil {
+				t.Skipf("git init: %v %s", err, out)
+			}
+		}
+		if _, did := prepareHookEnv(t, home, root, useCopy); did != useCopy {
+			t.Fatalf("prepared by copying is %v, want %v: the copy was not used where it must be", did, useCopy)
+		}
+		homeTree, rootTree := mustReadTree(t, home, nil), mustReadTree(t, root, nil)
+		storeID := ""
+		for _, e := range rootTree {
+			if e.rel == filepath.Join(".shikii", "records", "store-id") {
+				storeID = strings.TrimSpace(string(e.data))
+			}
+		}
+		out := map[string]string{}
+		describeTree("home", homeTree, storeID, out)
+		describeTree("root", rootTree, storeID, out)
+		return out
+	}
+	real = prepare(false)
+	copied = prepare(true)
+	return real, copied
+}
+
+// The preparation hookEnv copies is, in every path, permission and byte, the one a real hook install --yes and init leave behind, in
+// a git repository and in a plain folder. The copy keeps no path of the folders the template was made in: the registration of the
+// project, the kept answer of git and the id of the store are the ones the code makes for the folders it is written to.
+func TestHookEnvCopyIsTheSameAsTheRealPreparation(t *testing.T) {
+	for _, inGit := range []bool{true, false} {
+		name := map[bool]string{true: "git repository", false: "plain folder"}[inGit]
+		t.Run(name, func(t *testing.T) {
+			real, copied := preparedTrees(t, inGit, nil)
+			// two trees that are both empty are the same: what only a real run makes must be in the real one
+			want := []string{"home/.claude/settings.json", "home/.codex/config.toml", "home/.claude/skills/shikii/SKILL.md", "home/.shikii/agent/projects/<store-id>.json", "root/.shikii/project.json", "root/.shikii/decisions/needs-plan.yaml", "root/.mcp.json"}
+			places := 0
+			for key := range real {
+				if strings.HasPrefix(key, "home/.shikii/agent/places/") {
+					places++
+				}
+			}
+			if inGit {
+				if places != 1 {
+					t.Errorf("the real preparation in a git repository holds %d kept answers of git, want 1", places)
+				}
+			}
+			for _, key := range want {
+				if _, ok := real[key]; !ok {
+					t.Errorf("the real preparation holds no %s; the comparison would prove nothing", key)
+				}
+			}
+			if diffs := diffDescribed(real, copied, "real run", "copy"); len(diffs) > 0 {
+				t.Fatalf("the copy differs from the real preparation in %d places:\n%s", len(diffs), strings.Join(diffs, "\n"))
+			}
+		})
+	}
+}
+
+// The comparison above finds a copy that is stale: a file that changed, one that is gone, permission bits that changed, and a path of
+// another folder kept in a file.
+func TestHookEnvCopyComparisonCatchesAStaleCopy(t *testing.T) {
+	edit := func(entries []treeEntry, rel string, change func(e *treeEntry)) {
+		for i := range entries {
+			if entries[i].rel == filepath.FromSlash(rel) {
+				change(&entries[i])
+				return
+			}
+		}
+		t.Fatalf("the template has no %s", rel)
+	}
+	drop := func(entries []treeEntry, rel string) []treeEntry {
+		for i := range entries {
+			if entries[i].rel == filepath.FromSlash(rel) {
+				return append(entries[:i:i], entries[i+1:]...)
+			}
+		}
+		t.Fatalf("the template has no %s", rel)
+		return nil
+	}
+	for _, tc := range []struct {
+		name, want string
+		stale      func(m *hookEnvTemplate)
+	}{
+		{"a file of the home has other bytes", "home/.claude/settings.json", func(m *hookEnvTemplate) {
+			edit(m.home, ".claude/settings.json", func(e *treeEntry) { e.data = append(e.data, ' ') })
+		}},
+		{"a file of the home is gone", "home/.codex/hooks.json", func(m *hookEnvTemplate) { m.home = drop(m.home, ".codex/hooks.json") }},
+		{"a file of the project has other permission bits", "root/.mcp.json", func(m *hookEnvTemplate) {
+			edit(m.project, ".mcp.json", func(e *treeEntry) { e.perm = 0o600 })
+		}},
+		{"a file of the project is gone", "root/.shikii/wiki/index.md", func(m *hookEnvTemplate) { m.project = drop(m.project, ".shikii/wiki/index.md") }},
+		{"a file of the project keeps a path of another folder", "root/opencode.json", func(m *hookEnvTemplate) {
+			edit(m.project, "opencode.json", func(e *treeEntry) { e.data = append(e.data, []byte("/tmp/another-folder/.shikii")...) })
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			real, copied := preparedTrees(t, false, tc.stale)
+			diffs := diffDescribed(real, copied, "real run", "copy")
+			if !strings.Contains(strings.Join(diffs, "\n"), tc.want) {
+				t.Fatalf("the stale copy was not found at %s; differences: %v", tc.want, diffs)
+			}
+		})
+	}
+}
+
+// describedRepo is a repository folder as the text describeTree makes of it.
+func describedRepo(t *testing.T, repo string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	describeTree(".", mustReadTree(t, repo, nil), "", out)
+	return out
+}
+
+// The .git folder gitRepo copies is the one git init makes, and git works in it.
+func TestGitRepoCopyIsTheSameAsGitInit(t *testing.T) {
+	made, did := gitRepoWith(t, false)
+	if did {
+		t.Fatal("a repository made without copying was copied")
+	}
+	copied, did := gitRepoWith(t, true)
+	if !did {
+		t.Fatal("the repository was not copied where it must be")
+	}
+	real := describedRepo(t, made)
+	if len(real) < 20 {
+		t.Fatalf("git init made %d paths: the comparison would prove nothing", len(real))
+	}
+	if diffs := diffDescribed(real, describedRepo(t, copied), "git init", "copy"); len(diffs) > 0 {
+		t.Fatalf("the copy differs from git init in %d places:\n%s", len(diffs), strings.Join(diffs, "\n"))
+	}
+	out, err := exec.Command("git", "-C", copied, "rev-parse", "--git-dir", "--is-inside-work-tree").CombinedOutput()
+	if err != nil || string(out) != ".git\ntrue\n" {
+		t.Fatalf("git does not work in the copy: %v %q", err, out)
+	}
+}
+
+// The comparison finds a copy that is stale: other bytes in a file, a file that is gone and other permission bits.
+func TestGitRepoCopyComparisonCatchesAStaleCopy(t *testing.T) {
+	_, did := gitRepoWith(t, true) // makes the template (or finds git missing)
+	key, _ := gitInitEnvKey()
+	whole := gitInitTemplateFor(key)
+	if !did || whole == nil {
+		t.Skip("git is missing")
+	}
+	for _, tc := range []struct {
+		name, want string
+		stale      func(e *treeEntry)
+		path       string
+	}{
+		{"a file has other bytes", "./.git/config", func(e *treeEntry) { e.data = append(e.data, []byte("\tbare = true\n")...) }, "config"},
+		{"a file has other permission bits", "./.git/description", func(e *treeEntry) { e.perm = 0o600 }, "description"},
+		{"a file is gone", "./.git/HEAD", nil, "HEAD"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stale []treeEntry
+			for _, e := range whole {
+				e.data = append([]byte(nil), e.data...)
+				switch {
+				case e.rel != filepath.Join(".git", tc.path):
+					stale = append(stale, e)
+				case tc.stale != nil:
+					tc.stale(&e)
+					stale = append(stale, e)
+				}
+			}
+			gitInitTemplates.Lock()
+			gitInitTemplates.made = stale
+			gitInitTemplates.Unlock()
+			t.Cleanup(func() {
+				gitInitTemplates.Lock()
+				gitInitTemplates.made = whole
+				gitInitTemplates.Unlock()
+			})
+			made, _ := gitRepoWith(t, false)
+			copied, did := gitRepoWith(t, true)
+			if !did {
+				t.Fatal("the repository was not copied")
+			}
+			diffs := diffDescribed(describedRepo(t, made), describedRepo(t, copied), "git init", "copy")
+			if !strings.Contains(strings.Join(diffs, "\n"), tc.want) {
+				t.Fatalf("the stale copy was not found at %s; differences: %v", tc.want, diffs)
+			}
+		})
+	}
 }
 
 // spawned is the record of hookSpawn (tests). opened is the record of URLs opened in the browser.
@@ -245,13 +771,78 @@ func readAll(r *http.Request) ([]byte, error) {
 	}
 }
 
-// gitRepo is a temporary git repository (skip if git is missing).
+// gitRepo is a temporary git repository (skip if git is missing). Its .git is the one a real `git init` made once in this test process,
+// copied, where git init would make the same (gitInitEnvKey, gitInitTemplateFor); TestGitRepoCopyIsTheSameAsGitInit keeps the copy the same.
 func gitRepo(t *testing.T) string {
-	repo := t.TempDir()
+	repo, _ := gitRepoWith(t, true)
+	return repo
+}
+
+// gitRepoWith is gitRepo that says whether the .git was copied, and, with useCopy false, always runs git init.
+func gitRepoWith(t *testing.T, useCopy bool) (repo string, copied bool) {
+	t.Helper()
+	repo = t.TempDir()
+	if useCopy {
+		if key, ok := gitInitEnvKey(); ok {
+			if tmpl := gitInitTemplateFor(key); tmpl != nil {
+				writeTree(t, repo, tmpl)
+				return repo, true
+			}
+		}
+	}
 	if out, err := exec.Command("git", "-C", repo, "init", "-q").CombinedOutput(); err != nil {
 		t.Skipf("git init: %v %s", err, out)
 	}
-	return repo
+	return repo, false
+}
+
+var gitInitTemplates struct {
+	sync.Mutex
+	tried bool
+	key   string // gitInitEnvKey where the template was made
+	made  []treeEntry
+}
+
+// gitInitTemplateFor is the folder a real git init makes (the .git folder and what is in it), made at the first call of the test
+// process, under the environment key says, and returned for that key; nil for another key, where git is missing, and where it leaves
+// something that is not a folder or a regular file.
+func gitInitTemplateFor(key string) []treeEntry {
+	gitInitTemplates.Lock()
+	defer gitInitTemplates.Unlock()
+	if !gitInitTemplates.tried {
+		gitInitTemplates.tried = true
+		if dir, err := os.MkdirTemp("", "shikii-gitrepo-template-*"); err == nil {
+			defer os.RemoveAll(dir)
+			if err := exec.Command("git", "-C", dir, "init", "-q").Run(); err == nil {
+				gitInitTemplates.key = key
+				gitInitTemplates.made, _ = readTree(dir, nil)
+			}
+		}
+	}
+	if gitInitTemplates.key != key {
+		return nil
+	}
+	return gitInitTemplates.made
+}
+
+// gitInitEnvKey is what git init reads that a test can change: the GIT_ variables and XDG_CONFIG_HOME of the process. The template
+// is used only under the key it was made under. ok is false where the home holds a git configuration of its own, which git init reads
+// too: the real command runs there.
+func gitInitEnvKey() (key string, ok bool) {
+	var vars []string
+	for _, kv := range os.Environ() {
+		if strings.HasPrefix(kv, "GIT_") || strings.HasPrefix(kv, "XDG_CONFIG_HOME=") {
+			vars = append(vars, kv)
+		}
+	}
+	sort.Strings(vars)
+	home := os.Getenv("HOME")
+	for _, rel := range []string{".gitconfig", filepath.Join(".config", "git")} {
+		if _, err := os.Lstat(filepath.Join(home, rel)); !errors.Is(err, fs.ErrNotExist) {
+			return "", false
+		}
+	}
+	return strings.Join(vars, "\n"), true
 }
 
 // lowerMinN lowers min_n of a spec copied by install (as if the person edited the spec).
