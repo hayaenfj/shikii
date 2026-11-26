@@ -58,9 +58,12 @@ func tableAt(t *testing.T, root, repo string) (*keptLines, string) {
 
 // Many small files Git does not track are uncommitted at the request; the turn grows each to about 1 MB of short lines. The
 // Stop's comparison with their kept tables stays close to the comparison with the request's HEAD (the way a file without a
-// table is compared): both run here, on the same machine, so a slower machine slows both.
+// table is compared): both run here, on the same machine, so a slower machine slows both. The comparison of a file is made on its own
+// (what the files share is the listing and the table, read once), so the cost of each side is the sum of the costs of the files and
+// the ratio between them is that of one file whatever their number: 25 files of the largest size a file may have (a hundred of them
+// took 5 s on each side, mostly in the memory of the added lines) show it as well as a hundred did.
 func TestStopWithKeptTablesStaysNearTheComparisonWithHead(t *testing.T) {
-	const files = 100
+	const files = 25
 	repo, root, _ := uncommittedLinesRepo(t)
 	if err := os.MkdirAll(filepath.Join(repo, "data"), 0o755); err != nil {
 		t.Fatal(err)

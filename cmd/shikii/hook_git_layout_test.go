@@ -132,6 +132,8 @@ var layoutBuilders = []layoutBuilder{
 // A repository whose `.git` is a file is asked about once, like a plain one: the next events use the answer, read HEAD from the files
 // (the worktree's own HEAD, never the one of the repository it was made from), and start no git.
 func TestAPlaceWhereGitKeepsItsFilesElsewhereIsKeptLikeAPlainOne(t *testing.T) {
+	// the stub that writes the calls down is written once for the layouts (a new file is slow to run the first time on macOS)
+	calls := gitCallLog(t)
 	for _, b := range layoutBuilders {
 		t.Run(b.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
@@ -140,7 +142,7 @@ func TestAPlaceWhereGitKeepsItsFilesElsewhereIsKeptLikeAPlainOne(t *testing.T) {
 			if err := os.MkdirAll(sub, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			calls := gitCallLog(t)
+			calls() // what the build ran is not counted
 			var first gitPlace
 			event(func() {
 				var ok bool
@@ -276,9 +278,56 @@ func TestWhatTheFilesOfALinkedWorktreeDoNotSettleIsLeftToGit(t *testing.T) {
 	}
 }
 
+// layoutFolder is the folder that holds all of a layout: the working tree, its git folder, the shared one and the repository a worktree
+// was made from (the nearest folder above all of them), found by the real paths. It must be inside the folders the test owns (inside the
+// parent of own, a folder made by t.TempDir), because the caller removes it.
+func layoutFolder(t *testing.T, l layoutCase, own string) string {
+	t.Helper()
+	real := func(p string) string {
+		r, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	dir := filepath.Dir(real(l.top))
+	for _, p := range []string{l.gitDir, l.commonDir, l.main} {
+		if p == "" {
+			continue
+		}
+		p = real(p)
+		for p != dir && !strings.HasPrefix(p, dir+string(filepath.Separator)) {
+			dir = filepath.Dir(dir)
+		}
+	}
+	if above := real(filepath.Dir(own)); !strings.HasPrefix(dir, above+string(filepath.Separator)) {
+		t.Fatalf("the folder of the layout, %s, is not inside the folders of the test, %s", dir, above)
+	}
+	return dir
+}
+
+// copyFolder copies the folder src to dst, which is not there yet. cp keeps the modes and the links, and the files are new ones, written
+// now, as the files of a build are (a case about what is written in the same second as the answer depends on that).
+func copyFolder(t *testing.T, src, dst string) {
+	t.Helper()
+	if out, err := exec.Command("cp", "-R", src, dst).CombinedOutput(); err != nil {
+		t.Fatalf("cp: %v %s", err, out)
+	}
+}
+
 // A kept answer is trusted while the folders are as they were: each of these is asked about again, and nothing that did not change is.
+// A layout is built once for its cases (a build is about eight runs of git) and put back as it was before each case, as each changes it:
+// the copy is of the folder that was built, so a case starts from the same files as it would from a build of its own.
 func TestAKeptPlaceOfAWorktreeOrSubmoduleIsLeftWhenTheFoldersChange(t *testing.T) {
+	// the stub that writes the calls down is written once (a new file is slow to run the first time on macOS); the calls a case runs
+	// before it reads them are not counted
+	calls := gitCallLog(t)
 	for _, b := range []layoutBuilder{layoutBuilders[0], layoutBuilders[4], layoutBuilders[5]} { // a worktree, a submodule, a separate git folder
+		own := t.TempDir()
+		l := b.build(t)
+		folder := layoutFolder(t, l, own)
+		saved := filepath.Join(own, "saved")
+		copyFolder(t, folder, saved)
 		for _, c := range []struct {
 			name   string
 			change func(t *testing.T, l layoutCase)
@@ -317,11 +366,11 @@ func TestAKeptPlaceOfAWorktreeOrSubmoduleIsLeftWhenTheFoldersChange(t *testing.T
 		} {
 			t.Run(b.name+": "+c.name, func(t *testing.T) {
 				t.Setenv("HOME", t.TempDir())
-				l := b.build(t)
+				mustRemove(t, folder)
+				copyFolder(t, saved, folder)
 				event(func() { gitPlaceAt(context.Background(), l.top) })
-				calls := gitCallLog(t)
 				c.change(t, l)
-				calls() // what the change itself ran is not counted
+				calls() // what the first question and the change ran is not counted
 				event(func() { gitPlaceAt(context.Background(), l.top) })
 				if n := len(calls()); c.asked && n == 0 {
 					t.Error("the kept answer was used, git was not asked")
@@ -439,17 +488,35 @@ func TestWhatTheFilesSayIsNotTrustedWhereGitSaidSomethingElse(t *testing.T) {
 		commitIn(t, top, "a")
 		return finishLayout(t, layoutCase{top: top})
 	}}
-	for _, b := range append([]layoutBuilder{plain}, layoutBuilders[0], layoutBuilders[4]) {
-		for _, c := range []struct{ name, sed string }{
-			{"another object folder", `s#objects$#lying-objects#`},
-			{"another exclude file", `s#info/exclude$#info/lying-exclude#`},
-			{"another HEAD", `4s#.*#0000000000000000000000000000000000000000#`},
-		} {
+	builders := append([]layoutBuilder{plain}, layoutBuilders[0], layoutBuilders[4])
+	seds := []struct{ name, sed string }{
+		{"another object folder", `s#objects$#lying-objects#`},
+		{"another exclude file", `s#info/exclude$#info/lying-exclude#`},
+		{"another HEAD", `4s#.*#0000000000000000000000000000000000000000#`},
+	}
+	// A layout is built once for its cases and a git that lies is written once for each way of lying (a new file is slow to run the first
+	// time on macOS): a case only asks about the place, twice, and writes nothing in the layout (what it keeps goes to its own HOME). A
+	// case puts the stubs on PATH itself, after the layout is built by the real git.
+	layouts := make([]layoutCase, len(builders))
+	for i, b := range builders {
+		layouts[i] = b.build(t)
+	}
+	cleanPath := os.Getenv("PATH")
+	paths := make([]string, len(seds))
+	logs := make([]func() []string, len(seds))
+	for i, c := range seds {
+		lyingGit(t, c.sed)
+		logs[i] = gitCallLog(t)
+		paths[i] = os.Getenv("PATH")
+		t.Setenv("PATH", cleanPath)
+	}
+	for i, b := range builders {
+		for j, c := range seds {
 			t.Run(b.name+": "+c.name, func(t *testing.T) {
 				t.Setenv("HOME", t.TempDir())
-				l := b.build(t)
-				lyingGit(t, c.sed)
-				calls := gitCallLog(t)
+				t.Setenv("PATH", paths[j])
+				l, calls := layouts[i], logs[j]
+				calls() // the log starts empty, as the log of a stub of its own does
 				var first gitPlace
 				event(func() { first, _ = gitPlaceAt(context.Background(), l.top) })
 				if len(calls()) == 0 {
@@ -660,6 +727,14 @@ func TestAKeptAnswerOfAnEarlierVersionIsNotUsed(t *testing.T) {
 // a modification time set back (a file moved or copied into place, a restore), which a comparison of times missed.
 func TestAConfigurationWrittenAfterTheAnswerIsFoundHoweverItsTimeIsSet(t *testing.T) {
 	sep := layoutBuilders[5]
+	// Each layout is built once, the first time a case needs it, and put back as it was before each case (the cases change it), as in
+	// TestAKeptPlaceOfAWorktreeOrSubmoduleIsLeftWhenTheFoldersChange; the stub that writes the calls down is written once.
+	type builtLayout struct {
+		l             layoutCase
+		folder, saved string
+	}
+	built := map[string]builtLayout{}
+	calls := gitCallLog(t)
 	for _, c := range []struct {
 		name  string
 		build layoutBuilder
@@ -727,14 +802,24 @@ func TestAConfigurationWrittenAfterTheAnswerIsFoundHoweverItsTimeIsSet(t *testin
 			}
 		}},
 	} {
+		b, ok := built[c.build.name]
+		if !ok {
+			own := t.TempDir()
+			l := c.build.build(t)
+			folder := layoutFolder(t, l, own)
+			saved := filepath.Join(own, "saved")
+			copyFolder(t, folder, saved)
+			b = builtLayout{l, folder, saved}
+			built[c.build.name] = b
+		}
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
-			l := c.build.build(t)
-			event(func() { gitPlaceAt(context.Background(), l.top) })
-			calls := gitCallLog(t)
-			c.do(t, l)
-			calls()
-			event(func() { gitPlaceAt(context.Background(), l.top) })
+			mustRemove(t, b.folder)
+			copyFolder(t, b.saved, b.folder)
+			event(func() { gitPlaceAt(context.Background(), b.l.top) })
+			c.do(t, b.l)
+			calls() // what the first question and the change ran is not counted
+			event(func() { gitPlaceAt(context.Background(), b.l.top) })
 			if len(calls()) == 0 {
 				t.Error("the kept answer was used after the configuration was written")
 			}

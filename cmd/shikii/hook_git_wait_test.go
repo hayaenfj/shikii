@@ -19,6 +19,13 @@ import (
 // shippedHookGitTimeout is the limit a real hook gives git (hookGitTimeout before any test changes it).
 var shippedHookGitTimeout = hookGitTimeout
 
+// hungGitLimit is the limit the tests of a git that never answers give it: a third of the limit a real hook has (1 s of 3 s). What they
+// judge is how many calls git got, so the limit only has to outlast the start of the stub that writes a call down: a shell script that
+// writeStub has already run once (the slow first run of a new file is paid there, outside any limit), which starts in about 3 ms alone and
+// about 10 ms on a machine that is running other tests. A third of the real limit is a hundred times the slower of the two, and a
+// git that never answers is waited for this long once per event (a real hook's 3 s made the test take 15 s).
+var hungGitLimit = shippedHookGitTimeout / 3
+
 func hangingGit(t *testing.T, answered string) (stillRunning func() []int) {
 	t.Helper()
 	real, err := exec.LookPath("git")
@@ -60,19 +67,27 @@ func hangingGit(t *testing.T, answered string) (stillRunning func() []int) {
 // each with a limit of its own (found on 2026-11-21: 15 s for a request, as long as the time the agents give the hook), and then by the
 // two questions asked alone when the place is not known (the exclude file, HEAD). The time an event spends waiting for questions that get
 // no answer is now hookGitTimeout in all, so git is started once in all: for the question about where the repository is. The limit is
-// the subject here, so it is set after hookEnv made git patient. It is the limit a real hook has: the stub that writes the call down is a
-// shell started by the hook, and on a loaded machine (the other test groups of make test) a shorter limit killed it before it wrote
-// anything, so a call the hook made was not counted. What is judged is the number of calls git got, not how long they took.
+// the subject here, so it is set after hookEnv made git patient. It is hungGitLimit, a third of the limit a real hook has, which is still
+// a hundred times what the stub that writes the call down needs to start: a limit of a few milliseconds killed that shell before it wrote
+// anything on a loaded machine (the other test groups of make test), so a call the hook made was not counted. What is judged is the
+// number of calls git got, not how long they took.
 func TestAGitThatNeverAnswersIsWaitedForOnceInAnEvent(t *testing.T) {
 	const place = "rev-parse --show-toplevel --git-path objects"
+	// The two stubs are written once for all the events (a new file is slow to run the first time on macOS, which writeStub pays when it
+	// writes one) and are on PATH only while an event runs: the fixture of an event asks the real git. The log of calls is emptied by every
+	// reading, and a process of an earlier event that was left running would be found by the check at the end of any later one.
+	cleanPath := os.Getenv("PATH")
+	stillRunning := hangingGit(t, "")
+	calls := gitCallLog(t)
+	stubbedPath := os.Getenv("PATH")
+	t.Setenv("PATH", cleanPath)
 	for _, event := range []string{"user-prompt-submit", "stop", "session-start", "tool-lesson", "subagent-start"} {
 		t.Run(event, func(t *testing.T) {
 			repo, _, _ := planningFixture(t)
-			hookGitTimeout = shippedHookGitTimeout // patientGit's cleanup puts the real value back
+			hookGitTimeout = hungGitLimit // patientGit's cleanup puts the real value back
 			t.Chdir(repo)
 			forgetKeptPlaces(t)
-			stillRunning := hangingGit(t, "")
-			calls := gitCallLog(t)
+			t.Setenv("PATH", stubbedPath)
 			in := map[string]any{"session_id": "never-" + event, "cwd": repo, "prompt": planningTestRequest, "last_assistant_message": "Done.",
 				"tool_name": "Bash", "tool_input": map[string]any{"command": "ls"}}
 			if event == "subagent-start" {
@@ -157,12 +172,12 @@ func TestOnlyQuestionsWithoutAnAnswerUseUpTheTimeAnEventMayWait(t *testing.T) {
 // is waited for in the time of the event, once: the second of the two is not asked when the first waited the whole of it. (The place is
 // asked first by itself, so that the limit HEAD is given starts whole; a limit that began before the place was answered is shorter by what
 // that took, and the exclude file may then be asked in the rest.) The place question is not what is judged, and the speed of a real git is
-// not either: its answer is waited for with patientGit's limit, and the stub that gives it comes after more than the whole limit a real
-// hook has (found on 2026-11-23: under make test the real git was slow, the place got no answer in the three seconds, that used up the
-// whole time of the event, and HEAD was not asked).
+// not either: its answer is waited for with patientGit's limit, and the stub that gives it comes after more than the whole limit these
+// tests give a git that never answers (hungGitLimit; found on 2026-11-23: under make test the real git was slow, the place got no answer
+// in the three seconds a real hook gives it, that used up the whole time of the event, and HEAD was not asked).
 func TestWhereGitSaysThereIsNoWorkingTreeTheTwoQuestionsAreAskedAlone(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	lateAnswer := shippedHookGitTimeout + 500*time.Millisecond // a git so slow that the limit of a real hook is over before it says where the repository is
+	lateAnswer := hungGitLimit + 500*time.Millisecond // a git so slow that the limit set below is over before it says where the repository is
 	base := t.TempDir()
 	src, bare := filepath.Join(base, "src"), filepath.Join(base, "bare.git")
 	newRepoAt(t, src)
@@ -194,15 +209,15 @@ func TestWhereGitSaysThereIsNoWorkingTreeTheTwoQuestionsAreAskedAlone(t *testing
 		}
 	})
 	t.Run("not answered", func(t *testing.T) {
-		patientGit(t) // its cleanup puts the real value back after the limit of a real hook is set below
+		patientGit(t) // its cleanup puts the real value back after the limit is set below
 		slowFirstPlaceGit(t, lateAnswer)
 		stillRunning := hangingGit(t, "--show-toplevel") // the place is answered (no), nothing asked alone is
 		calls := gitCallLog(t)
 		event(func() {
-			// the place is answered, "no", before the limit of a real hook is set (the real git is slow at times, and the stub above is
-			// slower than that limit): the limit of the questions after it then starts whole
+			// the place is answered, "no", before the limit is set (the real git is slow at times, and the stub above is slower than
+			// that limit): the limit of the questions after it then starts whole
 			gitPlaceAt(context.Background(), bare)
-			hookGitTimeout = shippedHookGitTimeout
+			hookGitTimeout = hungGitLimit
 			gitHead(bare)
 			excludeProjectStore(bare)
 		})

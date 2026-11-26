@@ -48,6 +48,9 @@ func TestAFolderOutsideGitIsKnownWithoutStartingGit(t *testing.T) {
 // Where the folders above could still be a repository for git, git is asked (the negative examples of the test above): a `.git` that is
 // a file (a worktree or a submodule), a bare repository, and the environment that tells git where the repository is.
 func TestAFolderThatMayBeARepositoryStillAsksGit(t *testing.T) {
+	// the stub that writes the calls down is written once (a new file is slow to run the first time on macOS); a case empties its log
+	// after its folder is made, so the log starts empty as the log of a stub of its own does
+	calls := gitCallLog(t)
 	for _, c := range []struct {
 		name  string
 		setup func(t *testing.T) string
@@ -83,7 +86,7 @@ func TestAFolderThatMayBeARepositoryStillAsksGit(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
 			folder := c.setup(t)
-			calls := gitCallLog(t)
+			calls()
 			event(func() { gitPlaceAt(context.Background(), folder) })
 			if got := calls(); len(got) == 0 || got[0] != askedPlace {
 				t.Errorf("git was not asked where the repository is:\n%s", strings.Join(got, "\n"))
@@ -148,6 +151,9 @@ func TestThePlaceOfTheRepositoryIsKeptBetweenEvents(t *testing.T) {
 // A kept answer is used only while the folders say the same as when git answered: a repository made below, a repository gone, the `.git`
 // turned into a file, the environment naming the repository, or the answer being too old each make the next event ask git again.
 func TestAKeptPlaceIsLeftOnceTheRepositoryHasChanged(t *testing.T) {
+	// the stub that writes the calls down is written once (a new file is slow to run the first time on macOS); what a case runs before
+	// it reads the calls is not counted
+	calls := gitCallLog(t)
 	for _, c := range []struct {
 		name      string
 		change    func(t *testing.T, repo, sub string)
@@ -192,9 +198,8 @@ func TestAKeptPlaceIsLeftOnceTheRepositoryHasChanged(t *testing.T) {
 				t.Fatal(err)
 			}
 			event(func() { gitPlaceAt(context.Background(), sub) }) // git answers and the answer is kept
-			calls := gitCallLog(t)
 			c.change(t, repo, sub)
-			calls() // what the change itself ran is not counted
+			calls() // what the first question and the change ran is not counted
 			event(func() {
 				got, ok := gitPlaceAt(context.Background(), sub)
 				want := c.wantTop(repo, sub)
@@ -212,6 +217,9 @@ func TestAKeptPlaceIsLeftOnceTheRepositoryHasChanged(t *testing.T) {
 // GIT_CEILING_DIRECTORIES: git does not search a ceiling folder nor any above it, but always searches the folder it is asked from. The
 // walk answers as git does (the answers are compared with git's own), and where nothing is found no process is started.
 func TestTheWalkStopsWhereGitDoesNotSearch(t *testing.T) {
+	// the stub that writes the calls down is written once (a new file is slow to run the first time on macOS); a case empties its log
+	// after its premise, so the log starts empty as the log of a stub of its own does
+	calls := gitCallLog(t)
 	for _, c := range []struct {
 		name      string
 		ceiling   func(outer, repo, deep string) string
@@ -243,7 +251,7 @@ func TestTheWalkStopsWhereGitDoesNotSearch(t *testing.T) {
 			if (err == nil) != c.wantFound {
 				t.Fatalf("premise: git says found=%v, the case expects %v", err == nil, c.wantFound)
 			}
-			calls := gitCallLog(t)
+			calls()
 			event(func() {
 				got, ok := gitPlaceAt(context.Background(), deep)
 				if ok != c.wantFound || ok && !sameFolder(got.top, strings.TrimSpace(string(raw))) {

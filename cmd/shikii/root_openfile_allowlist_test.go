@@ -39,6 +39,11 @@ type listedPackage struct {
 	DepOnly                           bool
 }
 
+// homeBeforeTheTests is HOME as the tests were started with, read before TestMain gives every test a temporary one. The folder of the
+// build cache is made from HOME, so a `go list` that inherits the temporary HOME finds an empty cache and compiles every package it
+// lists again (about 4 s); with this HOME it finds the cache that `go test` has just filled (about 1 s).
+var homeBeforeTheTests = os.Getenv("HOME")
+
 var rootOpenList struct {
 	once sync.Once
 	root string
@@ -57,6 +62,9 @@ func listRootOpenPackages(t *testing.T) (string, []listedPackage, map[string]str
 		l.root = strings.TrimSpace(run(t, "git", "rev-parse", "--show-toplevel"))
 		cmd := exec.Command("go", "list", "-deps", "-export", "-json=ImportPath,Dir,Export,GoFiles,CgoFiles,IgnoredGoFiles,DepOnly", "./cmd/...", "./internal/...")
 		cmd.Dir = l.root
+		if homeBeforeTheTests != "" {
+			cmd.Env = append(os.Environ(), "HOME="+homeBeforeTheTests)
+		}
 		out, err := cmd.Output()
 		if err != nil {
 			var exit *exec.ExitError

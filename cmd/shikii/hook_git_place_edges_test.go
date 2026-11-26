@@ -115,8 +115,9 @@ func TestTheRecordsStayOutOfTheListingWhenGitReadsPathspecsLiterally(t *testing.
 }
 
 // keepAndChange keeps the place of a new repository (one event asks git), then makes `change` and asks again: how many git calls the
-// second ask made.
-func keepAndChange(t *testing.T, change func(repo string)) int {
+// second ask made. calls is the log of a gitCallLog the caller wrote once for all its cases (a new stub is slow to run the first time
+// on macOS); what the case ran before it reads the log again is not counted.
+func keepAndChange(t *testing.T, calls func() []string, change func(repo string)) int {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	repo := gitRepo(t)
@@ -125,9 +126,8 @@ func keepAndChange(t *testing.T, change func(repo string)) int {
 	}
 	gitCommitAll(t, repo, "one")
 	event(func() { gitPlaceAt(context.Background(), repo) })
-	calls := gitCallLog(t)
 	change(repo)
-	calls() // what the change itself ran is not counted
+	calls() // what the first question and the change ran is not counted
 	event(func() { gitPlaceAt(context.Background(), repo) })
 	return len(calls())
 }
@@ -135,6 +135,7 @@ func keepAndChange(t *testing.T, change func(repo string)) int {
 // What moves the repository in the environment is left to git, also when it is set to nothing (git reads an empty GIT_DIR as an error),
 // and so is a `.git` folder that says it is shared with another (commondir): the kept answer is for the plain case only.
 func TestAKeptPlaceIsLeftToGitWhileTheEnvironmentOrACommondirMovesTheRepository(t *testing.T) {
+	calls := gitCallLog(t) // written once for the cases
 	for _, c := range []struct {
 		name  string
 		value func(repo string) string
@@ -146,13 +147,13 @@ func TestAKeptPlaceIsLeftToGitWhileTheEnvironmentOrACommondirMovesTheRepository(
 		{"GIT_DIR", func(string) string { return "" }},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			if n := keepAndChange(t, func(repo string) { t.Setenv(c.name, c.value(repo)) }); n == 0 {
+			if n := keepAndChange(t, calls, func(repo string) { t.Setenv(c.name, c.value(repo)) }); n == 0 {
 				t.Errorf("%s set: the kept answer was used, git was not asked", c.name)
 			}
 		})
 	}
 	t.Run("commondir", func(t *testing.T) {
-		n := keepAndChange(t, func(repo string) {
+		n := keepAndChange(t, calls, func(repo string) {
 			if err := os.WriteFile(filepath.Join(repo, ".git", "commondir"), []byte("../elsewhere\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -166,8 +167,9 @@ func TestAKeptPlaceIsLeftToGitWhileTheEnvironmentOrACommondirMovesTheRepository(
 // A kept answer is trusted while the `.git` folder is as it was: a repository whose HEAD is gone, or whose configuration was written
 // after the answer (core.bare, core.worktree), is asked about again.
 func TestAKeptPlaceIsLeftOnceHeadIsGoneOrTheConfigurationChanged(t *testing.T) {
+	calls := gitCallLog(t) // written once for the cases
 	t.Run("HEAD removed", func(t *testing.T) {
-		if n := keepAndChange(t, func(repo string) {
+		if n := keepAndChange(t, calls, func(repo string) {
 			if err := os.Remove(filepath.Join(repo, ".git", "HEAD")); err != nil {
 				t.Fatal(err)
 			}
@@ -176,7 +178,7 @@ func TestAKeptPlaceIsLeftOnceHeadIsGoneOrTheConfigurationChanged(t *testing.T) {
 		}
 	})
 	t.Run("configuration written later", func(t *testing.T) {
-		if n := keepAndChange(t, func(repo string) {
+		if n := keepAndChange(t, calls, func(repo string) {
 			config := filepath.Join(repo, ".git", "config")
 			later := time.Now().Add(10 * time.Second)
 			if err := os.Chtimes(config, later, later); err != nil {
@@ -187,7 +189,7 @@ func TestAKeptPlaceIsLeftOnceHeadIsGoneOrTheConfigurationChanged(t *testing.T) {
 		}
 	})
 	t.Run("configuration as it was", func(t *testing.T) {
-		if n := keepAndChange(t, func(string) {}); n != 0 {
+		if n := keepAndChange(t, calls, func(string) {}); n != 0 {
 			t.Errorf("nothing changed, yet git was asked %d times", n)
 		}
 	})
@@ -278,9 +280,10 @@ func TestDotDotAfterALinkNamesTheFolderAboveWhatTheLinkPointsTo(t *testing.T) {
 // An empty GIT_NAMESPACE or GIT_DISCOVERY_ACROSS_FILESYSTEM is no setting to git (an empty GIT_DIR is an error: the test above), and some
 // tools export them empty: the kept answer stays in use then.
 func TestAnEmptyNamespaceOrDiscoveryVariableDoesNotTurnTheKeptPlaceOff(t *testing.T) {
+	calls := gitCallLog(t) // written once for the cases
 	for _, name := range []string{"GIT_NAMESPACE", "GIT_DISCOVERY_ACROSS_FILESYSTEM"} {
 		t.Run(name, func(t *testing.T) {
-			if n := keepAndChange(t, func(string) { t.Setenv(name, "") }); n != 0 {
+			if n := keepAndChange(t, calls, func(string) { t.Setenv(name, "") }); n != 0 {
 				t.Errorf("%s set to nothing: git was asked %d times", name, n)
 			}
 		})
@@ -340,9 +343,10 @@ func TestTheListingKeepsAFolderThatDiffersOnlyInCaseWhenGitMatchesPathspecsWitho
 // An empty GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR or GIT_OBJECT_DIRECTORY is a setting to git (it reads the empty path and fails), unlike
 // the two variables of the test before: the kept answer is left to git for each of them.
 func TestAnEmptyVariableThatNamesAPlaceIsStillASetting(t *testing.T) {
+	calls := gitCallLog(t) // written once for the cases
 	for _, name := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY"} {
 		t.Run(name, func(t *testing.T) {
-			if n := keepAndChange(t, func(string) { t.Setenv(name, "") }); n == 0 {
+			if n := keepAndChange(t, calls, func(string) { t.Setenv(name, "") }); n == 0 {
 				t.Errorf("%s set to nothing: the kept answer was used, git was not asked", name)
 			}
 		})
