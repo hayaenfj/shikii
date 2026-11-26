@@ -61,8 +61,11 @@ func TestManyStoppedLinesKeepTheSmallFilesLine(t *testing.T) {
 	}
 	organizedRequest(t, repo, root, "g")
 	writeFile(t, readme, "# project\n"+turnForbiddenLine+"\n")
+	// Four files of the largest size a guard reads are 175 thousand stopped lines: 13 MB of entries (one takes 76 bytes here), three
+	// times what the record holds, so the record fills up and two thirds of the new entries do not fit. The 12 files there were are
+	// what 16 MB, the limit when this was written, needed; at 4 MB they only made the Stop slower (two files are already past it).
 	n := 0
-	for i := 0; i < 12; i++ {
+	for i := 0; i < 4; i++ {
 		var b strings.Builder
 		for b.Len() < guardFileBytesMax-64 {
 			fmt.Fprintf(&b, "FORBIDDENWORD %09d\n", n)
@@ -74,6 +77,14 @@ func TestManyStoppedLinesKeepTheSmallFilesLine(t *testing.T) {
 		t.Fatalf("premise: %+v", r)
 	}
 	wordStop(t, repo, root, "g", true)
+	// premise: the lines did not all fit, so the record is full (within 128 KB of its limit) and what did not fit was dropped
+	info, err := os.Stat(stoppedRecordOf(root, repo))
+	if err != nil {
+		t.Fatalf("premise: the stopped lines are kept: %v", err)
+	}
+	if info.Size() < stoppedLinesMax-128<<10 || info.Size() > stoppedLinesMax {
+		t.Fatalf("premise: the record is full, within 128 KB of its limit %d: %d bytes", stoppedLinesMax, info.Size())
+	}
 	nextRequest(t, repo, root, "g")
 	writeFile(t, readme, "# project\n"+turnForbiddenLine+"\na clean line\n")
 	if r := wordStop(t, repo, root, "g", false); !stoppedForTheLine(r) {

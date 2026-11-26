@@ -30,6 +30,7 @@ type updateFixture struct {
 	badDigest                             bool // the GitHub asset's digest disagrees with its content (audit R2 mutation M7: the digest check had never run)
 	entryType                             byte
 	extraPath                             string
+	archive                               []byte // the release archive when a test made it once itself (a large one is slow to compress); nil: made at every request from files
 	requests                              atomic.Int32
 	downloads                             atomic.Int32
 	finished                              bool
@@ -53,7 +54,10 @@ func fixtureUpdate(t *testing.T) *updateFixture {
 		f.requests.Add(1)
 		version := strings.TrimPrefix(f.tag, "v")
 		name := "shikii_" + version + "_darwin_arm64.tar.gz"
-		archive := fixtureUpdateArchive(t, f)
+		archive := f.archive
+		if archive == nil {
+			archive = fixtureUpdateArchive(t, f)
+		}
 		digest := sha256.Sum256(archive)
 		sum := hex.EncodeToString(digest[:])
 		if f.badHash {
@@ -177,19 +181,38 @@ func TestUpdateInstallsVerifiedPairAtExecutable(t *testing.T) {
 	}
 }
 
+// shikiiAsMainEnv set to 1 makes the test binary run main() and exit before TestMain and the tests: a copy of the test binary, started
+// with the arguments of the CLI, is this package's code run as shikii, without building it again (see
+// TestUpdateRefreshesSkillAndPreservesExistingPrompts). The non-test init functions (mcp.go) run before this one: the files that are not
+// tests come first.
+const shikiiAsMainEnv = "SHIKII_TEST_RUN_AS_SHIKII"
+
+func init() {
+	if os.Getenv(shikiiAsMainEnv) == "1" {
+		main()
+		os.Exit(0)
+	}
+}
+
 // Run a real new version through as a release, all the way to hook install after the replacement.
 // HOME and the project are isolated; no published Release or settings in use are touched.
+//
+// The new version is the code of this package run as shikii: a copy of the test binary (shikiiAsMainEnv makes it run main()). This used
+// to `go build` the package, which took four of the five seconds of this test: TestMain gives the test a temporary HOME, so the build ran
+// with an empty build cache and compiled the standard library and every dependency again.
 func TestUpdateRefreshesSkillAndPreservesExistingPrompts(t *testing.T) {
-	compiled := filepath.Join(t.TempDir(), "new-shikii")
-	if out, err := exec.Command("go", "build", "-o", compiled, ".").CombinedOutput(); err != nil {
-		t.Fatalf("build the binary to update to: %v %s", err, out)
-	}
-	body, err := os.ReadFile(compiled)
+	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
+	body, err := os.ReadFile(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(shikiiAsMainEnv, "1") // the copies of the test binary that the update starts (--version, hook install, --init) run as shikii
 	f := fixtureUpdate(t)
 	f.tag, f.opts.version, f.files["shikii"] = "v"+shikii.Version, "0.4.3", body
+	f.archive = fixtureUpdateArchive(t, f) // the archive holds the whole binary: compressed once, not at each of the three requests
 	// Use an absolute path without spaces, the same as a real hook's command.
 	f.opts.executable = filepath.Join(t.TempDir(), "shikii")
 	for _, name := range []string{"shikii", "shikii-readout"} {
