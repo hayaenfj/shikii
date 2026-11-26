@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -182,10 +183,15 @@ func cmdInit(args []string) error {
 	// skill: put it back (old files are deleted too), where Claude Code reads it and where Codex and other agents read skills (~/.agents/skills, 0.9.2:
 	// without the AGENTS.md section, Codex without hooks found the habits only there)
 	for _, rel := range skillDirs {
-		if err := copySkill(filepath.Join(home, rel)); err != nil {
+		rewrote, err := copySkill(filepath.Join(home, rel))
+		if err != nil {
 			return fmt.Errorf("skill: %w", err)
 		}
-		fmt.Fprintf(stdout, "skill: updated %s\n", filepath.Join("~", rel))
+		if rewrote {
+			fmt.Fprintf(stdout, "skill: updated %s\n", filepath.Join("~", rel))
+		} else {
+			fmt.Fprintf(stdout, "skill: up to date %s\n", filepath.Join("~", rel))
+		}
 	}
 	return completeProjectInit(root, scope, version, home, firstProject, model)
 }
@@ -651,12 +657,11 @@ func agentsSectionLeft(path string) bool {
 // agentsSectionNote tells the person how to remove that section.
 const agentsSectionNote = "an older shikii added a section between two " + agentsMarker + " lines; shikii no longer reads or changes AGENTS.md. Remove that part by hand, from the " + agentsMarker + " line above \"## shikii\" to the next " + agentsMarker + " line (the rest of the file is yours)"
 
-// copySkill puts the embedded skills/shikii back at dst. A skill that is already exactly the embedded one is left alone; anything else
-// is deleted and written again, so stale references do not mix in.
 // skillDirs are where the skill is put, relative to the home folder: Claude Code's, and the shared one Codex and other agents read.
 var skillDirs = []string{filepath.Join(".claude", "skills", "shikii"), filepath.Join(".agents", "skills", "shikii")}
 
-// The modes copySkill writes (before the umask). skillMatchesEmbedded compares against exactly these, so the two cannot drift apart.
+// The modes copySkill asks for (before the umask). skillModesIn makes a file and a folder with exactly these in the folder the skill
+// goes in, so the modes skillMatchesEmbedded compares with are the ones a new write there gets, and the two cannot drift apart.
 const (
 	skillDirPerm  fs.FileMode = 0o755
 	skillFilePerm fs.FileMode = 0o644
@@ -671,11 +676,16 @@ var whileCopyingSkill = func() {}
 //   - dst and every folder in it is a real folder (not a link), and every file is a regular file (not a link or anything else);
 //   - the set of files and folders is the same: nothing extra, nothing missing;
 //   - every file has the same bytes;
-//   - the modes are the ones copySkill writes. The umask can change those; then this says "differs" and the skill is rewritten
-//     (what copySkill always did), so a doubt is never settled in favor of leaving the skill alone.
+//   - the modes are the ones a new write of the skill gets here (skillModesIn: what the umask and the folder leave of 0644 and 0755,
+//     whatever the umask is), so a skill someone made wider or narrower is put back as it would be written now.
 //
-// Any read or compare error also says "differs".
+// Any read or compare error, and modes that cannot be found out, also say "differs": the skill is then rewritten, what copySkill
+// always did, so a doubt is never settled in favor of leaving the skill alone.
 func skillMatchesEmbedded(dst string) bool {
+	fileMode, dirMode, ok := skillModesIn(filepath.Dir(dst))
+	if !ok {
+		return false
+	}
 	type entry struct {
 		mode fs.FileMode
 		data []byte
@@ -690,14 +700,14 @@ func skillMatchesEmbedded(dst string) bool {
 			return err
 		}
 		if d.IsDir() {
-			want[rel] = entry{mode: fs.ModeDir | skillDirPerm}
+			want[rel] = entry{mode: dirMode}
 			return nil
 		}
 		b, err := shikii.SkillFS.ReadFile(p)
 		if err != nil {
 			return err
 		}
-		want[rel] = entry{mode: skillFilePerm, data: b}
+		want[rel] = entry{mode: fileMode, data: b}
 		return nil
 	})
 	if err != nil {
@@ -745,29 +755,65 @@ func skillMatchesEmbedded(dst string) bool {
 	return err == nil && seen == len(want)
 }
 
+// skillModesIn finds the modes a new write of the skill gets in dir: it makes a file (asking for skillFilePerm) and a folder (asking
+// for skillDirPerm) there, reads what the disk gave them with Lstat, and removes them. The umask, and what the folder passes on (a
+// group, an access list), decide those modes. The umask cannot be read without being changed, and changing it takes it from every other
+// goroutine of the process, so the product never calls syscall.Umask. The caller holds copySkill's lock. ok is false when either cannot
+// be made or read; the caller then takes the skill as different and writes it again.
+func skillModesIn(dir string) (file, folder fs.FileMode, ok bool) {
+	suffix := rand.Text()
+	filePath := filepath.Join(dir, ".shikii-skill-probe-"+suffix)
+	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, skillFilePerm)
+	if err != nil {
+		return 0, 0, false
+	}
+	defer os.Remove(filePath)
+	if f.Close() != nil {
+		return 0, 0, false
+	}
+	fileInfo, err := os.Lstat(filePath)
+	if err != nil {
+		return 0, 0, false
+	}
+	folderPath := filepath.Join(dir, ".shikii-skill-probe-folder-"+suffix)
+	if os.Mkdir(folderPath, skillDirPerm) != nil {
+		return 0, 0, false
+	}
+	defer os.Remove(folderPath)
+	folderInfo, err := os.Lstat(folderPath)
+	if err != nil || !fileInfo.Mode().IsRegular() || !folderInfo.IsDir() {
+		return 0, 0, false
+	}
+	return fileInfo.Mode(), folderInfo.Mode(), true
+}
+
+// copySkill puts the embedded skills/shikii back at dst. A skill that is already exactly the embedded one is left alone; anything else
+// is deleted and written again, so stale references do not mix in. rewrote says which: true when the skill was written (it was
+// missing or different), false when it was left as it was. Only the result of a call without an error is meant by it.
+//
 // Two shikii --init at once (two projects, one HOME) rewrite the same folder, so the copy holds a lock next to it (audit 0.9.2 English, medium 6:
 // without it, a copy failed with "directory not empty" or left the skill without SKILL.md).
-func copySkill(dst string) error {
+func copySkill(dst string) (rewrote bool, err error) {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
+		return false, err
 	}
 	lock, err := os.OpenFile(filepath.Join(filepath.Dir(dst), ".shikii-skill.lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer lock.Close()
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
-		return err
+		return false, err
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	whileCopyingSkill()
 	if skillMatchesEmbedded(dst) {
-		return nil
+		return false, nil
 	}
 	if err := os.RemoveAll(dst); err != nil {
-		return err
+		return true, err
 	}
-	return fs.WalkDir(shikii.SkillFS, "skills/shikii", func(p string, d fs.DirEntry, err error) error {
+	return true, fs.WalkDir(shikii.SkillFS, "skills/shikii", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}

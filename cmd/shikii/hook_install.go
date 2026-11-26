@@ -300,10 +300,15 @@ func hookInstall(args []string, install bool) error {
 		}
 		fmt.Fprintf(stdout, "%s: %d specs and %d wiki pages added\n", tilde(agent), n, w)
 		for _, rel := range skillDirs {
-			if err := copySkill(filepath.Join(home, rel)); err != nil {
+			rewrote, err := copySkill(filepath.Join(home, rel))
+			if err != nil {
 				return fmt.Errorf("skill: %w", err)
 			}
-			fmt.Fprintf(stdout, "%s: the agent's rules put in place\n", tilde(filepath.Join(home, rel)))
+			if rewrote {
+				fmt.Fprintf(stdout, "%s: the agent's rules put in place\n", tilde(filepath.Join(home, rel)))
+			} else {
+				fmt.Fprintf(stdout, "%s: the agent's rules were already in place, nothing changed\n", tilde(filepath.Join(home, rel)))
+			}
 		}
 		// convert, once, the index entries released versions wrote (named by the path) into the store id's entries (0.9.7)
 		for _, p := range upgradeIndex(agent) {

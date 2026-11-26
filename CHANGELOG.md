@@ -10,7 +10,7 @@
 
 ### Fixes
 
-- Fixed `shikii init` and `shikii hook install` deleting the shikii skill for a moment and writing it again when nothing in it had changed, so an agent starting at that moment could find no skill. Where the default file permissions (umask 022) are in use, an unchanged skill is now left as it is.
+- Fixed `shikii init` and `shikii hook install` deleting the shikii skill for a moment and writing it again when nothing in it had changed, so an agent starting at that moment could find no skill. An unchanged skill is now left as it is whatever file permission mask (umask) your machine uses, and `shikii init` prints `skill: up to date` for it instead of `skill: updated`.
 
 ## 0.43.1 — When you carry on a conversation in OpenCode, the memory nap request reaches your current request
 

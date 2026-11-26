@@ -223,14 +223,14 @@ func TestAudit091ReflectSchemaHasNoItemLimits(t *testing.T) {
 // skill is deleted, the lock next to it cannot be taken from outside, so another copy waits until this one has put every file back.
 func TestAuditSkillCopyHoldsTheLock(t *testing.T) {
 	dst := filepath.Join(t.TempDir(), "skills", "shikii")
-	if err := copySkill(dst); err != nil { // a skill already there, as on every --init after the first
+	if _, err := copySkill(dst); err != nil { // a skill already there, as on every --init after the first
 		t.Fatal(err)
 	}
 	tried := errors.New("whileCopyingSkill did not run")
 	old := whileCopyingSkill
 	t.Cleanup(func() { whileCopyingSkill = old })
 	whileCopyingSkill = func() { tried = tryLockFromOutside(filepath.Join(filepath.Dir(dst), ".shikii-skill.lock")) }
-	if err := copySkill(dst); err != nil {
+	if _, err := copySkill(dst); err != nil {
 		t.Fatal(err)
 	}
 	if tried != syscall.EWOULDBLOCK {
