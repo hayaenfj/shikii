@@ -11,11 +11,18 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/hayaenfj/shikii/internal/rootfile"
 )
 
-func (s Store) memoryAssessmentPath(scope, id, key string) string {
+// assessmentFileName is the file of the assessment of one quote of one delivery, inside the project's memory-reviews folder.
+func assessmentFileName(id, key string) string {
 	h := sha256.Sum256([]byte(id + ":" + key))
-	return filepath.Join(s.recordPath("memory-reviews", "", scope), hex.EncodeToString(h[:])+".json")
+	return hex.EncodeToString(h[:]) + ".json"
+}
+
+func (s Store) memoryAssessmentPath(scope, id, key string) string {
+	return filepath.Join(s.recordPath("memory-reviews", "", scope), assessmentFileName(id, key))
 }
 
 // errAssessmentBroken is an assessment file whose content cannot be read as one (the report counts it as not yet assessed); a file that
@@ -30,6 +37,12 @@ func (s Store) memoryAssessment(scope, id, key string) (*MemoryAssessment, error
 	if err != nil {
 		return nil, err
 	}
+	return readAssessment(f, id, key)
+}
+
+// readAssessment reads the assessment of the quote key of the delivery id from f (and closes it): errAssessmentBroken when the
+// content is not one.
+func readAssessment(f *os.File, id, key string) (*MemoryAssessment, error) {
 	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, (32<<10)+1))
 	var a MemoryAssessment
@@ -37,6 +50,88 @@ func (s Store) memoryAssessment(scope, id, key string) (*MemoryAssessment, error
 		return nil, errAssessmentBroken
 	}
 	return &a, nil
+}
+
+// assessmentReader reads the assessments of many quotes of one project for a report. memoryAssessment reads the store name and
+// opens the project's folders from the top for every quote, and almost every answer is "not there". The reader reads the store name
+// and opens records/memory-reviews/<store> once (through parentRoot and without following a link, as MemoryAssessments does), lists
+// its names once, and opens only the quotes whose file is listed, with the same checks (openIn) and the same reading (readAssessment)
+// as memoryAssessment. A quote whose file is not listed is not assessed, which is what memoryAssessment answers for a file that is
+// not there; an assessment saved after the listing is seen by the next report, as one saved just after a quote was asked for is today.
+// Nothing is touched until the first quote (as the first memoryAssessment is the first to read the store name), and nothing takes
+// the memory lock.
+type assessmentReader struct {
+	s      Store
+	scope  string
+	asked  bool
+	absent bool                // the folder is not there: no quote is assessed
+	root   *os.Root            // the folder, opened once; nil when it could not be listed
+	listed map[string]struct{} // the lower-cased names in the folder
+}
+
+func (s Store) newAssessmentReader(scope string) *assessmentReader {
+	return &assessmentReader{s: s, scope: scope}
+}
+
+// list opens and lists the folder. Whatever goes wrong other than "the folder is not there" (a link in the way, a folder that cannot
+// be opened or listed), the reader stays without a folder and every quote is asked for by memoryAssessment, which says it as before.
+func (r *assessmentReader) list() {
+	r.asked = true
+	root, _, err := r.s.parentRoot(filepath.Join(r.s.recordPath("memory-reviews", "", r.scope), "entry"), false)
+	if os.IsNotExist(err) {
+		r.absent = true
+		return
+	}
+	if err != nil {
+		return
+	}
+	folder, err := rootfile.OpenNoFollow(root, ".", os.O_RDONLY, 0)
+	if err != nil {
+		root.Close()
+		return
+	}
+	names, err := folder.Readdirnames(-1)
+	folder.Close()
+	if err != nil {
+		root.Close()
+		return
+	}
+	r.root, r.listed = root, make(map[string]struct{}, len(names))
+	for _, name := range names {
+		// A name only decides whether to open: the open below asks the disk for the exact name. Folding the case lets a disk that
+		// ignores case find a file memoryAssessment would have found; on one that does not, the open answers "not there" as before.
+		r.listed[strings.ToLower(name)] = struct{}{}
+	}
+}
+
+func (r *assessmentReader) get(id, key string) (*MemoryAssessment, error) {
+	if !r.asked {
+		r.list()
+	}
+	if r.absent {
+		return nil, nil
+	}
+	if r.root == nil {
+		return r.s.memoryAssessment(r.scope, id, key)
+	}
+	name := assessmentFileName(id, key)
+	if _, ok := r.listed[strings.ToLower(name)]; !ok {
+		return nil, nil
+	}
+	f, err := openIn(r.root, name, os.O_RDONLY)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return readAssessment(f, id, key)
+}
+
+func (r *assessmentReader) close() {
+	if r.root != nil {
+		r.root.Close()
+	}
 }
 
 // followedUnshown is the evidence of the entry the skill describes for work that went the way a lesson says with nothing to show

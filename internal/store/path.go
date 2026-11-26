@@ -90,6 +90,13 @@ func (s Store) openFile(path string, flags int) (*os.File, error) {
 		return nil, err
 	}
 	defer root.Close()
+	return openIn(root, name, flags)
+}
+
+// openIn opens the record name inside a folder parentRoot already opened and checked: not a link, not a folder, an ordinary file
+// before and after the open. A reader of many files of one folder opens the folder once and calls it for each name.
+func openIn(root *os.Root, name string, flags int) (*os.File, error) {
+	var err error
 	if info, err := root.Lstat(name); err == nil {
 		if !info.Mode().IsRegular() {
 			return nil, errors.New("make the record an ordinary file (not a link or a folder)")

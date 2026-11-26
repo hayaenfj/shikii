@@ -223,10 +223,12 @@ func (s Store) MemoryReportWithFeedback(scope string, read func() ([]Feedback, e
 	for _, f := range feedback {
 		observed[f.ID] = true
 	}
+	assessments := s.newAssessmentReader(scope)
+	defer assessments.close()
 	for i := len(deliveries) - 1; i >= 0; i-- {
 		d := deliveries[i]
 		for _, q := range d.Quotes {
-			a, err := s.memoryAssessment(scope, d.ID, q.Key)
+			a, err := assessments.get(d.ID, q.Key)
 			if errors.Is(err, errAssessmentBroken) {
 				a, err = nil, nil // an assessment whose content cannot be read counts as not yet assessed: one broken file never stops the reflection (confirmation audit 1 of 0.12)
 			}
