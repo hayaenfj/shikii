@@ -132,9 +132,9 @@ func TestMemoryReportSaysNothingWhenTheFolderIsGoneAtTheEnd(t *testing.T) {
 	}
 }
 
-// The folder is opened once and read to the end of the report. A path that stopped naming that folder while the report ran (a link put
-// in its place: asking for the next quote said "links cannot be used in the record folder"; another folder put there) is said at the
-// end, not read on through without a word.
+// The folder is opened once and read to the end of the report. A path that became a link while the report ran is said at the end
+// (asking for the next quote said "links cannot be used in the record folder"), not read on through without a word. Another real
+// folder put there is not said: see TestMemoryReportAnswersFromTheFirstFolderWhenAnotherFolderTakesItsPlace.
 func TestMemoryReportSaysAFolderThatChangedDuringTheReport(t *testing.T) {
 	for _, tc := range []struct {
 		name, want string
@@ -146,14 +146,6 @@ func TestMemoryReportSaysAFolderThatChangedDuringTheReport(t *testing.T) {
 				t.Fatal(err)
 			}
 			if err := os.Symlink(moved, folder); err != nil {
-				t.Fatal(err)
-			}
-		}},
-		{"another folder put in its place", "the record folder changed", func(t *testing.T, folder string) {
-			if err := os.Rename(folder, filepath.Join(t.TempDir(), "moved")); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.Mkdir(folder, 0o700); err != nil {
 				t.Fatal(err)
 			}
 		}},
@@ -178,6 +170,94 @@ func TestMemoryReportSaysAFolderThatChangedDuringTheReport(t *testing.T) {
 			}
 			if err == nil || err.Error() != tc.want {
 				t.Fatalf("the folder changed during the report and the report said %v (%d quotes), want %q", err, len(r.All), tc.want)
+			}
+		})
+	}
+}
+
+// A path that names another real folder at the end of the report (a store put back from a backup, a folder a sync tool replaced) is not
+// an error. The report answers from the folder it opened first, which is what asking for each quote answered for the quotes asked
+// before the change, and no check at the end can tell a folder that was replaced from one that was written to while the report ran (a
+// save and a read that overlap give one of two answers, before or after the save, in the old way of asking for each quote too).
+// Only a link in the way is an error (the test above). The new folder is empty in one case and a copy of the files in the other: in
+// both the four assessed quotes are still the first folder's answers, and a report that opened the path again would lose them in the
+// first case.
+func TestMemoryReportAnswersFromTheFirstFolderWhenAnotherFolderTakesItsPlace(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		swap func(t *testing.T, folder string)
+	}{
+		{"an empty folder", func(t *testing.T, folder string) {
+			if err := os.Rename(folder, filepath.Join(t.TempDir(), "moved")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(folder, 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"a folder with copies of the same files", func(t *testing.T, folder string) {
+			moved := filepath.Join(t.TempDir(), "moved")
+			if err := os.Rename(folder, moved); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(folder, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			entries, err := os.ReadDir(moved)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, e := range entries {
+				b, err := os.ReadFile(filepath.Join(moved, e.Name()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(folder, e.Name()), b, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, scope, pairs := reportFixture(t, 6, 3) // 12 quotes, 4 assessed
+			want, err := asked(s, scope)
+			if err != nil {
+				t.Fatal(err)
+			}
+			folder := filepath.Dir(s.memoryAssessmentPath(scope, pairs[0][0], pairs[0][1]))
+			old := openInRoot
+			t.Cleanup(func() { openInRoot = old })
+			swapped := false
+			openInRoot = func(r *os.Root, name string, flag int, perm os.FileMode) (*os.File, error) {
+				f, err := old(r, name, flag, perm)
+				if strings.HasSuffix(name, ".json") && !swapped {
+					swapped = true
+					tc.swap(t, folder) // right after the first assessment file is opened
+				}
+				return f, err
+			}
+			r, err := s.MemoryReport(scope)
+			if !swapped {
+				t.Fatal("the folder was never swapped: the fixture opened no assessment file")
+			}
+			if err != nil {
+				t.Fatalf("another real folder took the place of the record folder during the report, and the report failed: %v", err)
+			}
+			if len(r.All) != len(pairs) {
+				t.Fatalf("every quote is counted: %d of %d", len(r.All), len(pairs))
+			}
+			assessed := 0
+			for _, item := range r.All {
+				w := want[[2]string{item.SourceID, item.Quote.Key}]
+				if !reflect.DeepEqual(item.Assessment, w) {
+					t.Fatalf("%s %s: the report says %+v, the folder it opened first says %+v", item.SourceID, item.Quote.Key, item.Assessment, w)
+				}
+				if w != nil {
+					assessed++
+				}
+			}
+			if assessed != 4 {
+				t.Fatalf("%d quotes assessed, want the 4 of the first folder", assessed)
 			}
 		})
 	}

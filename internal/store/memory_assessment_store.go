@@ -67,8 +67,9 @@ func readAssessment(f *os.File, id, key string) (*MemoryAssessment, error) {
 // that holds a name of any other form is not listed at all: every quote of that report is asked for by memoryAssessment, which asks
 // the disk for the exact name, as it did before the list.
 //
-// The folder is opened once, so verify checks at the end of the report that its path still names it: asking for each quote would
-// have found a link put in its place (parentRoot says so) at the next quote.
+// The folder is opened once, so verify checks at the end of the report that its path is still not a link: asking for each quote would
+// have found a link put in its place (parentRoot says so) at the next quote. Another real folder put in its place is not an error;
+// the report answers from the folder it opened.
 type assessmentReader struct {
 	s      Store
 	scope  string
@@ -157,9 +158,15 @@ func (r *assessmentReader) get(id, key string) (*MemoryAssessment, error) {
 	return readAssessment(f, id, key)
 }
 
-// verify says, at the end of a report, whether the path still names the folder that was opened: the same checks parentRoot makes for
-// every quote (a link in the way is said as "links cannot be used in the record folder"), then whether what it opens is the folder this
-// reader read. A folder that is gone says nothing, as asking for each quote answers "not there" for a folder that is not.
+// verify says, at the end of a report, whether the path is still one that asking for each quote would have accepted: it makes the same
+// checks parentRoot makes for every quote, so a link put in the way is said as "links cannot be used in the record folder". A folder
+// that is gone says nothing, as asking for each quote answers "not there" for a folder that is not.
+//
+// It does not ask whether the path still names the folder that was opened. Another real folder put in its place (a store put back from
+// a backup, a folder a sync tool replaced) is answered from the folder opened first: asking for each quote has no such check, and a
+// report that read while something saved, or replaced the folder, gets one of two answers either way (the folder before or after).
+// Telling a replaced folder from one that was written to would need a check that asking for each quote never made, and failing the
+// report on it only turns a rare overlap into an error.
 func (r *assessmentReader) verify() error {
 	if r.root == nil {
 		return nil // no folder was opened: every quote was asked for by memoryAssessment, which checks the path each time
@@ -171,18 +178,7 @@ func (r *assessmentReader) verify() error {
 	if err != nil {
 		return err
 	}
-	defer now.Close()
-	was, err := r.root.Stat(".")
-	if err != nil {
-		return err
-	}
-	is, err := now.Stat(".")
-	if err != nil {
-		return err
-	}
-	if !os.SameFile(was, is) {
-		return errors.New("the record folder changed")
-	}
+	now.Close()
 	return nil
 }
 
