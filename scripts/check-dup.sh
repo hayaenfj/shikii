@@ -17,7 +17,7 @@ cd "$(dirname "$0")/.."
 DUPL_TOKENS=100
 # Clones, duplicated lines and clone groups that exist today
 JSCPD_CLONES=49
-JSCPD_LINES=438
+JSCPD_LINES=436
 DUPL_GROUPS=0
 
 for tool in jscpd dupl; do
