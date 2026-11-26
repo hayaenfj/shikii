@@ -485,11 +485,14 @@ func cmdHookVariantsCheck() error {
 // Unreadable files are skipped; if none can be read, the original <id>.yaml is returned (the caller's Load reports the error).
 func hookSpecPath(agent, id string) string {
 	base := filepath.Join(agent, "decisions", id+".yaml")
+	files, _ := filepath.Glob(filepath.Join(agent, "decisions", id+"-v*.yaml"))
+	if len(files) == 0 {
+		return base // no adopted wording: the original, without reading it (the caller's Load reads it)
+	}
 	best, version := base, -1
 	if sp, err := spec.Load(base); err == nil {
 		version = sp.Version
 	}
-	files, _ := filepath.Glob(filepath.Join(agent, "decisions", id+"-v*.yaml"))
 	for _, f := range files {
 		if sp, err := spec.Load(f); err == nil && sp.ID == id && sp.Version > version {
 			best, version = f, sp.Version
