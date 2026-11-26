@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,6 +16,7 @@ import (
 	"go/token"
 	"go/types"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -46,7 +49,29 @@ var (
 	typedMu       sync.Mutex
 	typedFset     = token.NewFileSet()
 	typedImporter = importer.ForCompiler(typedFset, "source", nil)
+	// typedChecked keeps what typedSources made of a set of sources, by the sources themselves (typedKey): the same code is read by
+	// many tests, and type-checking the whole package takes a third of a second each time. A reader only reads what it gets (it
+	// looks things up in info and walks the syntax tree; none of them sets a field or a map entry), so the checked package is shared.
+	typedChecked = map[[sha256.Size]byte][]typedFile{}
 )
+
+// typedKey is the hash of what typedSources reads: whether it is strict, and each file's name and text, in the order of the names.
+func typedKey(sources map[string]string, strict bool) [sha256.Size]byte {
+	names := make([]string, 0, len(sources))
+	for name := range sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	h := sha256.New()
+	fmt.Fprintf(h, "strict=%v\n", strict)
+	for _, name := range names {
+		fmt.Fprintf(h, "%d:%s\n%d:", len(name), name, len(sources[name]))
+		_, _ = io.WriteString(h, sources[name])
+	}
+	var key [sha256.Size]byte
+	copy(key[:], h.Sum(nil))
+	return key
+}
 
 const typedSnippetImports = "import (\n\t\"bytes\"\n\t\"encoding/json\"\n\t\"io\"\n\t\"net/http\"\n\n\t\"github.com/hayaenfj/shikii/internal/notebook\"\n)\n"
 
@@ -76,6 +101,10 @@ func typedSources(t testing.TB, sources map[string]string, strict bool) []typedF
 	}
 	typedMu.Lock()
 	defer typedMu.Unlock()
+	key := typedKey(sources, strict)
+	if checked, ok := typedChecked[key]; ok {
+		return slices.Clone(checked)
+	}
 	groups := map[string][]string{}
 	for name, src := range sources {
 		m := typedPackageClause.FindStringSubmatch(src)
@@ -131,7 +160,8 @@ func typedSources(t testing.TB, sources map[string]string, strict bool) []typedF
 		out = append(out, typed...)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
-	return out
+	typedChecked[key] = out // only a check that went through (a strict one that failed ended the test above)
+	return slices.Clone(out)
 }
 
 // typedNamed is the named type of t, through pointers and aliases.
