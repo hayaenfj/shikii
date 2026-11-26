@@ -2,15 +2,15 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
-## 0.43.2 — shikii's step before and after each request takes less time
+## 0.43.2 — Requests in a project used for a while wait less for shikii
 
 ### Changes
 
-- Made the step shikii runs before and after each of your requests faster, most of all in projects used for a long time. In a project where many lessons have been delivered to the agent, the step before a request now takes about 40% of the time it did.
+- Before and after each request you send, the agent runs shikii (its hook) and waits for it. In a project with many past requests, that wait had grown with every request; it now grows about half as fast.
 
 ### Fixes
 
-- Fixed `shikii init` deleting the shikii skill for a moment and writing it again even when nothing in it had changed. An agent that started at that moment could find no skill. When the skill is already the same, `shikii init` now leaves it as it is.
+- Fixed `shikii init` and `shikii hook install` deleting the shikii skill for a moment and writing it again when nothing in it had changed, so an agent starting at that moment could find no skill. Where the default file permissions (umask 022) are in use, an unchanged skill is now left as it is.
 
 ## 0.43.1 — When you carry on a conversation in OpenCode, the memory nap request reaches your current request
 

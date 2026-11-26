@@ -136,7 +136,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.42.0 | At most once a day, the agent goes through its memory: articles whose underlying files changed are checked against the files again, new or changed articles against their sources, and the person's recent replies are read for corrections the wiki does not hold yet. shikii edits no article itself. |
 | 0.43.0 | The memory nap counts the missed corrections it caught. Instead of an operation that checks whether the agent read, it counts what the person said that no article held when the agent was shown it and that later became an article. |
 | 0.43.1 | When you reopen an earlier conversation in OpenCode and carry on, the memory nap notice comes with the request you just sent. |
-| 0.43.2 | The steps before and after each request take less time. What slowed down as more lessons were delivered was fixed. |
+| 0.43.2 | The hook's wait, which grew with every request, grows about half as fast. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -508,6 +508,6 @@ Instead, shikii counts whether the reviews work by their results. What you said 
 
 The notice itself was also checked with real agents and fixed. With the 0.43.0 candidate, Claude Code sometimes finished a request without running the nap it was told about. So the notice now asks plainly for the nap to start in the background right away, and until a nap runs, the next session is told again at its start. 0.43.1 fixed OpenCode too. In OpenCode, a notice given when you reopened an earlier conversation and carried on was put on the first request of the conversation, where the agent saw it as old text. It now comes with the request you just sent. In one check after the fix, with a newer model as well, the OpenCode agent ran the nap once it was told (which of the two made the difference was not separated).
 
-### In 0.43.2, fix what got slower the longer shikii was used
+### In 0.43.2, hold back the wait that grew with every request
 
-While making the tests faster, we measured how long one run of the steps shikii takes before and after a request. Those steps got slower as more lessons were delivered to the agent. For every lesson delivered, shikii looked for its assessment file and opened the folders again. Once the delivered lessons reached the limit of 256, the step before a request took about 1.7 times as long as at the start. The longer someone had used shikii, the longer they waited each time. shikii now looks at the folder of assessments once and opens only the lessons that have one. With 256 delivered lessons, the step before a request takes about 40% of the time it did.
+While making the tests faster, we measured how long one run of the hook (what shikii runs before and after each request) takes. It got longer with every request. For each lesson ever delivered to the agent, shikii looked for a saved assessment, opening the folders again each time. Only the last 256 requests count, so the growth stops there. Even so, in a project that had reached that point, the step before a request took about 70% longer than at the start. shikii now looks at the folder of assessments once and opens only those that are saved. The hook still gets a little longer as requests pile up, but about half as fast.
