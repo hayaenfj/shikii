@@ -310,6 +310,19 @@ func TestCopySkillInAReadOnlyFolder(t *testing.T) {
 		wantErr bool
 	}{
 		{"the same skill", func(t *testing.T, dst string) {}, false},
+		{"the same skill with no lock file yet", func(t *testing.T, dst string) {
+			if err := os.Remove(filepath.Join(filepath.Dir(dst), ".shikii-skill.lock")); err != nil {
+				t.Fatal(err)
+			}
+		}, false},
+		{"a skill with an extra file and no lock file yet", func(t *testing.T, dst string) {
+			if err := os.Remove(filepath.Join(filepath.Dir(dst), ".shikii-skill.lock")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dst, "old.md"), []byte("stale"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, true},
 		{"a skill with an extra file", func(t *testing.T, dst string) {
 			if err := os.WriteFile(filepath.Join(dst, "old.md"), []byte("stale"), 0o644); err != nil {
 				t.Fatal(err)

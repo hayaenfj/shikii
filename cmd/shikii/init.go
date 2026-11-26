@@ -785,6 +785,14 @@ func copySkill(dst string) (rewrote bool, err error) {
 	}
 	lock, err := os.OpenFile(filepath.Join(filepath.Dir(dst), ".shikii-skill.lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
 	if err != nil {
+		// A folder of skills that takes no new file (handed out read-only, from a copy of someone's dotfiles) has no lock yet. Nobody can
+		// rewrite a skill in it either, so the skill is compared without the lock: the same skill is left as it is, and any other one
+		// still fails here, as before.
+		if errors.Is(err, fs.ErrPermission) || errors.Is(err, syscall.EROFS) {
+			if skillMatchesEmbedded(dst) {
+				return false, nil
+			}
+		}
 		return false, err
 	}
 	defer lock.Close()
