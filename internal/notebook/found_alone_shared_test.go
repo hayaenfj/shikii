@@ -107,6 +107,21 @@ func foundByTheQuery(t *testing.T, b Book, word string) bool {
 	return len(v.Lessons) > 0 || v.Search != nil && v.Search.Total > 0
 }
 
+// queryFinder is foundByTheQuery for a wiki that stays as it is while a test asks: the answer of a wiki query of a word does not change
+// with the asking, so each distinct word is put to the query once (a draw of hundreds of searches asks the same few dozen words, and
+// each query reads every article). Do not use it where the number of queries is what is measured.
+func queryFinder(t *testing.T, b Book) func(word string) bool {
+	answers := map[string]bool{}
+	return func(word string) bool {
+		if found, ok := answers[word]; ok {
+			return found
+		}
+		found := foundByTheQuery(t, b, word)
+		answers[word] = found
+		return found
+	}
+}
+
 // A word searched through the shared reading finds an article exactly when a wiki query of the word does, for a seeded mix of articles
 // and words: words of letters and digits in any case, kanji and kana, a word only in a title, a word only in a discovery context, a
 // word in one article, and words in no article. The counts of what the draw produced are checked, so that an agreement of two empty
@@ -159,6 +174,7 @@ func TestWordsFoundAloneAgreesWithTheWikiQueryOfRandomWords(t *testing.T) {
 	rng := rand.New(rand.NewSource(20261121))
 	b, words := sharedSearchBook(t, rng)
 	pool := words.all()
+	foundByQuery := queryFinder(t, b)
 	named, empty, capped, some := 0, 0, 0, 0
 	_ = named
 	for trial := 0; trial < 160; trial++ {
@@ -184,7 +200,7 @@ func TestWordsFoundAloneAgreesWithTheWikiQueryOfRandomWords(t *testing.T) {
 			if len(seen) > 8 {
 				break
 			}
-			if foundByTheQuery(t, b, word) && len(want) < 3 {
+			if foundByQuery(word) && len(want) < 3 {
 				want = append(want, word)
 			}
 		}

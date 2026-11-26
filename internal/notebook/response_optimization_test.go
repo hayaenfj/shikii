@@ -38,16 +38,15 @@ func TestResponseOrdinarySearchProjectionAllocation(t *testing.T) {
 	}
 	var got []Page
 	var matches []Match
-	measure := testing.Benchmark(func(b *testing.B) {
-		for range b.N {
-			got, matches = rankPages(pages, "routing tenant", false)
-		}
+	// 20 calls are enough: a call allocates the same bytes every time (about 29 KB, against the 128 KB budget).
+	allocated := bytesPerOp(20, func() {
+		got, matches = rankPages(pages, "routing tenant", false)
 	})
 	if len(got) != 8 || len(matches) != 8 || !reflect.DeepEqual(matches[0].Terms, []string{"routing", "tenant"}) {
 		t.Fatal("all matching candidates and terms must survive")
 	}
-	if measure.AllocedBytesPerOp() > 128<<10 {
-		t.Fatalf("ordinary search retained non-query vocabulary: %d B/op", measure.AllocedBytesPerOp())
+	if allocated > 128<<10 {
+		t.Fatalf("ordinary search retained non-query vocabulary: %d B/op", allocated)
 	}
 }
 
@@ -59,12 +58,10 @@ func TestResponseSourceDecodeSharedOnlyWithinValidatedRead(t *testing.T) {
 	}
 	book = book.ReadSnapshot()
 	var value map[string]any
-	measure := testing.Benchmark(func(b *testing.B) {
-		for range b.N {
-			value, e = book.ReadSources([]string{o.ID})
-			if e != nil {
-				b.Fatal(e)
-			}
+	allocated := bytesPerOp(100, func() {
+		value, e = book.ReadSources([]string{o.ID})
+		if e != nil {
+			t.Fatal(e)
 		}
 	})
 	got := value["observations"].([]Observation)
@@ -76,8 +73,8 @@ func TestResponseSourceDecodeSharedOnlyWithinValidatedRead(t *testing.T) {
 	if e != nil || next["observations"].([]Observation)[0].Content != o.Content {
 		t.Fatal("caller changed shared decode", e)
 	}
-	if measure.AllocedBytesPerOp() > 32<<10 {
-		t.Fatalf("validated source was repeatedly decoded: %d B/op", measure.AllocedBytesPerOp())
+	if allocated > 32<<10 {
+		t.Fatalf("validated source was repeatedly decoded: %d B/op", allocated)
 	}
 	if e = book.ValidateRead(); e != nil {
 		t.Fatal(e)

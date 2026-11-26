@@ -114,16 +114,14 @@ func TestReadSnapshotCopyAllocationBudget(t *testing.T) {
 		pages[i] = p
 	}
 	view.rememberSnapshotPages(pages, []Issue{})
-	result := testing.Benchmark(func(bench *testing.B) {
-		for range bench.N {
-			got, _, ok := view.snapshotPages()
-			if !ok || len(got) != len(pages) || got[0].Body != p.Body {
-				bench.Fatal("all article content must survive the copy")
-			}
+	bytesCopied := bytesPerOp(50, func() {
+		got, _, ok := view.snapshotPages()
+		if !ok || len(got) != len(pages) || got[0].Body != p.Body {
+			t.Fatal("all article content must survive the copy")
 		}
 	})
-	if bytes := result.AllocedBytesPerOp(); bytes > 256<<10 {
-		t.Fatalf("copying 100 articles exceeds the allocation budget: %d > 256 KiB", bytes)
+	if bytesCopied > 256<<10 {
+		t.Fatalf("copying 100 articles exceeds the allocation budget: %d > 256 KiB", bytesCopied)
 	}
 	oversized := b.ReadSnapshot()
 	tooMany := make([]Page, 1000)

@@ -196,7 +196,9 @@ func TestUnclassifiedOnlyOnTheFirstPage(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/project"}
 	source := seed(t, b, 1)
 	var legacy string
-	for i := range 60 {
+	// Of these pages of about 3 KB a reply holds about 18, so 30 give the list a second reply; every save reads all the pages, so the
+	// work grows with the square of how many there are.
+	for i := range 30 {
 		d := draft(source, fmt.Sprintf("Knowledge %03d", i))
 		d.AppliesTo = strings.Repeat("Knowledge scope ", 55)
 		body := strings.Repeat("Detailed evidence. ", 100)
@@ -227,7 +229,9 @@ func TestCursorSurvivesANewConversation(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/project"}
 	source := seed(t, b, 1)
 	var last Page
-	for i := range 80 {
+	// A reply of the search holds about 45 of these candidates, so 60 pages give the search (and the list, 11 to a reply) a second
+	// reply; every save reads all the pages, so the work grows with the square of how many there are.
+	for i := range 60 {
 		d := draft(source, fmt.Sprintf("Knowledge %03d", i))
 		d.AppliesTo = strings.Repeat("Knowledge scope ", 60)
 		body := strings.Repeat("Detailed evidence. ", 200)

@@ -931,10 +931,12 @@ func TestStoreWrittenBy096KeepsItsNames(t *testing.T) {
 // Other readers refuse a cursor that carries a byte.
 func TestQueryRefusesByteCursor(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/project"}
-	for i := 0; i < 120; i++ {
+	// A reply holds about 60 KiB, so a second page (and a cursor to it) needs about 30 lessons of 1.8 KB (the longest a lesson may be is
+	// 2 KB); every save reads all the pages, so the work grows with the square of how many there are.
+	for i := 0; i < 40; i++ {
 		o := partsCapture(t, b, fmt.Sprintf("m%d", i), strings.Repeat("x", 10), int64(i+1))
 		d := draft(o.ID, fmt.Sprintf("Lesson %d about memories", i))
-		d.Lesson = strings.Repeat(fmt.Sprintf("lesson %d text ", i), 40)
+		d.Lesson = strings.Repeat(fmt.Sprintf("lesson %d text ", i), 120)
 		if _, err := b.Ingest(d); err != nil {
 			t.Fatal(err)
 		}

@@ -329,6 +329,11 @@ func requireReadsBack(t *testing.T, b Book, what string, saved Page) (Page, bool
 	return v.Lessons[0], true
 }
 
+// formsPerWiki is how many forms are saved into one wiki before the next form starts a clean one. Each save reads every page of the wiki,
+// so the cost of a group grows with the square of this number; every save is checked on its own (the wiki still reads, the page reads
+// back), so a short run in each wiki loses no check.
+const formsPerWiki = 4
+
 // A save either is refused and leaves the wiki as it was, or succeeds and the
 // page reads back as the same revision with the text that was sent. A text that
 // looks like YAML must never be saved as a page that cannot be read again, and
@@ -386,7 +391,7 @@ func TestSavedPageTextSurvivesYAMLSpecialForms(t *testing.T) {
 				return true
 			}
 			for n := range forms[0] {
-				if n%25 == 24 { // every save reads all pages: keep each wiki small
+				if n%formsPerWiki == formsPerWiki-1 { // every save reads all pages: keep each wiki small
 					if _, err := e.b.Ingest(e.draft()); err != nil {
 						t.Errorf("%s: a later unrelated save is refused: %v", g.name, err)
 					}

@@ -10,10 +10,13 @@ import (
 
 func TestDeliveryJournalBoundsEncodedBytesAndRefusesLinks(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/project"}
-	// HTML/control characters expand in JSON; ordinary ASCII misses this bound.
+	// HTML/control characters expand in JSON (6 bytes each); ordinary ASCII misses this bound. 512 entries of 100 such pairs are about
+	// 100 KB as text and about 680 KB encoded, just over the 512 KB the encoded case may take: saving trims the case one entry at a
+	// time and encodes it all again after each, so the work grows with how far over the bound the case starts (a case of 24 KB per
+	// entry started 12 MB over and took seconds).
 	entries := make([]DeliveryEntry, 512)
 	for i := range entries {
-		entries[i] = DeliveryEntry{ID: "0000000000000001", Revision: "0000000000000002", Retrieval: "candidate", Reason: "delivered", Discovery: strings.Repeat("<\x01", 2000)}
+		entries[i] = DeliveryEntry{ID: "0000000000000001", Revision: "0000000000000002", Retrieval: "candidate", Reason: "delivered", Discovery: strings.Repeat("<\x01", 100)}
 	}
 	c := DeliveryCase{Mode: "request", Request: "Synthetic context", Complete: true, Entries: entries}
 	if err := b.SaveDeliveryCase(c); err != nil {

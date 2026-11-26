@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -91,11 +92,38 @@ func newInstallFixture(t *testing.T, version string) installFixture {
 	return f
 }
 
+// The folders toolsWithoutGo made, by the directories they link to. They are made once for the whole test run (a PATH of a thousand
+// links costs seconds to lay out, and every install test used to lay out its own); TestMain removes them.
+var (
+	toolsMu      sync.Mutex
+	toolsFolders = map[string]string{}
+)
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	for _, dir := range toolsFolders {
+		os.Chmod(dir, 0o755) // it was made read-only, and a folder that cannot be written cannot be emptied
+		os.RemoveAll(dir)
+	}
+	os.Exit(code)
+}
+
 // toolsWithoutGo is a folder of links to the commands in dirs (the first of each name wins, as on PATH) without go and gofmt: a
-// machine may have Go in /usr/bin (GitHub's runners do), and the installer must be shown to work without it.
+// machine may have Go in /usr/bin (GitHub's runners do), and the installer must be shown to work without it. One folder is shared by
+// every test in the run, and it is read-only: nothing install.sh does with PATH can add to it or remove from it, so no test can
+// leave something behind for the next (a write into it fails instead).
 func toolsWithoutGo(t *testing.T, dirs ...string) string {
 	t.Helper()
-	tools := t.TempDir()
+	toolsMu.Lock()
+	defer toolsMu.Unlock()
+	key := strings.Join(dirs, "\x00")
+	if tools, ok := toolsFolders[key]; ok {
+		return tools
+	}
+	tools, err := os.MkdirTemp("", "shikii-tools-")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, dir := range dirs {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -114,6 +142,10 @@ func toolsWithoutGo(t *testing.T, dirs ...string) string {
 			}
 		}
 	}
+	if err := os.Chmod(tools, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	toolsFolders[key] = tools
 	return tools
 }
 
