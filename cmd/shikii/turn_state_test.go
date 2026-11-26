@@ -68,7 +68,9 @@ func TestANoticeReopensTheLastRequestWhereverTheShellStands(t *testing.T) {
 
 // A result whose save was interrupted once (after the source was written) is finished by the next record that closes the work:
 // the capture is saved again as the kind its memo kept (a result shikii writes), noted as a report, and the record is complete. A
-// capture finished as an observation would be refused under the title of a result, and the work could not close.
+// capture finished as an observation would be refused under the title of a result, and the work could not close. A result that
+// then cites the finished report as evidence is refused as citing a report the work wrote about itself (audit N, mutation N31: without
+// the kind restored, the refusal of that citation came from an unrelated cause, so the refusal's own words are what is checked).
 func TestAnInterruptedResultIsFinishedAsAReport(t *testing.T) {
 	f := newAuditFlow(t)
 	first := f.prepare(f.ask(planningTestRequest), "CSV export filters")
@@ -99,6 +101,10 @@ func TestAnInterruptedResultIsFinishedAsAReport(t *testing.T) {
 		if capture.Source == notebook.WorkResult() && !w.Reports[capture.ID] {
 			t.Errorf("the interrupted result %s is not noted as a report", capture.ID)
 		}
+	}
+	c, _ := f.record(first, map[string]any{"result": map[string]any{"changed": "Renamed the export button, checked.", "checked": "It works.", "sufficient": true, "evidence": []any{"observed1"}}})
+	if raw := auditJSON(c["errors"]); !strings.Contains(raw, "a report this work wrote about itself") {
+		t.Errorf("INVARIANT 10: the result citing the interrupted report is not refused as citing a report: %.300s", raw)
 	}
 }
 

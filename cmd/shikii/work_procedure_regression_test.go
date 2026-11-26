@@ -9,30 +9,21 @@ import (
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
 
+// The result of the generating run, given again by a renamed task, is not an independent support, so the procedure is not adopted at
+// the last task. This is the run whose generator has a graded quality; the generator without one is TestWorkRegressionProcedureCanonicalEvidence
+// (the same text by a renamed task).
 func TestWorkProcedureRegressionB01OriginEvidence(t *testing.T) {
-	for _, explicit := range []bool{false, true} {
-		name := "unknown_generator"
-		if explicit {
-			name = "graded_generator_control"
-		}
-		t.Run(name, func(t *testing.T) {
-			b, _ := readingLearningBook(t)
-			yes := true
-			var quality *bool
-			if explicit {
-				quality = &yes
-			}
-			_, gen := autonomyRun(t, b, "Synthetic original recovery task.", "Synthetic result A: owner condition retained.", quality)
-			if loopObject(t, gen["procedure"])["status"] != "proposed" {
-				t.Fatal("setup: no proposal")
-			}
-			_, first := autonomyRun(t, b, "Synthetic renamed recovery task.", "Synthetic result A: owner condition retained.", &yes)
-			_, last := autonomyRun(t, b, "Synthetic independent recovery task.", "Synthetic result C: total condition retained.", &yes)
-			t.Logf("explicit_generator_quality=%v reused_origin_cases=%v final_status=%v final_cases=%v", explicit, loopObject(t, first["procedure"])["cases"], loopObject(t, last["procedure"])["status"], loopObject(t, last["procedure"])["cases"])
-			if loopObject(t, last["procedure"])["status"] == "adopted" {
-				t.Fatal("RSI-AUDIT-2026-B01: origin evidence counted toward held-out adoption")
-			}
-		})
+	b, _ := readingLearningBook(t)
+	yes := true
+	_, gen := autonomyRun(t, b, "Synthetic original recovery task.", "Synthetic result A: owner condition retained.", &yes)
+	if loopObject(t, gen["procedure"])["status"] != "proposed" {
+		t.Fatal("setup: no proposal")
+	}
+	_, first := autonomyRun(t, b, "Synthetic renamed recovery task.", "Synthetic result A: owner condition retained.", &yes)
+	_, last := autonomyRun(t, b, "Synthetic independent recovery task.", "Synthetic result C: total condition retained.", &yes)
+	t.Logf("reused_origin_cases=%v final_status=%v final_cases=%v", loopObject(t, first["procedure"])["cases"], loopObject(t, last["procedure"])["status"], loopObject(t, last["procedure"])["cases"])
+	if loopObject(t, last["procedure"])["status"] == "adopted" {
+		t.Fatal("RSI-AUDIT-2026-B01: origin evidence counted toward held-out adoption")
 	}
 }
 

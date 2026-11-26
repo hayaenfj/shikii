@@ -29,14 +29,6 @@ func TestUnsureChoiceWithNothingOpenIsNotInTheQueue(t *testing.T) {
 	}
 }
 
-// The planning hook must not wait for the person in that case either.
-func TestUnsureChoiceWithNothingOpenDoesNotWaitInThePlanningHook(t *testing.T) {
-	d, rec := unsureChoiceRecord("yes", planningOpenUnknown)
-	if planningWaits(d, rec) {
-		t.Fatal("an unsure choice with nothing open waits for the person in the planning hook")
-	}
-}
-
 // Control: an unsure choice with a concrete open decision that disagrees with the model's top answer is asked, as that decision.
 func TestUnsureChoiceWithConcreteOpenDisagreementWaits(t *testing.T) {
 	d, rec := unsureChoiceRecord("no", "Ask whether the note should be in English.")
@@ -54,7 +46,8 @@ func TestUnsureChoiceWithConcreteOpenAgreementDoesNotWait(t *testing.T) {
 }
 
 // The planning hook itself, from the saved organizing to the asked list: the unit tests above call planningWaits directly, so they would still
-// pass if the hook stopped using it. An unsure choice (no answer reaches the threshold) with nothing open is not put to the person.
+// pass if the hook stopped using it. An unsure choice (no answer reaches the threshold) with nothing open is not put to the person, and
+// planningWaits does not wait for it either (the same change in planningWaits fails this test).
 func TestUnsureChoiceWithNothingOpenIsNotAskedThroughTheHook(t *testing.T) {
 	_, root, trace := planningWith(t, .4, false)
 	rec, err := (store.Store{Dir: root}).FindRecord("needs-plan", trace)

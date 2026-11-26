@@ -354,20 +354,6 @@ func TestAudit036ConfirmDeliveredLineAfter16UndeliveredOnAFreshSubagent(t *testi
 	}
 }
 
-// P1: through MCP the server takes session_id although the tool's schema does not list it.
-func TestAudit036ConfirmMCPCallWithSessionIDIsNarrowed(t *testing.T) {
-	st, scope, h, draft, revision := memoryEffectFixture(t)
-	key := "lesson:" + draft.ID + ":" + revision
-	memoryEffectPrompt(t, scope, "owner")
-	turn := memoryEffectComplete(t, st, scope, "owner")
-	count := func(args string) int {
-		result, _ := mcpToolCall(t, h, "shikii_reflect", args)
-		raw, _ := json.Marshal(result)
-		return strings.Count(string(raw), key)
-	}
-	t.Logf("turn=%s plain=%d other=%d owner=%d", turn, count(`{"operation":"query"}`), count(`{"operation":"query","session_id":"other"}`), count(`{"operation":"query","session_id":"owner"}`))
-}
-
 // P5: only the last subagentReportMax bytes of a report are read, from the head of a line.
 func TestAudit036ConfirmOnlyTheEndOfALongReportIsRead(t *testing.T) {
 	st, scope, key, _, _ := subagentStopFixture(t, "s", "agent-1")

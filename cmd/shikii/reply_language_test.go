@@ -101,14 +101,9 @@ func TestReplyLanguageOffWithoutLanguageOrForLatinScript(t *testing.T) {
 	}
 }
 
-func TestReplyLanguageShortReplyPasses(t *testing.T) {
-	repo := langStopTurn(t, "japanese")
-	if stop := runHook(t, "stop", map[string]any{"session_id": "lang", "cwd": repo, "last_assistant_message": replyShort}); strings.Contains(stop, "block") {
-		t.Fatalf("a short reply is not checked: %s", stop)
-	}
-}
-
 // The counting rule itself: the share of letters of the person's script among the letters left after removing code, URLs, paths and identifiers.
+// A short reply is not checked, so the Stop passes it: the hook acts only on checked (TestReplyLanguageOffWithoutLanguageOrForLatinScript
+// fails when it does not).
 func TestReplyLanguageCountingRule(t *testing.T) {
 	for _, c := range []struct {
 		name, lang, reply string

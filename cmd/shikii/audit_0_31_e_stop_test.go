@@ -28,17 +28,6 @@ func TestAuditEStopInAnotherRegisteredProject(t *testing.T) {
 	}
 }
 
-// control: the same flow with the Stop in a folder outside every project hands nothing over (the fix of round 2).
-func TestAuditEStopOutsideEveryProjectControl(t *testing.T) {
-	f := auditCFinishedFirstRequest(t)
-	out := runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": t.TempDir(), "last_assistant_message": "Done."})
-	s := loadSession(f.root, "planning")
-	t.Logf("stop outside: out=%q ended_turn=%q turn=%s", out, s.endedTurnForTest(), s.TurnID)
-	if second := f.prepare(f.ask("Now rename the export button, a new task."), "export button"); second["carried"] != nil {
-		t.Errorf("control: a Stop outside every project ends the turn: %.200s", auditJSON(second["carried"]))
-	}
-}
-
 // A Stop outside every project when things are broken: a registry file that is not JSON, a project whose mark is gone, a session
 // record that is not JSON, and a session lock another process holds. The hook must not fail, and must write nothing it should not.
 func TestAuditEStopOutsideWithBrokenState(t *testing.T) {

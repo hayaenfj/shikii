@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -28,28 +27,6 @@ func auditIRequestInB(t *testing.T) (*auditFlow, string, string) {
 	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": other, "prompt": "Now update the README of this other project and run its long check in the background."})
 	supplyReasoningFixture(otherRoot, "planning")
 	return f, other, otherRoot
-}
-
-// INVARIANT 9: "only the request the session worked on last goes on after a completion notice; a request that ended before it is
-// not reopened". The fix applies that rule to the other projects only. A notice that comes while the shell stands in A (the
-// agent went back to A's folder) is handled by hookUserPrompt in A itself, which takes back the end of A's own request 1, ended
-// before B's request 2 started. The person's next message in A takes over the references of request 1.
-func TestAuditINoticeInAReopensItsOwnRequestThatEndedBeforeB(t *testing.T) {
-	f, other, otherRoot := auditIRequestInB(t)
-	if reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": other, "last_assistant_message": "The check runs in the background."})); blocked {
-		t.Fatalf("precondition: the Stop of request 2 passes in B: %s", reason)
-	}
-	a, b := loadSession(f.root, "planning"), loadSession(otherRoot, "planning")
-	if a.goesOnForTest() || b.goesOnForTest() || !b.At.After(a.At) {
-		t.Fatalf("precondition: both requests ended, B's record is the newer (A %v, B %v)", a.At, b.At)
-	}
-	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": f.repo, "prompt": auditINotice})
-	a, b = loadSession(f.root, "planning"), loadSession(otherRoot, "planning")
-	t.Logf("after the notice in A: A ended==turn %v (request 1, ended before request 2), B ended==turn %v (request 2, the latest)", !a.goesOnForTest(), !b.goesOnForTest())
-	second := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
-	if carried := second["carried"]; carried != nil {
-		t.Errorf("INVARIANT 9: a notice that came in A reopened A's request 1, which ended before request 2 in B; the next request in A takes over its references: %.300s", auditJSON(carried))
-	}
 }
 
 // INVARIANT 9: the request "the session worked on last" is chosen by the time of the record (At), and At is the time of the
@@ -111,24 +88,5 @@ func TestAuditIStopInBThatCannotSaveItsRecord(t *testing.T) {
 	second := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
 	if carried := second["carried"]; carried != nil {
 		t.Errorf("INVARIANT 9: the Stop in B ended the turn (continue:false, its record could not be saved), yet A keeps the request open and the next request takes over its references: %.300s", auditJSON(carried))
-	}
-}
-
-// The same choice when the latest record cannot be read: B's record (request 2, the latest) is cut, and a notice that comes outside
-// every project reopens A's request 1, ended before request 2 started.
-func TestAuditINoticeWhenTheLatestRecordIsUnreadable(t *testing.T) {
-	f, other, otherRoot := auditIRequestInB(t)
-	if reason, blocked := stopReason(t, runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": other, "last_assistant_message": "The check runs in the background."})); blocked {
-		t.Fatalf("precondition: the Stop of request 2 passes in B: %s", reason)
-	}
-	if err := os.WriteFile(sessionPath(otherRoot, "planning"), []byte("{cut"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": t.TempDir(), "prompt": auditINotice})
-	a := loadSession(f.root, "planning")
-	t.Logf("after the notice outside, B's record unreadable: A ended==turn %v (request 1)", !a.goesOnForTest())
-	second := f.prepare(f.ask("Now rename the export button, a new task."), "export button")
-	if carried := second["carried"]; carried != nil {
-		t.Errorf("INVARIANT 9: with the record of the latest request unreadable, a notice reopened A's request 1, ended before it; the next request in A takes over its references: %.200s", auditJSON(carried))
 	}
 }

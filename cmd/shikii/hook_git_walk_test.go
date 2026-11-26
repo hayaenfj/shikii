@@ -73,10 +73,6 @@ func TestAFolderThatMayBeARepositoryStillAsksGit(t *testing.T) {
 			d := gitRepo(t)
 			return filepath.Join(d, ".git", "refs")
 		}},
-		{"GIT_NAMESPACE in the environment", func(t *testing.T) string {
-			t.Setenv("GIT_NAMESPACE", "other")
-			return gitRepo(t)
-		}},
 		{"GIT_DIR in the environment", func(t *testing.T) string {
 			d := t.TempDir()
 			t.Setenv("GIT_DIR", filepath.Join(d, "nowhere"))
@@ -149,7 +145,9 @@ func TestThePlaceOfTheRepositoryIsKeptBetweenEvents(t *testing.T) {
 }
 
 // A kept answer is used only while the folders say the same as when git answered: a repository made below, a repository gone, the `.git`
-// turned into a file, the environment naming the repository, or the answer being too old each make the next event ask git again.
+// turned into a file, the environment naming a namespace, or the answer being too old each make the next event ask git again. (The
+// environment naming the repository, GIT_DIR, is a row of TestAKeptPlaceIsLeftToGitWhileTheEnvironmentOrACommondirMovesTheRepository
+// and of TestAFolderThatMayBeARepositoryStillAsksGit.)
 func TestAKeptPlaceIsLeftOnceTheRepositoryHasChanged(t *testing.T) {
 	// the stub that writes the calls down is written once (a new file is slow to run the first time on macOS); what a case runs before
 	// it reads the calls is not counted
@@ -181,9 +179,6 @@ func TestAKeptPlaceIsLeftOnceTheRepositoryHasChanged(t *testing.T) {
 		{"the environment names a namespace", func(t *testing.T, repo, sub string) {
 			t.Setenv("GIT_NAMESPACE", "other") // the refs git reads are another set: left to git
 		}, 1, func(repo, sub string) string { return repo }},
-		{"the environment names a repository", func(t *testing.T, repo, sub string) {
-			t.Setenv("GIT_DIR", filepath.Join(repo, ".git")) // git then takes the folder it is asked from as the top of the work tree
-		}, 1, func(repo, sub string) string { return sub }},
 		{"the answer too old", func(t *testing.T, repo, sub string) {
 			old := placeCacheTTL
 			placeCacheTTL = -1

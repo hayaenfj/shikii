@@ -10,7 +10,8 @@ import (
 	"testing"
 )
 
-// Synthetic regression fixture; the original evidence is retained.
+// Synthetic regression fixture; the original evidence is retained. The row of 25 lines at 8192 bytes is the control of
+// TestWorkDeliveryRegressionC01HTTPBudget: a prepare that fits answers 200 and its MCP reply stays within the bound.
 func TestWorkRegressionR2ContractMCPBudget(t *testing.T) {
 	for _, tc := range []struct{ n, budget int }{{0, 8192}, {25, 8192}, {55, 8192}, {25, 16384}} {
 		n, budget := tc.n, tc.budget

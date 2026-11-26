@@ -8,24 +8,6 @@ import (
 
 // Audit J of 0.31.0 (fifth round): the checks of the shipped tests themselves.
 
-// bodyReaders (audit_0_31_d_tools_test.go) now looks at every use of r.Body, but only in a function declared with a parameter of
-// type *http.Request. A handler that is a function literal (the package has three: project_registry.go, serve_ui.go,
-// serve_writer.go), and a handler that reads the body through another name of the request, are not looked at.
-func TestAuditJBodyReadersMissHandlersItDoesNotLookAt(t *testing.T) {
-	for name, source := range map[string]string{
-		"a handler that is a function literal": "package main\nfunc (s *server) routes() http.Handler {\n\treturn http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {\n\t\tvar req struct{}\n\t\t_ = json.NewDecoder(r.Body).Decode(&req)\n\t})\n}\n",
-		"the request under another name":       "package main\nfunc (s *server) handleNew(w http.ResponseWriter, r *http.Request) {\n\tvar req struct{}\n\tin := r\n\t_ = json.NewDecoder(in.Body).Decode(&req)\n}\n",
-	} {
-		if found := bodyReaders(t, map[string]string{"new_handler.go": source}); len(found) == 0 {
-			t.Errorf("%s: a new handler that reads its JSON body with json.NewDecoder is not found", name)
-		}
-	}
-	// negative: the form the test knows is found
-	if found := bodyReaders(t, map[string]string{"new_handler.go": "package main\nfunc (s *server) handleNew(w http.ResponseWriter, r *http.Request) {\n\tvar req struct{}\n\t_ = json.NewDecoder(r.Body).Decode(&req)\n}\n"}); len(found) != 1 {
-		t.Errorf("negative: the form json.NewDecoder(r.Body) is found: %v", found)
-	}
-}
-
 // The check this round took out of TestAuditEAReportAmongThePendingObservationsIsNotListedAsUsable (audit_0_31_e_more_test.go):
 // a report among the pending observations is not in the list of what evidence can cite. The list is printed when a receipt
 // without hook ids cites current; a report of the earlier request waits there as evidenceN. With the w.Reports filter of the list

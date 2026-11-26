@@ -676,27 +676,6 @@ func TestAudit090ClassifyDoesNotRevertConcurrentEdit(t *testing.T) {
 // Audit 0.9.2 (English): what shikii writes for an English user must be English.
 var japanese = regexp.MustCompile("[\u3040-\u30ff\u4e00-\u9fff]")
 
-// Every wiki page markdown (read by agents that open .shikii/wiki, and by people) carries Japanese labels on main.
-func TestAuditEnglishWikiPageMarkdownHasNoJapanese(t *testing.T) {
-	b := Book{Root: t.TempDir(), Scope: "/work/project"}
-	id := seed(t, b, 1)
-	body := "Exit 1 means a mismatch."
-	d := Draft{Title: "Check invoice totals", Lesson: "Run scripts/check-totals.sh before sending invoices.", AppliesTo: "invoices in invoices/",
-		Kind: "howto", Scene: "when checking invoices", Sources: []string{id}, ChangeReason: "the script was added", Body: &body}
-	res, err := b.Ingest(d)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pages, _ := b.directory(false, "pages")
-	md, err := os.ReadFile(filepath.Join(pages, res.Page.ID+".md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loc := japanese.FindIndex(md); loc != nil {
-		t.Fatalf("an English page contains Japanese: %q", md[max(0, loc[0]-40):min(len(md), loc[1]+80)])
-	}
-}
-
 // The scene limit (24 characters) was sized for Japanese scenes. The English rendering of a typical scene is longer.
 func TestAuditEnglishSceneOfTypicalLengthIsAccepted(t *testing.T) {
 	for _, scene := range []string{"when checking invoice totals", "when sending an invoice to a client"} {

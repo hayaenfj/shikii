@@ -337,7 +337,8 @@ const formsPerWiki = 4
 // A save either is refused and leaves the wiki as it was, or succeeds and the
 // page reads back as the same revision with the text that was sent. A text that
 // looks like YAML must never be saved as a page that cannot be read again, and
-// only the texts each field names (stop) may be refused.
+// only the texts each field names (stop) may be refused. Among the forms are an indented list and a leading line break in a passage
+// quote or reason, in change_reason and in a practice step's action, which once made a page that could not be read back.
 func TestSavedPageTextSurvivesYAMLSpecialForms(t *testing.T) {
 	short := func(s string) string {
 		if len(s) > 40 {

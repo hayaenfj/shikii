@@ -321,8 +321,9 @@ func TestOpenMissesAgreeWithTheWikiQueryOfEachMiss(t *testing.T) {
 	t.Logf("answered %d, open %d (journal of %d misses)", answered, open, len(journal.Misses))
 }
 
-// The misses a call examines are searched over one reading of the wiki: each article is split once for all of them, however many
-// misses are examined (the count of the articles split is the measure).
+// The misses a call examines are searched over one reading of the wiki: each article is parsed once and split once for all of them,
+// however many misses are examined (the counts of the parses and of the articles split are the measures, so this does not depend on
+// how fast a machine is).
 func TestOpenMissesSplitEachArticleOnce(t *testing.T) {
 	b := foundAloneBook(t,
 		[3]string{"Quartz export workflow", "Check Quartz exports with the raw parser.", "Quartz exports"},
@@ -335,13 +336,16 @@ func TestOpenMissesSplitEachArticleOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	before := pageTokenizations.Load()
+	before, parsesBefore := pageTokenizations.Load(), PageParses()
 	got, err := b.OpenMisses(time.Time{}, 16, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 5 {
 		t.Fatalf("five of the six misses are open (the one of quartz exports is answered): %q", openQueries(got))
+	}
+	if parses := PageParses() - parsesBefore; parses != 3 {
+		t.Fatalf("each of the 3 articles is parsed once for the six misses, got %d passes", parses)
 	}
 	if split := pageTokenizations.Load() - before; split != 3 {
 		t.Fatalf("each of the 3 articles is split once for the six misses, got %d", split)

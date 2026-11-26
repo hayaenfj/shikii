@@ -15,7 +15,7 @@ import (
 // Probes written by audit B (0.31.0). Several only printed what the candidate did (the report quoted the output) and failed on
 // nothing; the second round of audits named them (D, U-2). Each test here now fails when what it shows is broken. The three that
 // showed what a test of the second round checks are gone: the read-only config.toml (TestAuditDGap_ReadOnlyCodexConfig), the hooks
-// installed half-way (TestAuditDGap_InitSaysWhoGotTheHooks) and the field the memory refusal names
+// installed half-way (TestAuditCInitSaysWhoGotTheHooks) and the field the memory refusal names
 // (TestAuditDGap_TheRefusalNamesTheFieldTheReplyHas).
 
 func auditQuiet(t *testing.T) {

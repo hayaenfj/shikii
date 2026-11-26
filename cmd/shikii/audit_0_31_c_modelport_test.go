@@ -84,8 +84,6 @@ func TestAuditCShippedTestsLookAtTheModelPort(t *testing.T) {
 		name string
 		run  func(*testing.T)
 	}{
-		{"TestAuditACodexApprovalLineComesBackAfterThePersonRemovedIt", TestAuditACodexApprovalLineComesBackAfterThePersonRemovedIt},
-		{"TestAuditACodexReadOnlyConfigAndThePreview", TestAuditACodexReadOnlyConfigAndThePreview},
 		{"TestAuditACodexApprovalLineCommentedOutByThePerson", TestAuditACodexApprovalLineCommentedOutByThePerson},
 		{"TestHookInstallIsIdempotentAndKeepsOtherHooks", TestHookInstallIsIdempotentAndKeepsOtherHooks},
 		{"TestInitPreparesTheProjectAndTheAgentInOneGo", TestInitPreparesTheProjectAndTheAgentInOneGo},

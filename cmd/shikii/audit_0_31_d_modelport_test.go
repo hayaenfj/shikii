@@ -2,8 +2,9 @@ package main
 
 import "testing"
 
-// audit D (0.31.0, second round), finding A-6 (INVARIANT 13): three tests taken in from the first round (audit_0_31_a_codex_test.go)
-// run init and hook install in a temporary HOME and left the model's address as the package has it (the real model server's port).
+// audit D (0.31.0, second round), finding A-6 (INVARIANT 13): tests taken in from the first round (audit_0_31_a_codex_test.go; two
+// of the three were later removed as repeats of the cases of audit_0_31_c_codex_test.go and audit_0_31_d_codex_test.go) run init and
+// hook install in a temporary HOME and left the model's address as the package has it (the real model server's port).
 // The same test functions run here, and every request they send to that address is counted (modelPortRequests; the audit counted
 // with a server put in place of hookLocalURL, which no longer tells the real address from the closed one TestMain sets). The control
 // uses freshMachine.
@@ -12,8 +13,6 @@ func TestAuditD_A6_ImportedTestsLookAtTheModelPort(t *testing.T) {
 		name string
 		run  func(*testing.T)
 	}{
-		{"TestAuditACodexApprovalLineComesBackAfterThePersonRemovedIt", TestAuditACodexApprovalLineComesBackAfterThePersonRemovedIt},
-		{"TestAuditACodexReadOnlyConfigAndThePreview", TestAuditACodexReadOnlyConfigAndThePreview},
 		{"TestAuditACodexApprovalLineCommentedOutByThePerson", TestAuditACodexApprovalLineCommentedOutByThePerson},
 		{"control, TestInitInstallsTheHooksForTheFirstProjectOnAMachine", TestInitInstallsTheHooksForTheFirstProjectOnAMachine},
 	} {

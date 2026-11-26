@@ -35,39 +35,6 @@ func requireWikiStaysWritable(t *testing.T, b Book, source string, saved *Page, 
 	}
 }
 
-func TestSavedPageWithIndentedMultilineTextReadsBack(t *testing.T) {
-	indented := "  - run the focused test\n  - then run the whole suite"
-	cases := map[string]func(d *Draft, source string){
-		"passage quote that is an indented list": func(d *Draft, _ string) {
-			body := "Steps:\n" + indented + "\nDone."
-			d.Body = &body
-			d.Passages = &[]KnowledgePassage{{Role: "current", Quote: indented, Conditions: "before a commit", Reason: "the order matters"}}
-		},
-		"passage reason that starts with a line break": func(d *Draft, _ string) {
-			body := "Run the focused test first."
-			d.Body = &body
-			d.Passages = &[]KnowledgePassage{{Role: "current", Quote: "Run the focused test first.", Conditions: "before a commit", Reason: "\nthe whole suite is slow"}}
-		},
-		"change_reason that starts with a line break": func(d *Draft, _ string) {
-			d.ChangeReason = "\nthe person corrected the order"
-		},
-		"practice step that is an indented block": func(d *Draft, source string) {
-			d.Kind = "howto"
-			d.Learning = &Learning{Practice: &KnowledgePractice{Steps: []PracticeStep{{Condition: "before a commit", Action: indented, Avoid: "skipping the focused test", Check: "both pass", Sources: []string{source}}}}}
-		},
-	}
-	for name, change := range cases {
-		t.Run(name, func(t *testing.T) {
-			b := Book{Root: t.TempDir(), Scope: "/work/project"}
-			source := roundTripSource(t, b, 1)
-			d := Draft{Title: "Test order", Lesson: "Run the focused test before the whole suite.", AppliesTo: "before a commit", Kind: "rule", Scene: "when committing", Sources: []string{source}}
-			change(&d, source)
-			result, err := b.Ingest(d)
-			requireWikiStaysWritable(t, b, source, result.Page, err)
-		})
-	}
-}
-
 func TestPatchWithIndentedPassageKeepsTheArticleReadable(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/project"}
 	source := roundTripSource(t, b, 1)

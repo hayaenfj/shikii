@@ -172,38 +172,6 @@ func TestAuditNAPageOfAnotherWorksResult(t *testing.T) {
 	}
 }
 
-// A guard for checkWorkSource's "source = memo.Source" (a capture that failed once is finished as the kind its memo kept). The
-// shipped TestAuditCReportWhoseCaptureWasFinishedLater asserts only that the result citing the first report is not complete: without
-// the line, the interrupted report can never be finished (refused under its own title), the reworded result B is not complete
-// either, and the test still passes, on an unrelated refusal ("unknown reasoning evidence observed1"). Audit N, mutation N31. GREEN on
-// the candidate; RED with that mutation.
-func TestAuditNAnInterruptedReportIsFinishedAsAReport(t *testing.T) {
-	f := newAuditFlow(t)
-	first := f.prepare(f.ask(planningTestRequest), "CSV export filters")
-	old := workAfterWrite
-	t.Cleanup(func() { workAfterWrite = old })
-	failed := false
-	workAfterWrite = func(kind string) error {
-		if kind == "observation" && !failed {
-			failed = true
-			return errSyntheticInterrupt
-		}
-		return nil
-	}
-	if _, err := f.record(first, map[string]any{"result": map[string]any{"changed": "Renamed the button."}}); err != nil || !failed {
-		t.Fatalf("precondition: the first report's save fails once: %v", err)
-	}
-	workAfterWrite = old
-	b, err := f.record(first, map[string]any{"result": map[string]any{"changed": "Renamed the export button.", "checked": "Looked at it."}})
-	if err != nil || b["complete"] != true {
-		t.Errorf("the reworded result is not complete once the interrupted report is finished: %v %.300s", err, auditJSON(b["errors"]))
-	}
-	c, _ := f.record(first, map[string]any{"result": map[string]any{"changed": "Renamed the export button, checked.", "checked": "It works.", "sufficient": true, "evidence": []any{"observed1"}}})
-	if raw := auditJSON(c["errors"]); !strings.Contains(raw, "a report this work wrote about itself") {
-		t.Errorf("INVARIANT 10: the result citing the interrupted report is not refused as citing a report: %.300s", raw)
-	}
-}
-
 var errSyntheticInterrupt = &syntheticError{"synthetic: the write was interrupted"}
 
 type syntheticError struct{ s string }

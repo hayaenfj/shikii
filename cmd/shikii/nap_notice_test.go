@@ -183,22 +183,6 @@ func TestNapRunMarksTheNoticeOnceAndMakesNoFileWhenThereWasNone(t *testing.T) {
 	}
 }
 
-// A subagent is told nothing and takes no mark, also while a notice is waiting to be repeated.
-func TestNapNoticeIsNotRepeatedToASubagent(t *testing.T) {
-	st, scope, _, _, _ := memoryEffectFixture(t)
-	saveWorkResults(t, st, scope, 0, 5, time.Now().Add(-time.Hour))
-	if ctx := noticeContext(t, startSession(t, scope, map[string]any{"session_id": "first"})); !strings.Contains(ctx, napMarker) {
-		t.Fatalf("premise: the first session is told:\n%s", ctx)
-	}
-	written := readNapStateFile(t, st)
-	if out := startSession(t, scope, map[string]any{"agent_id": "sub-1", "agent_type": "general-purpose"}); out != "" {
-		t.Fatalf("a subagent is told nothing:\n%s", out)
-	}
-	if got := readNapStateFile(t, st); got != written {
-		t.Fatalf("a subagent takes no mark:\n%q\n%q", written, got)
-	}
-}
-
 // A notice that comes again takes the mark the way the first one does: under the file's lock, and only while the file holds what it
 // read. A session that finds the lock held says nothing and writes nothing, so two sessions that start together are not both told.
 func TestNapNoticeThatComesAgainTakesTheMarkUnderTheLockOfTheFile(t *testing.T) {
@@ -229,14 +213,6 @@ func TestNapNoticeThatComesAgainTakesTheMarkUnderTheLockOfTheFile(t *testing.T) 
 	if notice, err := napNotice(st.Dir, scope, time.Now()); err != nil || !strings.Contains(notice, napMarker) {
 		t.Fatalf("with the lock free it is said again: %q %v", notice, err)
 	}
-}
-
-// A run of `shikii nap` never writes through a hard link: a .shikii/nap with a second name is a file of the person's and counts as not there.
-func TestNapRunDoesNotMarkTheNoticeThroughAHardLink(t *testing.T) {
-	st, _, _, _, _ := memoryEffectFixture(t)
-	other := linkToAPersonsFile(t, napStatePath(st), napPersonsFile)
-	decodeNap(t)
-	requireFileHolds(t, other, napPersonsFile)
 }
 
 // While another session holds the lock of .shikii/nap (it is taking the mark of a notice), a run of `shikii nap` leaves the file as it is

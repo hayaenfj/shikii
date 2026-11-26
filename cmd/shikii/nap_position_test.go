@@ -410,40 +410,10 @@ func napReportSize(base napReport, premise []napPremiseChanged, convs []napConve
 	return napEncodedLen(base)
 }
 
-// Audit 0.42.0 (second confirmation), item A, first case: 32 articles with control characters in the title (200 bytes each is allowed)
-// made the report 43,455 bytes with one small conversation. The articles that fit are listed, the rest counted.
-func TestNapRunStaysWithin24000BytesWhen32ArticlesWithControlCharacterTitlesAndOneSmallConversationAreWaiting(t *testing.T) {
-	premise := napPremiseListOf(32, napControlTitle)
-	r := napReport{NextAction: napNextAction, PremiseChanged: premise}
-	n := fitNapReport(&r, napConversationsOf(1, napSmallText), 24000, napMaxConvs)
-	if got := napEncodedLen(r); got > 24000 {
-		t.Fatalf("one small conversation, %d bytes printed, more than 24000 (%d articles, %d conversations)", got, len(r.PremiseChanged), n)
-	}
-	if len(r.PremiseChanged) < 1 || len(r.PremiseChanged) >= 32 || len(r.PremiseChanged)+r.PremiseChangedMore != 32 {
-		t.Fatalf("the articles that fit are listed from the front and the rest counted: %d listed, %d more", len(r.PremiseChanged), r.PremiseChangedMore)
-	}
-	if got, want := r.PremiseChanged[len(r.PremiseChanged)-1].ID, premise[len(r.PremiseChanged)-1].ID; got != want {
-		t.Fatalf("the articles are taken in their order: the last is %s, not %s", got, want)
-	}
-}
-
-// Audit 0.42.0 (second confirmation), item A, second case: 32 ordinary titles with quotes and one conversation full of terminal escape
-// codes made it 30,848 bytes. The articles fit; the conversation, that alone is 16,000 bytes, does not fit what is left.
-func TestNapRunStaysWithin24000BytesWhen32ArticlesAndOneConversationOfEscapeCodesAreWaiting(t *testing.T) {
-	premise := napPremiseListOf(32, napQuoteTitle)
-	r := napReport{NextAction: napNextAction, PremiseChanged: premise}
-	convs := napConversationsOf(1, napControlText)
-	n := fitNapReport(&r, convs, 24000, napMaxConvs)
-	if got := napEncodedLen(r); got > 24000 {
-		t.Fatalf("one conversation of escape codes, %d bytes printed, more than 24000 (%d articles, %d conversations)", got, len(r.PremiseChanged), n)
-	}
-	if len(r.PremiseChanged) != 32 || r.PremiseChangedMore != 0 || n != 0 || len(r.Conversations) != 0 || r.NewerLeft != 1 {
-		t.Fatalf("the 32 articles fit and come first, the conversation is left for a run that has the room: %d articles, %d more, %d conversations, %d left", len(r.PremiseChanged), r.PremiseChangedMore, n, r.NewerLeft)
-	}
-}
-
 // The articles are taken from the front while the report, with no conversation yet, stays within the bound; the conversations then take
-// what room is left; what is left out is counted (the articles past the cap of 32 are counted already).
+// what room is left; what is left out is counted (the articles past the cap of 32 are counted already). These are the two cases of the second
+// confirmation of the audit of 0.42.0, item A: 32 articles with control-character titles (200 bytes each print as 1,200) and one small
+// conversation made a report of 43,455 bytes; 32 articles with quoted titles and one conversation of escape codes, 30,848 bytes.
 func TestNapFitTakesTheArticlesWhosePremiseChangedWhileTheReportFitsAndThenTheConversations(t *testing.T) {
 	premise := napPremiseListOf(32, napControlTitle)
 	big := napConversationsOf(5, napAsciiText)

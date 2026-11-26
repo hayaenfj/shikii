@@ -178,7 +178,8 @@ func TestNapNoticeIsNotRepeatedToTheNextSessionOnceANapRan(t *testing.T) {
 	}
 }
 
-// A subagent's SessionStart carries an agent_id: it is told nothing and takes no mark, so the person's own session still is.
+// A subagent's SessionStart carries an agent_id: it is told nothing and takes no mark, so the person's own session still is (also while
+// a notice is waiting to be repeated).
 func TestNapNoticeIsNotGivenToASubagent(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
 	written := writeNapState(t, st, time.Now().Add(-25*time.Hour))
@@ -1008,6 +1009,8 @@ func TestNapStateFilesWithASecondNameAreReadAsNotThere(t *testing.T) {
 	}
 }
 
+// The notice at the start of a session is the only writer of .shikii/nap (a run of `shikii nap` reads it and writes nothing), so this is
+// where a .shikii/nap with a second name must be refused: the file the link points to stays as it was.
 func TestNapNoticeDoesNotWriteThroughAHardLink(t *testing.T) {
 	st, scope, _, _, _ := memoryEffectFixture(t)
 	other := linkToAPersonsFile(t, napStatePath(st), napPersonsFile)

@@ -35,7 +35,9 @@ func TestAuditGStopInAProjectWhoseRecordIsUnreadable(t *testing.T) {
 
 // A completion notice that comes in project B, for work of B's request, takes back the end of the turn in every other project
 // of the session: the request in A that had ended before B's request started is open again until the next Stop. A message of the
-// person that comes in A before that Stop takes over the references of A's finished request.
+// person that comes in A before that Stop takes over the references of A's finished request. The session's turn is one state, so
+// the same flow with the notice in A itself, with B's Stop left out, or with request 2 outside every project, in a removed project,
+// or with its record unreadable, ends in the same state and is not run separately.
 func TestAuditGNoticeInBReopensAFinishedRequestInA(t *testing.T) {
 	f := auditCFinishedFirstRequest(t)
 	runUnreviewedHook(t, "stop", map[string]any{"session_id": "planning", "cwd": t.TempDir(), "last_assistant_message": "Done."})

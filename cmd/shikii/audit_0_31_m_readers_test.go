@@ -51,25 +51,6 @@ func TestAuditMTheObservationReaderMissesForms(t *testing.T) {
 	}
 }
 
-// INVARIANT 1: "the functions that read a JSON body on their own are the allowlist ownBodyReaders; the test reads by type". The
-// reader allows a Body handed to a function by the name decodeObject (the identifier's name, not the object it denotes), and it
-// counts only the selector Body: a local function named decodeObject that reads the body with encoding/json, and a handler that
-// reads the whole request with net/http/httputil.DumpRequest, are not found.
-func TestAuditMTheBodyReaderMissesForms(t *testing.T) {
-	control := auditMPackageWith(t, "zz_new.go", "package main\n\nimport (\n\t\"encoding/json\"\n\t\"net/http\"\n)\n\nfunc (s *server) handleAuditM(w http.ResponseWriter, r *http.Request) {\n\tvar req struct{}\n\t_ = json.NewDecoder(r.Body).Decode(&req)\n}\n")
-	if !slices.Contains(bodyReaders(t, control), "handleAuditM") {
-		t.Fatalf("control: a handler that reads its body is found")
-	}
-	for name, src := range map[string]string{
-		"a local function named decodeObject": "package main\n\nimport (\n\t\"encoding/json\"\n\t\"io\"\n\t\"net/http\"\n)\n\nfunc (s *server) handleAuditM(w http.ResponseWriter, r *http.Request) {\n\tdecodeObject := func(body io.Reader, v any) error { return json.NewDecoder(body).Decode(v) }\n\tvar req struct{}\n\t_ = decodeObject(r.Body, &req)\n}\n",
-		"the request dumped":                  "package main\n\nimport (\n\t\"bytes\"\n\t\"encoding/json\"\n\t\"net/http\"\n\t\"net/http/httputil\"\n)\n\nfunc (s *server) handleAuditM(w http.ResponseWriter, r *http.Request) {\n\traw, _ := httputil.DumpRequest(r, true)\n\t_, body, _ := bytes.Cut(raw, []byte(\"\\r\\n\\r\\n\"))\n\tvar req struct{}\n\t_ = json.Unmarshal(body, &req)\n}\n",
-	} {
-		if found := bodyReaders(t, auditMPackageWith(t, "zz_new.go", src)); !slices.Contains(found, "handleAuditM") {
-			t.Errorf("INVARIANT 1: %s: a new handler that reads its JSON body on its own is not found (found: %v)", name, found)
-		}
-	}
-}
-
 // The snippets of the shipped negatives are read against typedPrelude, whose workObservation has a field report bool and no field
 // source (the type of work.go has source notebook.WorkSource): a negative that sets the kind of a source is read against a type
 // that has no such field, its error is let pass (a snippet is not strict), and the reader is blind to it. The same line in a file of

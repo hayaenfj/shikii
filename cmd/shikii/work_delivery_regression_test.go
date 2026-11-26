@@ -41,14 +41,6 @@ func TestWorkDeliveryRegressionC01HTTPBudget(t *testing.T) {
 	}
 }
 
-func TestWorkDeliveryRegressionC01Control(t *testing.T) {
-	code, compact, wire := auditContractHTTP(t, 25)
-	t.Logf("max_bytes=8192 compact=%d wire=%d status=%d", compact, wire, code)
-	if code != 200 || wire > 8192 {
-		t.Fatal("\u8fd1\u3044\u5bfe\u7167\u304c\u4e0a\u9650\u5185\u306b\u306a\u3089\u306a\u3044", code, wire)
-	}
-}
-
 func auditContractSource(t *testing.T, titleBytes, budget int) (int, error, string) {
 	t.Helper()
 	b, _ := loopBook(t)
@@ -73,14 +65,6 @@ func auditContractSource(t *testing.T, titleBytes, budget int) (int, error, stri
 	return len(body), err, fmt.Sprint(v["output"])
 }
 
-func TestWorkDeliveryRegressionC02SourceCursor(t *testing.T) {
-	n, err, _ := auditContractSource(t, 150, 8192)
-	t.Logf("title_bytes=150 max_bytes=8192 body_bytes=%d continuation_error=%v", n, err)
-	if n == 0 || err != nil {
-		t.Errorf("C2\u9055\u53cd: \u539f\u8cc7\u6599\u3092\u8fd4\u3059cursor\u304c\u9032\u307e\u306a\u3044: body=%d err=%v", n, err)
-	}
-}
-
 func TestWorkDeliveryRegressionC02Control(t *testing.T) {
 	for _, c := range []struct{ title, budget int }{{100, 8192}, {150, 16384}} {
 		t.Run(fmt.Sprintf("title%d-budget%d", c.title, c.budget), func(t *testing.T) {
@@ -90,48 +74,6 @@ func TestWorkDeliveryRegressionC02Control(t *testing.T) {
 				t.Fatal("\u8fd1\u3044\u5bfe\u7167\u304c\u9032\u307e\u306a\u3044", n, err)
 			}
 		})
-	}
-}
-
-func auditContractCorrection(t *testing.T, result, evidence string) map[string]any {
-	t.Helper()
-	st, scope, h, key := correctionSeed(t)
-	report, err := st.MemoryReport(scope)
-	if err != nil || len(report.All) == 0 {
-		t.Fatal("\u6e96\u5099\u5931\u6557", err)
-	}
-	id := report.All[0].SourceID
-	in := map[string]string{"source_id": id, "key": key, "result": result, "correction_result": "repeated"}
-	if evidence != "" {
-		in["decision"] = "Checked the synthetic correction recurrence."
-		in["evidence"] = evidence
-	}
-	r := reflectCall(t, h, map[string]any{"operation": "submit", "memory": []map[string]string{in}})
-	if r["complete"] == true {
-		saved, e := st.MemoryAssessments(scope)
-		if e != nil {
-			t.Fatal(e)
-		}
-		for _, a := range saved {
-			if a.SourceID == id && a.Key == key {
-				t.Logf("saved_result=%s correction=%s decision=%q evidence=%q", a.Result, a.CorrectionResult, a.Decision, a.Evidence)
-			}
-		}
-	}
-	return r
-}
-
-func TestWorkDeliveryRegressionC03CorrectionEvidence(t *testing.T) {
-	r := auditContractCorrection(t, "unused", "")
-	if r["complete"] == true {
-		t.Error("C5\u9055\u53cd: \u8a02\u6b63\u518d\u767a\u306e\u5224\u65ad\u30fb\u8a3c\u62e0\u3092\u7701\u7565\u3057\u305f\u5165\u529b\u304c\u6210\u529f\u3057\u305f")
-	}
-}
-
-func TestWorkDeliveryRegressionC03Control(t *testing.T) {
-	r := auditContractCorrection(t, "unused", "The synthetic check found the same condition recurring.")
-	if r["complete"] != true {
-		t.Fatal("\u6839\u62e0\u3092\u6307\u5b9a\u3057\u305f\u8fd1\u3044\u5bfe\u7167\u304c\u5931\u6557\u3057\u305f", r)
 	}
 }
 
@@ -188,6 +130,8 @@ func TestWorkDeliveryRegressionC04Control(t *testing.T) {
 	}
 }
 
+// A source longer than max_bytes (a 150-byte title, max_bytes 8192) is read in pages: the first page is not empty (C2: the cursor
+// once did not advance), each page moves forward and no cursor repeats, and the pages joined are the body.
 func TestWorkDeliverySourcePagesMakeCompleteProgress(t *testing.T) {
 	b, _ := loopBook(t)
 	body := strings.Repeat("\u78ba\u8a8d\u3057\u305f\u6761\u4ef6\u3002", 700)

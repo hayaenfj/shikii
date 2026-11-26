@@ -268,7 +268,8 @@ func TestFeedbackAfterChecksTheMarkAgainstTheFile(t *testing.T) {
 // A line that is in the file twice, byte for byte, must not make the read skip what lies between the copies. The history was [X, L, A, B, L']
 // (L' is a second copy of L), a run recorded the place just after L, then X was removed and the length of X was the length of A, B and L
 // together: the old offset is now the end of L' and L' has the hash of the mark, but A and B were never read. The read goes on after the first
-// line that has the hash, so A and B are read (L' is read again: a repeat is the price, a skip is not).
+// line that has the hash, so A and B are read (L' is read again: a repeat is the price, a skip is not). So the read goes on after the
+// first copy even when the mark was made at the second.
 func TestFeedbackAfterDoesNotSkipLinesBetweenTwoCopiesOfTheMarkedLine(t *testing.T) {
 	s, scope := feedbackWindowFixture(t, 0)
 	lineL := feedbackLine(t, "000000000000000a", "L-reply", 10)
@@ -298,19 +299,6 @@ func TestFeedbackAfterDoesNotSkipLinesBetweenTwoCopiesOfTheMarkedLine(t *testing
 	got, err = s.FeedbackAfter(scope, mark)
 	if err != nil || fmt.Sprint(feedbackLineIDs(got)) != "[000000000000000b 000000000000000c 000000000000000a]" {
 		t.Fatalf("A and B must be read after X was removed: %v %v", feedbackLineIDs(got), err)
-	}
-}
-
-// When the marked line is in the file twice, the read goes on after the first copy, even when the mark was made at the second: the
-// conversations between them are read again, never skipped.
-func TestFeedbackAfterGoesOnAfterTheFirstCopyOfTheMarkedLine(t *testing.T) {
-	s, scope := feedbackWindowFixture(t, 0)
-	lineL := feedbackLine(t, "000000000000000a", "L-reply", 10)
-	lineA := feedbackLine(t, "000000000000000b", "A-reply", 20)
-	writeFeedbackLines(t, s, scope, lineL, lineA, lineL)
-	got, err := s.FeedbackAfter(scope, FeedbackMark{Offset: int64(len(lineL) + len(lineA) + len(lineL)), Hash: hashOfLine(lineL)})
-	if err != nil || fmt.Sprint(feedbackLineIDs(got)) != "[000000000000000b 000000000000000a]" {
-		t.Fatalf("after the first copy of the line: %v %v", feedbackLineIDs(got), err)
 	}
 }
 

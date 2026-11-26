@@ -320,26 +320,6 @@ func TestOpenMissesCountOnlyTheMissesTheyExamine(t *testing.T) {
 	}
 }
 
-// The searches of one call share the parsing of the articles: asking about many answered misses parses the one article once. The
-// count of parses is the measure, so this does not depend on how fast a machine is.
-func TestOpenMissesShareTheReadingOfTheArticles(t *testing.T) {
-	b := missFixture(t)
-	base := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
-	for i := 0; i < 8; i++ {
-		if _, err := b.recordMissAt(fmt.Sprintf("quartz exports %02d", i), "", "", emptyView(), base.Add(time.Duration(i)*time.Minute)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	before := PageParses()
-	got, err := b.OpenMisses(time.Time{}, 8, "")
-	if err != nil || len(got) != 0 {
-		t.Fatalf("all 8 are answered: %+v (%v)", got, err)
-	}
-	if parses := PageParses() - before; parses != 1 {
-		t.Fatalf("8 searches over one article parse it once, got %d passes", parses)
-	}
-}
-
 // A line of the journal that is not a search of words (a hand-written one) is not listed as open, whatever the page says of it.
 func TestOpenMissesSkipWhatIsNotASearchOfWords(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/missed-searches"}

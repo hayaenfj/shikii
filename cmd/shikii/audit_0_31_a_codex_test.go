@@ -41,68 +41,6 @@ func TestAuditACodexToolsAllowedForms(t *testing.T) {
 	}
 }
 
-// audit A: the person takes the approval line out again (the plain way to undo it), and init runs once more.
-func TestAuditACodexApprovalLineComesBackAfterThePersonRemovedIt(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	path := filepath.Join(home, ".codex", "config.toml")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	project := filepath.Join(t.TempDir(), "project")
-	if err := os.MkdirAll(project, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(project)
-	capture(t, func() error { return cmdInit(nil) })
-	b, _ := os.ReadFile(path)
-	if !strings.Contains(string(b), codexToolsAllowedLine) {
-		t.Fatalf("precondition: init adds the line:\n%s", b)
-	}
-	// the person removes the line shikii added
-	removed := strings.Replace(string(b), codexToolsAllowedLine+"\n", "", 1)
-	if err := os.WriteFile(path, []byte(removed), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out := capture(t, func() error { return cmdInit(nil) }) // init again in the same project (how the skill is refreshed)
-	after, _ := os.ReadFile(path)
-	if strings.Contains(string(after), codexToolsAllowedLine) {
-		t.Errorf("the person took the approval line out, and the next init put it back:\n%s\n---\n%.400s", after, out)
-	}
-}
-
-// audit A: a config.toml the person made read-only: what hook install --yes says and does.
-func TestAuditACodexReadOnlyConfigAndThePreview(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root writes read-only files")
-	}
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	path := filepath.Join(home, ".codex", "config.toml")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	own := "[mcp_servers.shikii]\ncommand = " + quotedList([]string{mcpCommand()}) + "\n" + codexServerArgsLine + "\n"
-	if err := os.WriteFile(path, []byte(own), 0o444); err != nil {
-		t.Fatal(err)
-	}
-	out := capture(t, func() error { return hookInstall([]string{"--yes"}, true) })
-	after, _ := os.ReadFile(path)
-	if string(after) != own {
-		t.Errorf("a read-only config.toml was changed:\n%s", after)
-	}
-	var lines []string
-	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(line, "config.toml") {
-			lines = append(lines, line)
-		}
-	}
-	t.Logf("what hook install --yes says about config.toml:\n%s", strings.Join(lines, "\n"))
-	if strings.Contains(out, "Codex will run shikii's MCP tools without asking each time") && !strings.Contains(out, "read-only") {
-		t.Errorf("hook install --yes says the line is added, the file is read-only and stays as it is, and nothing says so")
-	}
-}
-
 // audit A: config.toml kept elsewhere through a link.
 func TestAuditACodexConfigThroughALink(t *testing.T) {
 	home := t.TempDir()

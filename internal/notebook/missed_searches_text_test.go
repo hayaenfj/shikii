@@ -214,7 +214,8 @@ func TestNoteMissResultIsNotTiedByTheFieldNamesOfAResult(t *testing.T) {
 
 // The text of a saved result is what its author wrote in the fields the author writes: changed, checked and remaining, and the area
 // and the reason of each coverage row (an object in an array of the result). A miss whose words appear only in one of those is tied.
-// Words in any other field are not: an unknown field, however deep, is not the author's report.
+// Words in any other field are not: an unknown field, however deep, is not the author's report, and a number, a boolean or null is no
+// text in any field (see also TestNoteMissResultIsNotTiedByJSONThatHoldsNoReport).
 func TestNoteMissResultIsTiedByTheFieldsTheAuthorWritesAndNoOther(t *testing.T) {
 	b := missedBook(t, "numbat bilby", "saffron wiring", "juniper meadow", "kestrel harbor", "quartz ledger", "walnut grove", "orchid valley")
 	result := savedResult(t, b, `{"changed":"Reviewed.","remaining":"The numbat and the bilby were not seen.","coverage":[{"area":"Saffron wiring","outcome":"excluded","reason":"The juniper meadow has none."}],"notes":{"inner":[{"text":"Kestrel harbor"}],"list":["a quartz ledger"]},"extra":"orchid valley"}`)
@@ -272,19 +273,6 @@ func TestNoteMissResultIsNotTiedByJSONThatHoldsNoReport(t *testing.T) {
 		if after, err := os.ReadFile(path); err != nil || string(after) != string(before) {
 			t.Fatalf("%s: a content that holds no report ties nothing and writes nothing: %s (%v)", name, after, err)
 		}
-	}
-}
-
-// Numbers, booleans and null are not text: a miss of one of them is not tied, and the words of a string next to them are.
-func TestNoteMissResultIsNotTiedByANumberABooleanOrNull(t *testing.T) {
-	b := missedBook(t, "4242", "false", "null", "saffron lanterns")
-	result := savedResult(t, b, `{"count":4242,"flag":false,"none":null,"changed":"Saffron lanterns."}`)
-	if err := b.NoteMissResult([]string{"4242", "false", "null", "saffron lanterns"}, result, ""); err != nil {
-		t.Fatal(err)
-	}
-	want := map[string]string{"4242": "", "false": "", "null": "", "saffron lanterns": result}
-	if got := tiedResults(t, b); !sameResults(got, want) {
-		t.Fatalf("a number, a boolean and null are not text: %v, want %v", got, want)
 	}
 }
 

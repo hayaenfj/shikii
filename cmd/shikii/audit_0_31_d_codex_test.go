@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +9,8 @@ import (
 )
 
 // Tests of audit D (0.31.0, second round) for what the fixes of Codex's registration and of init claim. Each failed on a copy where
-// the named line was taken out (the report lists the lines: mutations M15, M16, M17, M18, M19, M21).
+// the named line was taken out (the report lists the lines: mutations M15, M16, M17, M18, M19, M21; M16, M17 and M21 are caught by
+// TestAuditCCodexNoteAndLineCases and TestAuditCInitSaysWhoGotTheHooks in audit_0_31_c_codex_test.go, where their tests were dropped).
 
 // codexPreviewPromise is what hook install shows before it adds the approval line.
 const codexPreviewPromise = "Codex will run shikii's MCP tools without asking each time"
@@ -153,67 +153,4 @@ func TestAuditDCodexPreviewFollowsTheInstallForACommandThatIsGone(t *testing.T) 
 			t.Errorf("the install changed a registration whose command is the person's wrapper:\n%s", after)
 		}
 	})
-}
-
-// M17 (hook_install.go, the preview's look at the note taken out): after the person deleted the line, the preview does not say it
-// will be added. M16 (init.go, the note removed for a registration written anew, taken out): a registration shikii writes anew
-// gets the line, also on a machine where shikii added the line to an earlier registration.
-func TestAuditDGap_TheNoteOfAnEarlierRegistration(t *testing.T) {
-	home := freshMachine(t)
-	path := filepath.Join(home, ".codex", "config.toml")
-	project := filepath.Join(t.TempDir(), "one")
-	if err := os.MkdirAll(project, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(project)
-	capture(t, func() error { return cmdInit(nil) })
-	b, _ := os.ReadFile(path)
-	if !strings.Contains(string(b), codexToolsAllowedLine) {
-		t.Fatalf("precondition: init adds the line:\n%s", b)
-	}
-	if err := os.WriteFile(path, []byte(strings.Replace(string(b), codexToolsAllowedLine+"\n", "", 1)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if preview := capture(t, func() error { return hookInstall(nil, true) }); strings.Contains(preview, codexPreviewPromise) {
-		t.Errorf("M17: the person deleted the line, the install leaves the block as it is, and the preview says the line will be added")
-	}
-	// the person takes the whole registration out, and init writes it anew
-	if err := os.WriteFile(path, []byte("model = \"x\"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out := capture(t, func() error { return cmdInit(nil) })
-	after, _ := os.ReadFile(path)
-	if !strings.Contains(string(after), codexServerArgsLine+"\n"+codexToolsAllowedLine+"\n") || !strings.Contains(out, "without Codex asking") {
-		t.Errorf("M16: the registration init wrote anew has no approval line:\n%s", after)
-	}
-}
-
-// M21 (init.go, the branch made unreachable): the install of the hooks stopped half-way: init says who has them, and goes on as
-// with hooks.
-func TestAuditDGap_InitSaysWhoGotTheHooks(t *testing.T) {
-	home := freshMachine(t)
-	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".codex", "hooks.json"), []byte(`{"hooks":{"Stop":"not a list"}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	project := filepath.Join(t.TempDir(), "one")
-	if err := os.MkdirAll(project, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(project)
-	out := capture(t, func() error { return cmdInit(nil) })
-	if got := fmt.Sprint(agentsWithShikiiHook(home)); got != "[Claude Code]" {
-		t.Fatalf("precondition: Claude Code alone has the hooks: %s", got)
-	}
-	if !strings.Contains(out, "Hooks: installed for Claude Code, and the rest failed") || strings.Contains(out, "Hooks: could not be installed") || !strings.Contains(out, "Page: the hook starts it") {
-		var said []string
-		for _, line := range strings.Split(out, "\n") {
-			if strings.HasPrefix(line, "Hooks:") || strings.HasPrefix(line, "Page:") || strings.HasPrefix(line, "Next:") {
-				said = append(said, line)
-			}
-		}
-		t.Errorf("M21: Claude Code has the hooks, and init does not say so:\n%s", strings.Join(said, "\n"))
-	}
 }
