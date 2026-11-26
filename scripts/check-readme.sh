@@ -51,7 +51,9 @@ done
 
 # 4. badge test count = measured count (counted with go test -list; the same number in every language's README)
 if command -v go >/dev/null; then
-  actual=$(for p in $(go list ./... 2>/dev/null); do go test -list '^Test' "$p" 2>/dev/null | grep -c '^Test' || true; done | awk '{s+=$1} END {print s}')
+  # one go test for every package: the test binaries are built side by side (one go test per package built them one at a time, about
+  # 13 of the 16 seconds this script took)
+  actual=$(go test -list '^Test' ./... 2>/dev/null | grep -c '^Test' || true)
 else
   actual=""; err "go is missing, so the tests cannot be counted"
 fi
