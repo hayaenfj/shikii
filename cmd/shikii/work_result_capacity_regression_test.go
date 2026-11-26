@@ -3,6 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -96,27 +100,86 @@ func TestWorkResultPartialAndBoundaryControls(t *testing.T) {
 	t.Logf("\u901a\u5e38\u306e\u672a\u51e6\u7406\u4fdd\u6301\u3068ref\u56de\u5fa9=\u6210\u529f \u72b6\u614b=%s", string(raw))
 }
 
+// capacitySnapshot keeps a copy of folders and puts them back as they were: the folders of a test (the temporary HOME and the
+// project's .shikii) that a later step is allowed to change.
+type capacitySnapshot struct {
+	folders []string
+	saved   string
+}
+
+func newCapacitySnapshot(t *testing.T, folders ...string) *capacitySnapshot {
+	t.Helper()
+	s := &capacitySnapshot{folders: folders, saved: t.TempDir()}
+	for i, folder := range folders {
+		if out, err := exec.Command("cp", "-Rp", folder, filepath.Join(s.saved, fmt.Sprint(i))).CombinedOutput(); err != nil {
+			t.Fatal(err, string(out))
+		}
+	}
+	return s
+}
+
+// restore replaces each folder by its copy. The copy stays, so a later restore gives the same folders again.
+func (s *capacitySnapshot) restore(t *testing.T) {
+	t.Helper()
+	for i, folder := range s.folders {
+		if err := os.RemoveAll(folder); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command("cp", "-Rp", filepath.Join(s.saved, fmt.Sprint(i)), folder).CombinedOutput(); err != nil {
+			t.Fatal(err, string(out))
+		}
+	}
+}
+
+// The two cases differ only in the room left at the end (desired), and the build before that is the same for both: the session record
+// grows page by page (an article of 16000 bytes read through prepare) until the first page where the case with the most room (2400)
+// takes its last, shorter page. That part is built once. A copy of the project's folders taken there (with the overhead measured so
+// far) is put back for each case, and each case goes on with the loop it had, from the same page, so it runs the steps it ran when it
+// built everything itself (the sizes logged for each page are the same as before).
 func TestWorkResultCapacityThroughPublicReads(t *testing.T) {
-	for _, desired := range []int{1400, 2400} {
+	cases := []int{1400, 2400}
+	mostRoom := slices.Max(cases)
+	repo, root, _ := planningFixture(t)
+	session := "audit-r3-public-capacity"
+	b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
+	reasoningPage(t, b, "\u76e3\u67fb\u7528\u306e\u521d\u671f\u8cc7\u6599", "howto", "\u5408\u6210\u72b6\u614b\u3092\u78ba\u8a8d\u3059\u308b\u3002")
+	runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "\u5408\u6210\u72b6\u614b\u3092\u78ba\u8a8d\u3059\u308b\u3002"})
+	p, err := workCall(t, b, "prepare", map[string]any{"session_id": session, "turn_id": loadSession(root, session).TurnID, "query": "\u76e3\u67fb\u7528\u306e\u521d\u671f\u8cc7\u6599"})
+	if err != nil {
+		t.Fatal("\u521d\u671f\u6e96\u5099\u5931\u6557", err)
+	}
+	previousSize := func() int {
+		raw, e := encodeHookSession(loadSession(root, session))
+		if e != nil {
+			t.Fatal(e)
+		}
+		return len(raw)
+	}
+	lastOverhead := 2000
+	i := 0
+	for ; i < 63; i++ {
+		before := previousSize()
+		remaining := hookSessionRecordLimit - before
+		if remaining < 16000+lastOverhead+mostRoom {
+			break // from here a case with less room still takes a whole page, and the case with the most room its last
+		}
+		length := 16000
+		page := reasoningPage(t, b, fmt.Sprintf("\u76e3\u67fb\u5bb9\u91cf\u8cc7\u6599 %02d", i), "howto", strings.Repeat("p", length))
+		_, err = workCall(t, b, "prepare", map[string]any{"receipt": p["receipt"], "query": "lesson:" + page.ID + "@" + page.Revision, "max_bytes": 393216})
+		if err != nil {
+			t.Fatal("\u660e\u793a\u8aad\u53d6\u6e96\u5099\u5931\u6557", i, err)
+		}
+		after := previousSize()
+		lastOverhead = after - before - length
+		t.Logf("\u8cc7\u6599=%d \u672c\u6587=%d \u4fdd\u5b58\u91cf=%d \u4f59\u88d5=%d \u5897\u5206\u4f59\u767d=%d", i, length, after, hookSessionRecordLimit-after, lastOverhead)
+	}
+	shared := newCapacitySnapshot(t, os.Getenv("HOME"), root)
+	firstPage, overheadAtFirstPage := i, lastOverhead
+	for _, desired := range cases {
 		t.Run(fmt.Sprint(desired), func(t *testing.T) {
-			repo, root, _ := planningFixture(t)
-			session := "audit-r3-public-capacity"
-			b := notebook.Book{Root: root, Scope: feedbackScope(repo)}
-			reasoningPage(t, b, "\u76e3\u67fb\u7528\u306e\u521d\u671f\u8cc7\u6599", "howto", "\u5408\u6210\u72b6\u614b\u3092\u78ba\u8a8d\u3059\u308b\u3002")
-			runUnreviewedHook(t, "user-prompt-submit", map[string]any{"session_id": session, "cwd": repo, "prompt": "\u5408\u6210\u72b6\u614b\u3092\u78ba\u8a8d\u3059\u308b\u3002"})
-			p, err := workCall(t, b, "prepare", map[string]any{"session_id": session, "turn_id": loadSession(root, session).TurnID, "query": "\u76e3\u67fb\u7528\u306e\u521d\u671f\u8cc7\u6599"})
-			if err != nil {
-				t.Fatal("\u521d\u671f\u6e96\u5099\u5931\u6557", err)
-			}
-			previousSize := func() int {
-				raw, e := encodeHookSession(loadSession(root, session))
-				if e != nil {
-					t.Fatal(e)
-				}
-				return len(raw)
-			}
-			lastOverhead := 2000
-			for i := 0; i < 63; i++ {
+			shared.restore(t)
+			lastOverhead := overheadAtFirstPage
+			for i := firstPage; i < 63; i++ {
 				before := previousSize()
 				remaining := hookSessionRecordLimit - before
 				length := 16000

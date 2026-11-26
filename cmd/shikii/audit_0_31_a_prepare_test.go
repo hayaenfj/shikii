@@ -182,7 +182,12 @@ func TestAuditAPrepareBoundSweep(t *testing.T) {
 			whole++
 		}
 	}
-	for bound := 8192; bound <= 70000; bound += 617 {
+	// From the smallest bound a prepare takes (8192) up, 3 x 617 bytes apart (they were 617). Measured on 8 mutations of
+	// limitWorkPreparation (the max_bytes that output names, how_to_record left out, the step that leaves the context out of a reply
+	// that is over the bound, a step that does not take its field out, a fit that passes 500 bytes over, ...): the 3 this sweep
+	// caught it still catches at 2, 3, 4 and 6 times the step. The 5 it did not catch at 617 it does not catch at the larger steps
+	// either (this sweep does not look at a boundary byte by byte).
+	for bound := 8192; bound <= 70000; bound += 3 * 617 {
 		check("standalone", fmt.Sprintf(`{"query":"README `+"\u5c0e\u5165\u624b\u9806"+`","request":"README `+"\u306e\u5c0e\u5165\u624b\u9806\u3092\u66f4\u65b0\u3059\u308b"+`","max_bytes":%d}`, bound), bound)
 		check("with ids", strings.TrimSuffix(ids, "}")+fmt.Sprintf(`,"query":"README `+"\u5c0e\u5165\u624b\u9806"+`","max_bytes":%d}`, bound), bound)
 	}

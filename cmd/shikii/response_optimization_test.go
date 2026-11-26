@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"github.com/hayaenfj/shikii/internal/notebook"
 	"reflect"
 	"strings"
@@ -60,6 +61,17 @@ func TestResponseBriefReflectionDoesNotCopyDiscardedBody(t *testing.T) {
 	}
 	view.Lessons[0].Body = strings.Repeat("Discarded synthetic body.\n", 500)
 	var out map[string]any
+	// A fixed 200 runs instead of the default one second of them (about 100000): bytes per run is a mean, and the first call above
+	// already warmed what the first run allocates once. The flag is put back for the tests that follow.
+	benchtime := flag.Lookup("test.benchtime")
+	if benchtime == nil {
+		t.Fatal("precondition: the test.benchtime flag exists")
+	}
+	was := benchtime.Value.String()
+	if err := flag.Set("test.benchtime", "200x"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = flag.Set("test.benchtime", was) })
 	measure := testing.Benchmark(func(b *testing.B) {
 		for range b.N {
 			out, e = preparedReflectionContext(view, true)

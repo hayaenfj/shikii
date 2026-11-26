@@ -43,6 +43,12 @@ func auditIView(firstRequest, firstDeliveries, others int) reflectView {
 // whole unless output says that it alone is over; and, but for the bound where the first becomes a head, a smaller bound never
 // lists more conversations or brings back the raw text of one.
 func TestAuditIReflectBoundsOverShapes(t *testing.T) {
+	// The bounds are 3 x 389 bytes apart (they were 389). Measured on 19 mutations of limitReflectQuery, reflectHead and reflectBare
+	// (a key, the files or the mark of a correction left out, the count of what waits, the order of what is dropped, the note that a
+	// reply is still over the bound, the measure of the first conversation, a step that takes more than it should, ...): each one this
+	// sweep caught with the step of 389 it still catches with 3 and with 6 times that. The byte-by-byte neighbourhood of the one
+	// boundary that needs it is TestAuditIReflectAtTheHeadBoundary's.
+	const step = 3 * 389
 	for _, shape := range []struct{ request, deliveries, others int }{{3000, 41, 4}, {9000, 30, 6}, {20000, 10, 3}, {500, 60, 8}, {12000, 0, 5}} {
 		view := auditIView(shape.request, shape.deliveries, shape.others)
 		total := len(view.Sources)
@@ -52,7 +58,7 @@ func TestAuditIReflectBoundsOverShapes(t *testing.T) {
 		}
 		whole := workContextSize(view)
 		prevListed, prevRaw, prevCut, overs, cuts, steps := -1, -1, false, 0, 0, 0
-		for bound := whole + 10; bound > 1500; bound -= 389 { // a step that is no divisor of the shapes; the boundary itself is TestAuditIReflectAtTheHeadBoundary's
+		for bound := whole + 10; bound > 1500; bound -= step { // a step that is no divisor of the shapes; the boundary itself is TestAuditIReflectAtTheHeadBoundary's
 			steps++
 			raw, _ := json.Marshal(limitReflectQuery(view, bound, workContextSize))
 			var reply map[string]any
@@ -153,7 +159,13 @@ func TestAuditIReflectAtTheHeadBoundary(t *testing.T) {
 			}
 		}
 		overWhole := 0
-		for bound := low - 50; bound <= low+400; bound++ {
+		// From just below the boundary (low) to 130 bytes above it, every byte (it was 50 below to 400 above). A measure of the first
+		// conversation that leaves a note out (the notes are 103, 81 and 79 bytes: 263 together) puts the first whole at low+1 with
+		// the reply over the bound by the length of what it left out, so every such measure fails at the boundary itself; the window
+		// above it is longer than the longest note. Measured on the mutations that leave out the note of the conversations that wait, the
+		// note of the bare deliveries, or the note of the heads, and on one that lets the fit pass 64 bytes over: each is caught with
+		// this window, in all three shapes and in the first two alone, as with the one before.
+		for bound := low - 3; bound <= low+130; bound++ {
 			if cut, over, size := cutAt(bound); over && !cut {
 				overWhole++
 				if overWhole == 1 {

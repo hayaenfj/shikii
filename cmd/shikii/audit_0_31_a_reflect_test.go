@@ -7,12 +7,19 @@ import (
 )
 
 // audit A: many pending conversations (each with its targets and one delivered lesson): the heads alone are what the bound must hold.
+//
+// One store grows from 12 to 25 to 42 conversations and is read at each size, instead of three stores built from nothing (79
+// conversations, each costing three hook runs and their Git calls). The sessions are named s0, s1, ... in the order they are added, so
+// the store at size n is the store a fresh build of n conversations gives. Reading it changes nothing (reflect query writes no
+// file: the bytes of the store are the same before and after a CLI and an MCP query), so the larger sizes do not depend on the
+// reads of the smaller ones. A subtest run alone (-run .../25_conversations) builds all it needs itself.
 func TestAuditAReflectQueryWithManyPendingConversations(t *testing.T) {
+	st, scope, h, _, _ := memoryEffectFixture(t)
+	built := 0 // conversations in the store so far
 	for _, n := range []int{12, 25, 42} {
 		t.Run(fmt.Sprintf("%d conversations", n), func(t *testing.T) {
-			st, scope, h, _, _ := memoryEffectFixture(t)
-			for i := 0; i < n; i++ {
-				session := fmt.Sprintf("s%d", i)
+			for ; built < n; built++ {
+				session := fmt.Sprintf("s%d", built)
 				memoryEffectPrompt(t, scope, session)
 				memoryEffectComplete(t, st, scope, session)
 			}
