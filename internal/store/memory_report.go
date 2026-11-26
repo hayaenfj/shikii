@@ -139,8 +139,12 @@ func (s Store) memoryLock(scope string) (func(), error) {
 	return s.lockFile(strings.TrimSuffix(s.memoryPath(scope), ".jsonl")+".lock", true)
 }
 
-// lockFile takes an exclusive lock on path, waiting up to 2 seconds. With create, the first concurrent creation is limited to one; an
-// existing lock is opened, not created.
+// LockWait is how long lockFile waits for a lock another holds before it gives up (the memory record is busy). It is a variable only
+// so that the tests of cmd/shikii, which hold the lock on purpose, can shorten it, as they swap SyncTemp; nothing in shikii sets it.
+var LockWait = 2 * time.Second
+
+// lockFile takes an exclusive lock on path, waiting up to LockWait (2 seconds). With create, the first concurrent creation is limited
+// to one; an existing lock is opened, not created.
 func (s Store) lockFile(path string, create bool) (func(), error) {
 	f, err := s.openFile(path, os.O_RDWR)
 	if create && os.IsNotExist(err) {
@@ -152,7 +156,7 @@ func (s Store) lockFile(path string, create bool) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	until := time.Now().Add(2 * time.Second)
+	until := time.Now().Add(LockWait)
 	for syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
 		if time.Now().After(until) {
 			f.Close()

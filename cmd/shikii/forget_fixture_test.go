@@ -119,6 +119,25 @@ func (w *forgetWorld) decision(spec, trace, source string, text bool) {
 	}
 }
 
+// reportTo makes the world report to t, the test of one case that runs on a project built by the test around it (see the tests whose every
+// case leaves the project as it found it: they build one world and each case compares the project before and after).
+func (w *forgetWorld) reportTo(t *testing.T) { w.t = t }
+
+// forgetShortLockWait is how long a step waits for a lock in a test that holds the lock on purpose: long enough for the wait to poll
+// several times (the loop sleeps 10 ms between tries), and no longer, because the test keeps the lock until the step has given up.
+const forgetShortLockWait = 100 * time.Millisecond
+
+// shortLockWait makes the steps of forget wait forgetShortLockWait, not the 2 seconds a hook waits, for the locks another holds: the
+// wiki's, the memory's and the one of a session's record. Only for a test that holds such a lock through the whole attempt of the step
+// and lets it go after the step has given up: the step stops the same way whatever the time is, and the real time only made the test sleep.
+// A test where a lock is held for a moment by something that goes on meanwhile must not use it.
+func shortLockWait(t *testing.T) {
+	t.Helper()
+	oldStore, oldWiki, oldHook := store.LockWait, notebook.LockWait, hookLockWait
+	store.LockWait, notebook.LockWait, hookLockWait = forgetShortLockWait, forgetShortLockWait, forgetShortLockWait
+	t.Cleanup(func() { store.LockWait, notebook.LockWait, hookLockWait = oldStore, oldWiki, oldHook })
+}
+
 // newForgetWorld builds the project. Nothing in it comes from a real session.
 func newForgetWorld(t *testing.T) *forgetWorld {
 	t.Helper()

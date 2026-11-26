@@ -143,13 +143,17 @@ func lock(dir string) (func(), error) {
 	return lockOpened(f)
 }
 
+// LockWait is how long lockOpened waits for a lock another holds before it gives up (the wiki is busy). It is a variable only so that
+// the tests of cmd/shikii, which hold the lock on purpose, can shorten it, as they swap store.SyncTemp; nothing in shikii sets it.
+var LockWait = 2 * time.Second
+
 func lockOpened(f *os.File) (func(), error) {
 	info, err := f.Stat()
 	if err != nil || !info.Mode().IsRegular() {
 		f.Close()
 		return nil, errors.New("wiki lock must be a regular file")
 	}
-	until := time.Now().Add(2 * time.Second)
+	until := time.Now().Add(LockWait)
 	for syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
 		if time.Now().After(until) {
 			f.Close()

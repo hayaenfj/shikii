@@ -412,6 +412,7 @@ func TestForgetRunAgainAfterAStopJudgesAnIdleSessionAsBefore(t *testing.T) {
 		})
 	}
 	t.Run("the lock of the agents' folder of last turns is held by another", func(t *testing.T) {
+		shortLockWait(t)
 		w := newForgetWorld(t)
 		w.idle(w.A)
 		before := w.snapshot()

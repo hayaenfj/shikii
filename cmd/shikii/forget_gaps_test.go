@@ -223,15 +223,16 @@ func TestMCPForgetTakesNoLateAnswerOfAnEarlierQuestion(t *testing.T) {
 }
 
 // The client cancels a call by its id: a cancellation of another call, of the same number as text, or one that names no call leaves the
-// question open.
+// question open. One project serves every case: each case compares the project before and after and fails if it changed.
 func TestMCPForgetKeepsAskingWhenTheCancelledCallIsAnother(t *testing.T) {
+	w := newForgetWorld(t)
 	for name, params := range map[string]map[string]any{
 		"another number":              {"requestId": 99},
 		"the same number as a string": {"requestId": "2"},
 		"no id":                       {"reason": "no call is named"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			w := newForgetWorld(t)
+			w.reportTo(t)
 			before := w.snapshot()
 			c := newLiveMCP(t, w.mcpHandler())
 			c.initialize(map[string]any{"elicitation": map[string]any{}})
@@ -309,8 +310,10 @@ func TestForgetRefusesASessionWithNoProcessAnyOfWhoseRecordsWasWrittenLately(t *
 }
 
 // The session that asks is the one forget must never remove, and only the call can say which it is (the server's own environment is the
-// one of whoever started it). A call that does not say is refused, with how to say it, before any question is sent.
+// one of whoever started it). A call that does not say is refused, with how to say it, before any question is sent. One project serves
+// every case: each case compares the project before and after and fails if it changed.
 func TestMCPForgetNeedsTheSessionThatAsks(t *testing.T) {
+	w := newForgetWorld(t)
 	for name, work := range map[string]any{
 		"no work":                    nil,
 		"an empty work":              map[string]any{},
@@ -319,7 +322,7 @@ func TestMCPForgetNeedsTheSessionThatAsks(t *testing.T) {
 		"a session id that is no id": map[string]any{"session_id": "a b"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			w := newForgetWorld(t)
+			w.reportTo(t)
 			before := w.snapshot()
 			c := newLiveMCP(t, w.mcpHandler())
 			c.initialize(map[string]any{"elicitation": map[string]any{}})
@@ -390,6 +393,7 @@ func TestForgetStepsTakeTheLocksTheyNeed(t *testing.T) {
 		{"the memory's", "assessments", "the memory record is busy", func(w *forgetWorld) (func(), error) { return w.st.LockMemory(w.scope) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			shortLockWait(t)
 			w := newForgetWorld(t)
 			before := w.snapshot()
 			release, err := tc.hold(w)

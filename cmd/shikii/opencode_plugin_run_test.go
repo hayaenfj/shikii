@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -310,38 +311,82 @@ func pluginTestsUnavailable(t interface {
 	t.Skipf("%s: the plugin is not run", why)
 }
 
+// fakeShikiiScript is the fake shikii every box runs: the same text for every scenario, so one file serves them all. The scenario's
+// folder of state comes in the environment (SHIKII_FAKE_STATE, set by play), not in the text. It reads its small files and all of its
+// standard input with the shell's own read, not with cat: each cat was a process start, and the plugin starts this script for every hook.
+const fakeShikiiScript = `d="${SHIKII_FAKE_STATE:?the test names the folder the fake shikii keeps its state in}"
+event="$2"
+n=0
+[ -f "$d/count-$event" ] && read -r n < "$d/count-$event"
+n=$((n+1))
+echo "$n" > "$d/count-$event"
+input=
+while IFS= read -r line || [ -n "$line" ]; do input="${input:+$input
+}$line"; done
+printf '{"event":"%s","n":%s,"pwd":"%s","args":"%s","stdin":%s}\n' "$event" "$n" "$(pwd -P)" "$*" "${input:-null}" >> "$d/calls.jsonl"
+if [ -f "$d/hold-$event-$n" ]; then i=0; while [ ! -f "$d/release-$event-$n" ] && [ $i -lt 500 ]; do sleep 0.02; i=$((i+1)); done; fi
+if [ -f "$d/fail-$event-$n" ]; then exit 1; fi
+mode=
+[ -f "$d/mode" ] && read -r mode < "$d/mode"
+case "$mode" in
+exit1) exit 1 ;;
+garbage) echo 'not json {'; exit 0 ;;
+esac
+if [ -f "$d/out-$event-$n" ]; then cat "$d/out-$event-$n"; elif [ -f "$d/out-$event" ]; then cat "$d/out-$event"; fi
+`
+
+// sharedFakeShikii is the one file that holds fakeShikiiScript for all the boxes of a run of the tests. On macOS the first run of a new
+// executable file takes about 0.2 s (writeStub pays it before the test; see there), so a file made per box cost every one of the 70 and
+// more scenarios that much. It lives in the temporary home TestMain makes for the whole run (removed when the run ends), is written
+// and warmed by writeStub once, and no scenario writes to it: a scenario's own files are in its state folder. A test that sets another
+// HOME and builds a box there makes it in that HOME, and it is made again when it is gone or its text is not the script's.
+var sharedFakeShikii struct {
+	sync.Mutex
+	path string
+}
+
+func fakeShikiiBinary(t *testing.T) string {
+	t.Helper()
+	shared := &sharedFakeShikii
+	shared.Lock()
+	defer shared.Unlock()
+	if shared.path != "" {
+		if got, err := os.ReadFile(shared.path); err == nil && strings.HasSuffix(string(got), fakeShikiiScript) {
+			return shared.path
+		}
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	shared.path = writeStub(t, filepath.Join(home, ".shared-fake-shikii"), "fake-shikii", fakeShikiiScript)
+	return shared.path
+}
+
+// pluginNodeOnce asks pluginNodeProblem once for all the boxes of a run: the node on the PATH does not change between scenarios, and
+// asking cost a process start (about 20 ms) in each of them. pluginNodeProblem itself stays a function of the PATH it is called under.
+var pluginNodeOnce struct {
+	sync.Once
+	why string
+}
+
 func newPluginBox(t *testing.T) *pluginBox {
 	t.Helper()
-	if why := pluginNodeProblem(); why != "" {
+	pluginNodeOnce.Do(func() { pluginNodeOnce.why = pluginNodeProblem() })
+	if why := pluginNodeOnce.why; why != "" {
 		pluginTestsUnavailable(t, os.Getenv("CI"), why)
 	}
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := &pluginBox{dir: dir, project: filepath.Join(dir, "project"), shikii: filepath.Join(dir, "fake-shikii")}
+	b := &pluginBox{dir: dir, project: filepath.Join(dir, "project")}
 	for _, d := range []string{b.project, filepath.Join(dir, "state")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	state := filepath.Join(dir, "state")
-	script := `d='` + state + `'
-event="$2"
-n=$(cat "$d/count-$event" 2>/dev/null || echo 0)
-n=$((n+1))
-echo "$n" > "$d/count-$event"
-input=$(cat)
-printf '{"event":"%s","n":%s,"pwd":"%s","args":"%s","stdin":%s}\n' "$event" "$n" "$(pwd -P)" "$*" "${input:-null}" >> "$d/calls.jsonl"
-if [ -f "$d/hold-$event-$n" ]; then i=0; while [ ! -f "$d/release-$event-$n" ] && [ $i -lt 500 ]; do sleep 0.02; i=$((i+1)); done; fi
-if [ -f "$d/fail-$event-$n" ]; then exit 1; fi
-case "$(cat "$d/mode" 2>/dev/null)" in
-exit1) exit 1 ;;
-garbage) echo 'not json {'; exit 0 ;;
-esac
-if [ -f "$d/out-$event-$n" ]; then cat "$d/out-$event-$n"; elif [ -f "$d/out-$event" ]; then cat "$d/out-$event"; fi
-`
-	b.shikii = writeStub(t, dir, "fake-shikii", script)
+	b.shikii = fakeShikiiBinary(t)
 	b.install(t, b.shikii)
 	return b
 }
@@ -415,6 +460,8 @@ func (b *pluginBox) play(t *testing.T, scenario map[string]any) (pluginRun, []pl
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "node", "--no-warnings", b.driver, b.plugin, scenarioPath)
 	cmd.Dir = b.dir // not the project's folder: a hook that ran in the folder OpenCode was started in would show
+	// the plugin starts the fake shikii with the environment of this process: it names the scenario's folder of state
+	cmd.Env = append(os.Environ(), "SHIKII_FAKE_STATE="+filepath.Join(b.dir, "state"))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("the plugin did not run under node: %v\n%s", err, out)

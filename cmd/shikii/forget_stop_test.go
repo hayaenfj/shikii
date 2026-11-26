@@ -44,6 +44,7 @@ func holdAfterStep(t *testing.T, after string, take func() (func(), error)) (rel
 // reply must not say that nothing changed. It says partial with changed true, what was moved, what is left, and that the same call
 // again (which asks the person again) removes the rest. Run again, it removes the rest.
 func TestMCPForgetSaysPartialWhenTheRemovalStopsAfterTheYes(t *testing.T) {
+	shortLockWait(t)
 	w := newForgetWorld(t)
 	before := w.snapshot()
 	release := holdAfterStep(t, "memories", w.book.LockForForget) // the step after it, the wiki's, finds the lock taken
@@ -117,6 +118,7 @@ func TestMCPForgetSaysFailedWhenNothingWasMoved(t *testing.T) {
 // A step that the plan found nothing to remove in does not take its lock: a subagent id alone has nothing to remove in the wiki, so the
 // wiki's lock held by another agent does not stop it, and a second run is never needed there.
 func TestForgetDoesNotTakeTheLockOfAStepThatRemovesNothing(t *testing.T) {
+	shortLockWait(t)
 	w := newForgetWorld(t)
 	release, err := w.book.LockForForget()
 	if err != nil {
@@ -150,6 +152,7 @@ func TestForgetDoesNotTakeTheLockOfAStepThatRemovesNothing(t *testing.T) {
 // that check and the removal of lines must not overlap. A hook of another session that holds it stops the step, and the steps before
 // stay done.
 func TestForgetMemoriesStepTakesTheMemoryLock(t *testing.T) {
+	shortLockWait(t)
 	w := newForgetWorld(t)
 	before := w.snapshot()
 	release := holdAfterStep(t, "assessments", func() (func(), error) { return w.st.LockMemory(w.scope) })
@@ -214,6 +217,7 @@ func (w *forgetWorld) liteSession() string {
 }
 
 func TestForgetThatStopsBeforeMovingAnythingChangesNothingAndSaysSo(t *testing.T) {
+	shortLockWait(t)
 	w := newForgetWorld(t)
 	id := w.liteSession()
 	release, err := w.st.LockMemory(w.scope) // held by another agent's hook: the memories step is the first that needs it
@@ -240,6 +244,7 @@ func TestForgetThatStopsBeforeMovingAnythingChangesNothingAndSaysSo(t *testing.T
 }
 
 func TestMCPForgetSaysFailedWhenTheRemovalStoppedBeforeMovingAnything(t *testing.T) {
+	shortLockWait(t)
 	w := newForgetWorld(t)
 	id := w.liteSession()
 	release, err := w.st.LockMemory(w.scope)

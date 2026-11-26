@@ -182,14 +182,17 @@ func forgetArgs(w *forgetWorld, extra map[string]any) map[string]any {
 
 // A client that does not say it can ask the person is refused, with the list and what a person runs; nothing changes and no
 // question is sent. The same for a client that offers only a link to a page (url): it cannot show a form.
+// One project serves every case: each case compares the project before and after and fails if it changed, so each starts from what the
+// case before it left, which is what it found.
 func TestMCPForgetWithoutElicitationChangesNothing(t *testing.T) {
+	w := newForgetWorld(t)
 	for name, capabilities := range map[string]map[string]any{
 		"no capability":     {},
 		"a link only":       {"elicitation": map[string]any{"url": map[string]any{}}},
 		"elicitation: null": {"elicitation": nil},
 	} {
 		t.Run(name, func(t *testing.T) {
-			w := newForgetWorld(t)
+			w.reportTo(t)
 			before := w.snapshot()
 			c := newLiveMCP(t, w.mcpHandler())
 			c.initialize(capabilities)
@@ -270,7 +273,10 @@ func TestMCPForgetRemovesOnlyAfterThePersonsYes(t *testing.T) {
 
 // Anything but a yes changes nothing: no, dismissing the question, a yes with the box unchecked, and answers that are not the form that
 // was asked (a string or a number for the box, no box, no content, an action that is none of the three, no object, an error).
+// One project serves every case: each case compares the project before and after and fails if it changed, so each starts from what the
+// case before it left, which is what it found.
 func TestMCPForgetChangesNothingWithoutAClearYes(t *testing.T) {
+	w := newForgetWorld(t)
 	cases := []struct {
 		name   string
 		answer func(q map[string]any) map[string]any
@@ -301,7 +307,7 @@ func TestMCPForgetChangesNothingWithoutAClearYes(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			w := newForgetWorld(t)
+			w.reportTo(t)
 			before := w.snapshot()
 			c := newLiveMCP(t, w.mcpHandler())
 			c.initialize(map[string]any{"elicitation": map[string]any{}})
@@ -357,11 +363,11 @@ func lastToolBody(t *testing.T, c *liveMCP) (bool, map[string]any) {
 // What an agent passes never answers for the person: a remove, a confirm or an apply among the arguments (or in work) is refused
 // before any question is sent, and a client that would say yes to every question is not even asked.
 func TestMCPForgetTakesNoConfirmationFromItsArguments(t *testing.T) {
+	w := newForgetWorld(t) // one project for every call below: each compares the project before and after and fails if it changed
 	for _, extra := range []map[string]any{
 		{"remove": true}, {"confirm": true}, {"apply": true}, {"answer": "accept"}, {"action": "accept", "content": map[string]any{"remove": true}},
 		{"yes": true}, {"elicitation": map[string]any{"remove": true}},
 	} {
-		w := newForgetWorld(t)
 		before := w.snapshot()
 		c := newLiveMCP(t, w.mcpHandler())
 		c.initialize(map[string]any{"elicitation": map[string]any{}})
@@ -376,7 +382,6 @@ func TestMCPForgetTakesNoConfirmationFromItsArguments(t *testing.T) {
 		}
 	}
 	// the same inside work: only work.session_id is read, and nothing there answers anything
-	w := newForgetWorld(t)
 	before := w.snapshot()
 	c := newLiveMCP(t, w.mcpHandler())
 	c.initialize(map[string]any{"elicitation": map[string]any{}})
