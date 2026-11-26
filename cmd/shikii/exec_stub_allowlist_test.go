@@ -50,6 +50,7 @@ var execWriteAllowed = map[string]string{
 	"audit_0_11_confirm_test.go:TestConfirm011DecideReturnsTheRecordedDecisionWhenTheKnowledgeCannotBeRead:0o700": "gives a folder its permissions back (a folder needs the execute bit)",
 	"audit_0_36_test.go:TestAFailingToolLessonAddsNothingAndRefusesNothing:0o500":                                 "makes a folder read-only but enterable, so a write into it fails",
 	"audit_0_36_test.go:TestAFailingToolLessonAddsNothingAndRefusesNothing:0o755":                                 "gives the folder its permissions back",
+	"copy_skill_same_test.go:TestCopySkillRewritesASkillThatDiffers:0o777":                                        "gives a skill folder other permissions, so copySkill rewrites it",
 	"codex_toml_test.go:TestRe2InitGoesOnPastUnwritableCodexFolderOnFix:0o555":                                    "makes a folder read-only but enterable, so a write into it fails",
 	"codex_toml_test.go:TestRe2InitGoesOnPastUnwritableCodexFolderOnFix:0o755":                                    "gives the folder its permissions back",
 	"hook_git_layout_test.go:TestAGitFolderGitWouldRefuseIsNotDerived:0o755":                                      "gives the objects folder and the refs folder their permissions back (a folder needs the execute bit)",
