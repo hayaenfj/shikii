@@ -60,24 +60,50 @@ func readAssessment(f *os.File, id, key string) (*MemoryAssessment, error) {
 // not there; an assessment saved after the listing is seen by the next report, as one saved just after a quote was asked for is today.
 // Nothing is touched until the first quote (as the first memoryAssessment is the first to read the store name), and nothing takes
 // the memory lock.
+//
+// The list answers only for names exactly the form shikii writes (assessmentName: 64 lower-case hexadecimal digits and ".json"),
+// compared as they are. A disk that ignores case, or reads another spelling as the same letter (APFS reads the long s as s), finds a
+// file by a name that is not the listed one, and no folding of the list tells which names a given disk reads as one. So a folder
+// that holds a name of any other form is not listed at all: every quote of that report is asked for by memoryAssessment, which asks
+// the disk for the exact name, as it did before the list.
+//
+// The folder is opened once, so verify checks at the end of the report that its path still names it: asking for each quote would
+// have found a link put in its place (parentRoot says so) at the next quote.
 type assessmentReader struct {
 	s      Store
 	scope  string
-	asked  bool
+	entry  string              // a path inside the folder, as parentRoot takes it
+	asked  bool                // list has run
 	absent bool                // the folder is not there: no quote is assessed
-	root   *os.Root            // the folder, opened once; nil when it could not be listed
-	listed map[string]struct{} // the lower-cased names in the folder
+	root   *os.Root            // the folder, opened once; nil when it could not be listed or holds a name of another form
+	listed map[string]struct{} // the names in the folder, all of the form shikii writes
 }
 
 func (s Store) newAssessmentReader(scope string) *assessmentReader {
 	return &assessmentReader{s: s, scope: scope}
 }
 
+// assessmentName reports whether name is exactly a name assessmentFileName makes.
+func assessmentName(name string) bool {
+	hash, ok := strings.CutSuffix(name, ".json")
+	if !ok || len(hash) != 2*sha256.Size {
+		return false
+	}
+	for i := 0; i < len(hash); i++ {
+		if c := hash[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 // list opens and lists the folder. Whatever goes wrong other than "the folder is not there" (a link in the way, a folder that cannot
-// be opened or listed), the reader stays without a folder and every quote is asked for by memoryAssessment, which says it as before.
+// be opened or listed), and a name of another form in the folder, the reader stays without a folder and every quote is asked for by
+// memoryAssessment, which says it as before.
 func (r *assessmentReader) list() {
 	r.asked = true
-	root, _, err := r.s.parentRoot(filepath.Join(r.s.recordPath("memory-reviews", "", r.scope), "entry"), false)
+	r.entry = filepath.Join(r.s.recordPath("memory-reviews", "", r.scope), "entry")
+	root, _, err := r.s.parentRoot(r.entry, false)
 	if os.IsNotExist(err) {
 		r.absent = true
 		return
@@ -96,12 +122,15 @@ func (r *assessmentReader) list() {
 		root.Close()
 		return
 	}
-	r.root, r.listed = root, make(map[string]struct{}, len(names))
+	listed := make(map[string]struct{}, len(names))
 	for _, name := range names {
-		// A name only decides whether to open: the open below asks the disk for the exact name. Folding the case lets a disk that
-		// ignores case find a file memoryAssessment would have found; on one that does not, the open answers "not there" as before.
-		r.listed[strings.ToLower(name)] = struct{}{}
+		if !assessmentName(name) {
+			root.Close() // a name a disk may read as another: memoryAssessment asks the disk, for each quote
+			return
+		}
+		listed[name] = struct{}{}
 	}
+	r.root, r.listed = root, listed
 }
 
 func (r *assessmentReader) get(id, key string) (*MemoryAssessment, error) {
@@ -115,7 +144,7 @@ func (r *assessmentReader) get(id, key string) (*MemoryAssessment, error) {
 		return r.s.memoryAssessment(r.scope, id, key)
 	}
 	name := assessmentFileName(id, key)
-	if _, ok := r.listed[strings.ToLower(name)]; !ok {
+	if _, ok := r.listed[name]; !ok {
 		return nil, nil
 	}
 	f, err := openIn(r.root, name, os.O_RDONLY)
@@ -126,6 +155,35 @@ func (r *assessmentReader) get(id, key string) (*MemoryAssessment, error) {
 		return nil, err
 	}
 	return readAssessment(f, id, key)
+}
+
+// verify says, at the end of a report, whether the path still names the folder that was opened: the same checks parentRoot makes for
+// every quote (a link in the way is said as "links cannot be used in the record folder"), then whether what it opens is the folder this
+// reader read. A folder that is gone says nothing, as asking for each quote answers "not there" for a folder that is not.
+func (r *assessmentReader) verify() error {
+	if r.root == nil {
+		return nil // no folder was opened: every quote was asked for by memoryAssessment, which checks the path each time
+	}
+	now, _, err := r.s.parentRoot(r.entry, false)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer now.Close()
+	was, err := r.root.Stat(".")
+	if err != nil {
+		return err
+	}
+	is, err := now.Stat(".")
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(was, is) {
+		return errors.New("the record folder changed")
+	}
+	return nil
 }
 
 func (r *assessmentReader) close() {

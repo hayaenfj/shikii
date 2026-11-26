@@ -296,6 +296,9 @@ func (s Store) MemoryReportWithFeedback(scope string, read func() ([]Feedback, e
 			}
 		}
 	}
+	if err := assessments.verify(); err != nil {
+		return r, err // the folder the assessments were read from is no longer what its path names: said, as asking for each quote said it
+	}
 	return r, nil
 }
 
