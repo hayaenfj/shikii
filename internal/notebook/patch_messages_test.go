@@ -82,21 +82,11 @@ func TestPatchRefusalsSayTheReasonTheCountAndTheFieldsThatExist(t *testing.T) {
 
 // The way on of a refused body save names the patch and what an edit of it holds: the field (an edit without field is refused), then
 // before and after. The text said only "before/after edits", so a patch built from it had no field.
-const patchEditShape = `edits:[{field:"body",before,after}]`
+const patchEditShape = `"edits":[{"field":"body","before":`
 
 func TestTheBodyLossRefusalsShowTheShapeOfAPatchEdit(t *testing.T) {
-	b, _, d := lossBook(t)
-	short := "Only the new sentence."
-	d.Body = &short
-	_, withID := b.Ingest(d)
-	eb, _, ed := erosionBook(t)
-	erosionFirstTwoSaves(t, eb, ed)
-	_, worn := erosionSave(eb, ed, 1, 2, 3, 4, 11, 12, 13)
-	for name, refusal := range map[string]error{"a save that drops the body": withID, "a save that wears the body away": worn} {
-		if refusal == nil {
-			t.Fatalf("%s is not refused", name)
-		}
-		text := refusal.Error()
+	for name, c := range bodyRefusalCases(t) {
+		text := c.err.Error()
 		patch, shape, ending := strings.Index(text, "shikii wiki patch"), strings.Index(text, patchEditShape), strings.Index(text, "unique ending")
 		if patch < 0 || shape < patch || shape > ending {
 			t.Errorf("%s: the refusal must show %s between naming the patch and the unique ending (patch %d, shape %d, unique ending %d): %s", name, patchEditShape, patch, shape, ending, text)

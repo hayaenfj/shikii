@@ -193,6 +193,18 @@ func overwriteEntries(t *testing.T, f *overwriteFixture) map[string]overwriteEnt
 	}
 }
 
+// refusalText is the text of a refusal that an entry returns. The HTTP and MCP forms wrap it in {"error": ...}, which escapes the quotes of the
+// patch call the refusal shows, so the text is read out of the wrapper before it is compared.
+func refusalText(raw string) string {
+	var wrapped struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal([]byte(raw), &wrapped) == nil && wrapped.Error != "" {
+		return wrapped.Error
+	}
+	return raw
+}
+
 func TestAgentEntriesRefuseABodyThatReplacesMostOfAnArticle(t *testing.T) {
 	f := newOverwriteFixture(t)
 	entries := overwriteEntries(t, f)
@@ -202,8 +214,8 @@ func TestAgentEntriesRefuseABodyThatReplacesMostOfAnArticle(t *testing.T) {
 	for name, entry := range entries {
 		t.Run(name, func(t *testing.T) {
 			p := f.article(t, name)
-			refusal := entry(t, f, f.draft(p, overwriteShort))
-			for _, want := range []string{"refused", p.ID, "shikii wiki patch", "shikii wiki query lesson:" + p.ID} {
+			refusal := refusalText(entry(t, f, f.draft(p, overwriteShort)))
+			for _, want := range []string{"refused", p.ID, "shikii wiki patch", `"id":"` + p.ID + `","revision":"` + p.Revision + `"`, "shikii wiki query lesson:" + p.ID} {
 				if !strings.Contains(refusal, want) {
 					t.Fatalf("a save that replaces the whole body with one sentence is not refused with the cause and the way on (lacks %q): %q", want, refusal)
 				}
@@ -230,6 +242,31 @@ func TestAgentEntriesRefuseABodyThatReplacesMostOfAnArticle(t *testing.T) {
 			}
 			if _, after := f.body(t, p.ID); !strings.Contains(after, "is done with wiki patch") {
 				t.Fatalf("the rewording was not saved: %q", after)
+			}
+		})
+	}
+}
+
+// A save with an id that lacks its lesson, or its sources, is refused before the article is read. Claude Code and Codex, given one sentence to
+// add, filled the fields in and sent the whole article again, so the refusal names the patch first, through every entry an agent saves through.
+func TestAgentEntriesNameThePatchWhenAnIdSaveLacksALessonOrSources(t *testing.T) {
+	f := newOverwriteFixture(t)
+	for name, entry := range overwriteEntries(t, f) {
+		t.Run(name, func(t *testing.T) {
+			p := f.article(t, name)
+			noLesson := map[string]any{"id": p.ID, "sources": f.sources, "change_reason": "add one sentence"}
+			noSources := f.draft(p, overwriteBody+"\n- A line the agent adds.\n")
+			delete(noSources, "sources")
+			for what, d := range map[string]map[string]any{"no lesson": noLesson, "no sources": noSources} {
+				refusal := refusalText(entry(t, f, d))
+				patch, resend := strings.Index(refusal, "shikii wiki patch"), strings.Index(refusal, "Resend the whole body")
+				want := `"id":"` + p.ID + `","revision":"<revision shown by shikii wiki query lesson:` + p.ID + `>"`
+				if patch < 0 || resend < patch || !strings.Contains(refusal, want) {
+					t.Fatalf("a save with an id and %s is not refused with the patch before the whole body sent again, naming the id and the revision to read (patch %d, resend %d, lacks %s): %q", what, patch, resend, want, refusal)
+				}
+			}
+			if revision, body := f.body(t, p.ID); revision != p.Revision || body != strings.TrimSpace(overwriteBody) {
+				t.Fatalf("a refused save changed the article: %s %q", revision, body)
 			}
 		})
 	}

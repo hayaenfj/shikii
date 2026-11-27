@@ -77,6 +77,7 @@ func TestIngestRefusesABodyThatWearsAwayInSmallSavesAndSaysWhichRevisionItIsMeas
 			t.Fatalf("the refusal of a body that wore away lacks %q: %v", want, err)
 		}
 	}
+	requireAskForAPatchFirst(t, err, first.ID, second.Revision, true)
 	requireArticle(t, b, second.ID, second.Revision, second.Body)
 
 	// What it asks for works: the whole body of the page with the addition keeps everything the page has.
@@ -220,37 +221,17 @@ func TestAReferenceRevisionThatCannotBeReadDoesNotStopASave(t *testing.T) {
 // body sent again is the way for what a patch does not fit, and comes after (0.44.0 leftover U-11: copying a body of 100 lines by hand
 // lost 49% of it without a refusal, so an agent that adds should not be sent to do that first).
 func TestTheBodyLossRefusalsPointToAPatchThatAddsAtTheEndBeforeResendingTheBody(t *testing.T) {
-	b, _, d := lossBook(t)
-	short := "Only the new sentence."
-	d.Body = &short
-	_, withID := b.Ingest(d)
-	d.ID = ""
-	_, byTitle := b.Ingest(d)
-	eb, _, ed := erosionBook(t)
-	erosionFirstTwoSaves(t, eb, ed)
-	_, worn := erosionSave(eb, ed, 1, 2, 3, 4, 11, 12, 13)
-	ed.ID = ""
-	_, wornByTitle := erosionSave(eb, ed, 1, 2, 3, 4, 11, 12, 13)
-	for name, refusal := range map[string]error{"a save with an id": withID, "a save by the title": byTitle, "a save that wears the body away": worn, "a save by the title that wears the body away": wornByTitle} {
-		if refusal == nil {
-			t.Fatalf("%s is not refused", name)
-		}
-		text := refusal.Error()
-		patch, ending, resend := strings.Index(text, "shikii wiki patch"), strings.Index(text, "unique ending"), strings.Index(text, "whole body again")
+	for name, c := range bodyRefusalCases(t) {
+		requireAskForAPatchFirst(t, c.err, c.id, c.revision, c.idSent)
+		text := c.err.Error()
+		patch, ending, resend := strings.Index(text, "shikii wiki patch"), strings.Index(text, "unique ending"), strings.Index(text, "Resend the whole body")
 		if patch < 0 || ending < patch || resend < ending {
-			t.Fatalf("%s: the refusal must name the patch, then the unique ending of the body to add after, and only then the whole body sent again (patch %d, unique ending %d, whole body again %d): %s", name, patch, ending, resend, text)
+			t.Fatalf("%s: the refusal must name the patch, then the unique ending of the body to add after, and only then the whole body sent again (patch %d, unique ending %d, resend %d): %s", name, patch, ending, resend, text)
 		}
-		for _, want := range []string{"before", "after", "ending plus the new text"} {
+		for _, want := range []string{`"before":`, `"after":`, "that ending plus the new text"} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("%s: the refusal lacks %q: %s", name, want, text)
 			}
-		}
-		// A patch needs the article's id and its current revision, and the article is read first (0.44.1 audit D-3): the way on says so
-		// before the unique ending, not only in the branch for a patch that does not fit.
-		read := strings.Index(text, "current revision")
-		query := strings.Index(text, "shikii wiki query lesson:")
-		if read < patch || read > ending || query < patch || query > ending {
-			t.Fatalf("%s: the refusal must say, between naming the patch and the unique ending, that a patch needs the article's id and current revision and that the article is read first with shikii wiki query lesson:<id> (patch %d, current revision %d, query %d, unique ending %d): %s", name, patch, read, query, ending, text)
 		}
 	}
 }
@@ -320,22 +301,19 @@ func TestASaveByTheTitleIsMeasuredAgainstTheRevisionTheSavesStartedFrom(t *testi
 // not told that (it names the article itself).
 func TestTheBasisRefusalOfASaveWithoutAnIdTellsADifferentLessonToTakeAnotherTitle(t *testing.T) {
 	b, first, d := erosionBook(t)
-	erosionFirstTwoSaves(t, b, d)
+	second := erosionFirstTwoSaves(t, b, d)
 	_, withID := erosionSave(b, d, 1, 2, 3, 4, 11, 12, 13)
 	d.ID = ""
 	_, byTitle := erosionSave(b, d, 1, 2, 3, 4, 11, 12, 13)
 	if withID == nil || byTitle == nil {
 		t.Fatalf("a save that wears the body away is accepted: with an id %v, by the title %v", withID, byTitle)
 	}
-	for _, want := range []string{"revision " + first.Revision, "Saving without an id finds the article by its title", "first title of article " + first.ID, "give it another title", "shikii wiki patch"} {
+	for _, want := range []string{"revision " + first.Revision, "shikii wiki patch"} {
 		if !strings.Contains(byTitle.Error(), want) {
 			t.Fatalf("the refusal of a save by the title lacks %q: %v", want, byTitle)
 		}
 	}
-	if strings.Contains(byTitle.Error(), "Saving with an id") {
-		t.Fatalf("the refusal of a save without an id says an id was sent: %v", byTitle)
-	}
-	if !strings.Contains(withID.Error(), "Saving with an id replaces the whole body") || strings.Contains(withID.Error(), "another title") {
-		t.Fatalf("the refusal of a save with an id must say that an id replaces the body, and must not tell it to take another title: %v", withID)
-	}
+	// The patch it asks for is checked against the revision the page has now (the second save), not the one the saves started from.
+	requireAskForAPatchFirst(t, byTitle, first.ID, second.Revision, false)
+	requireAskForAPatchFirst(t, withID, first.ID, second.Revision, true)
 }

@@ -52,46 +52,70 @@ func bodyKeptMeasure(previous, next string) (refused bool, lost, lostBytes, tota
 	return true, (total - kept) * 100 / total, total - kept, total
 }
 
-// bodyLossMeasure and bodyWayOn are the sentences that both refusals share. The measure is per line: a line counts as lost when any part of
-// it changed, so a rewording inside a long line drops that whole line. The way on names the patch first: to add, a patch whose after is
-// a unique ending of the body plus the new text keeps every other line exactly as it is, while a body copied out by hand can lose a part
-// of it without any refusal (0.44.0 leftover U-11: 49% lost, below the line).
+// The sentences that the refusals share. A refusal says two things: what happened (this save would drop a share of the body) and what to
+// send next. Everything else an agent used to read there (how the measure works, what the other save did, what a patch also does) is left
+// out, since the agent that is refused reads the whole of it and the two things were buried.
+//
+// bodyWayOn names the patch first: to add, a patch whose after is a unique ending of the body plus the new text keeps every other line
+// exactly as it is, while a body copied out by hand can lose a part of it without any refusal (0.44.0 leftover U-11: 49% lost, below the
+// line). It carries the shape of the call with the article's id and its current revision filled in, so the agent has nothing to look up
+// but the ending of the body; the whole body sent again is the way only when a patch does not fit. It stays one string literal, since the
+// allowlist of the lines that mention a body (cmd/shikii/testdata/body_lines_allowlist.tsv) judges a line by what comes before the resend.
+//
+// bodyTitleNote is added when the save named no id: the article was found by the title (the id is made from the first title), so a
+// different lesson that has the same title is told to take another one.
+//
+// bodyUnreadRevision is the revision of the patch in a refusal that has not read the article (a save with an id that lacks a lesson or its
+// sources is refused before the article is read): the agent reads it with the query the patch asks for.
 const (
-	bodyLossMeasure = "A line counts as kept only when it appears whole in the new body, so changing even part of a line counts that whole line as dropped; make a small edit inside a long line with patch."
-	bodyWayOn       = "To add to the body, or to change or shorten part of it, send shikii wiki patch (MCP: shikii_wiki operation patch) with the article's id and current revision, sources, a change_reason and edits:[{field:\"body\",before,after}] (read the article, its id and its current revision with shikii wiki query lesson:%s first); to add at the end, make before a unique ending of the body and after that ending plus the new text. Only when a patch does not fit, send its whole body again with your additions, copied exactly"
+	bodyWayOn     = "To add, send shikii wiki patch (MCP: shikii_wiki operation patch) {\"id\":\"%[1]s\",\"revision\":\"%[2]s\",\"sources\":[...],\"change_reason\":\"...\",\"edits\":[{\"field\":\"body\",\"before\":\"<a unique ending of the body>\",\"after\":\"<that ending plus the new text>\"}]} after reading the body with shikii wiki query lesson:%[1]s. Resend the whole body, copied exactly, only when a patch does not fit."
+	bodyTitleNote = "Without an id, the title found article %s; if this is a different lesson, give it another title."
+
+	bodyUnreadRevision = "<revision shown by shikii wiki query lesson:%s>"
 )
 
+// bodyWayOnUnread is bodyWayOn for a refusal that has not read the article.
+func bodyWayOnUnread(id string) string {
+	return fmt.Sprintf(bodyWayOn, id, fmt.Sprintf(bodyUnreadRevision, id))
+}
+
+// bodyRefusalCount is the parenthesis both refusals share: the bytes of the lines that are not in the new body, the bytes of all the lines
+// (whose says which: "its" or "that revision's"), and how a line is counted. The measure is per line: a line counts as lost when any part
+// of it changed, so a rewording inside a long line drops that whole line.
+func bodyRefusalCount(lostBytes, total int, whose string) string {
+	return fmt.Sprintf("(%d of %d bytes of %s lines; a line changed anywhere counts as dropped)", lostBytes, total, whose)
+}
+
+// bodyRefusalTail is what both refusals send next: the title note when the save named no id (idSent false), then the patch. revision is the
+// revision the article has now, which the patch has to be checked against (not the one a refusal measures against).
+func bodyRefusalTail(id string, idSent bool, revision string) string {
+	way := fmt.Sprintf(bodyWayOn, id, revision)
+	if idSent {
+		return way
+	}
+	return fmt.Sprintf(bodyTitleNote, id) + " " + way
+}
+
 // bodyLossRefusal refuses a body that would lose half or more of the previous one in the sense above, and says why and what to send instead.
-// idSent says whether the save named the article by its id; without one the article was found by the title (the id is made from the first
-// title), so the refusal does not say an id was sent and tells a new lesson that has the same title to take another one.
-func bodyLossRefusal(id string, idSent bool, previous, next string) error {
+// idSent says whether the save named the article by its id; without one the article was found by the title. revision is the article's
+// revision now (the one the patch it asks for names).
+func bodyLossRefusal(id string, idSent bool, revision, previous, next string) error {
 	refused, lost, lostBytes, total := bodyKeptMeasure(previous, next)
 	if !refused {
 		return nil
 	}
-	return fmt.Errorf("refused: this save would replace the body of article %s and drop %d%% of it (%d of %d bytes of its lines are not in the new body). %s %s "+bodyWayOn, id, lost, lostBytes, total, bodyLossMeasure, bodyReplacesNote(id, idSent), id)
-}
-
-// bodyReplacesNote is the sentence both refusals use to say what the save did to the body. A save with an id names the article itself. Without
-// one the article was found by the title (the id is made from the first title), so the sentence does not say an id was sent and tells a new
-// lesson that has the same title to take another one: the refusal that measures against the reference revision says it as well, since a save
-// by the title reaches that refusal too (0.44.1 audit W5).
-func bodyReplacesNote(id string, idSent bool) string {
-	if idSent {
-		return "Saving with an id replaces the whole body; it does not add to it."
-	}
-	return fmt.Sprintf("Saving without an id finds the article by its title, and this title is the first title of article %s, so the save replaces the whole body of that article; it does not add to it. If this is a different lesson, give it another title.", id)
+	return fmt.Errorf("refused: this save would replace the body of article %s and drop %d%% of it %s. %s", id, lost, bodyRefusalCount(lostBytes, total, "its"), bodyRefusalTail(id, idSent, revision))
 }
 
 // bodyBasisRefusal refuses a body that drops half or more of the lines of the revision the agents' saves started from, though it keeps more
-// than half of the body before it. It says which revision it measures against, because the agent does not see the saves in between. idSent is
-// as in bodyLossRefusal.
-func bodyBasisRefusal(id string, idSent bool, next string, basis Page) error {
+// than half of the body before it. It says which revision it measures against, because the agent does not see the saves in between. idSent
+// is as in bodyLossRefusal, and revision is the article's revision now (the one the patch names), not the revision measured against.
+func bodyBasisRefusal(id string, idSent bool, revision, next string, basis Page) error {
 	refused, lost, lostBytes, total := bodyKeptMeasure(basis.Body, next)
 	if !refused {
 		return nil
 	}
-	return fmt.Errorf("refused: this save would drop %d%% of the body article %s had at revision %s (%d of %d bytes of that revision's lines are not in the new body). Each save since then kept more than half of the body before it, but together they would wear the article away, and revision %s is the last one that a person's edit or a patch settled, or that a save kept whole. %s %s A patch also makes its result the revision that later saves are measured against. "+bodyWayOn, lost, id, basis.Revision, lostBytes, total, basis.Revision, bodyLossMeasure, bodyReplacesNote(id, idSent), id)
+	return fmt.Errorf("refused: with the saves since revision %s, this save would drop %d%% of the body article %s had then %s. %s", basis.Revision, lost, id, bodyRefusalCount(lostBytes, total, "that revision's"), bodyRefusalTail(id, idSent, revision))
 }
 
 // guardBody is what Ingest does with the body it is sent for an existing article: it refuses a body that loses half or more of the body before
@@ -99,14 +123,14 @@ func bodyBasisRefusal(id string, idSent bool, next string, basis Page) error {
 // when the new body has every line of the one measured against). The reference revision is read from the page's own history; one that cannot
 // be read is not measured, and the body before it stands in for it.
 func (b Book) guardBody(id string, idSent bool, old Page, next string) (string, error) {
-	if err := bodyLossRefusal(id, idSent, old.Body, next); err != nil {
+	if err := bodyLossRefusal(id, idSent, old.Revision, old.Body, next); err != nil {
 		return "", err
 	}
 	basis := old
 	if old.KeptFrom != "" {
 		if earlier, err := b.readRevision(old.ID + "@" + old.KeptFrom); err == nil {
 			basis = earlier
-			if err := bodyBasisRefusal(id, idSent, next, earlier); err != nil {
+			if err := bodyBasisRefusal(id, idSent, old.Revision, next, earlier); err != nil {
 				return "", err
 			}
 		}

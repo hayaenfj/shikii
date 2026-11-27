@@ -36,6 +36,151 @@ func requireArticle(t *testing.T, b Book, id, revision, body string) {
 	}
 }
 
+// requireAskForAPatchFirst checks the three things the sentence of a body refusal is for, which the wording may change around: the patch comes
+// before the whole body sent again; what a patch needs is written between them (the article's id, its current revision, sources, a
+// change_reason and the shape of an edit with a unique ending of the body, and the article read first); and a save that named no id
+// is told to give a different lesson another title (an id save is not told that, since it named the article itself).
+func requireAskForAPatchFirst(t *testing.T, refusal error, id, revision string, idSent bool) {
+	t.Helper()
+	msg := refusal.Error()
+	patch := strings.Index(msg, "shikii wiki patch")
+	resend := strings.Index(msg, "Resend the whole body")
+	if patch < 0 || resend < 0 || patch > resend {
+		t.Fatalf("the refusal must name shikii wiki patch before it says to resend the whole body (patch %d, resend %d): %s", patch, resend, msg)
+	}
+	for _, want := range []string{
+		`{"id":"` + id + `","revision":"` + revision + `","sources":`,
+		`"change_reason":`,
+		`"edits":[{"field":"body","before":"<a unique ending of the body>","after":`,
+		"shikii wiki query lesson:" + id,
+	} {
+		at := strings.Index(msg, want)
+		if at < patch || at > resend {
+			t.Fatalf("what a patch needs must be written between the patch and the resend, and %q is not (at %d, patch %d, resend %d): %s", want, at, patch, resend, msg)
+		}
+	}
+	if idSent && strings.Contains(msg, "another title") {
+		t.Fatalf("a save with an id is told to take another title: %s", msg)
+	}
+	if !idSent {
+		for _, want := range []string{"Without an id, the title found article " + id, "give it another title"} {
+			if !strings.Contains(msg, want) {
+				t.Fatalf("the refusal of a save without an id lacks %q: %s", want, msg)
+			}
+		}
+	}
+}
+
+// bodyRefusalCase is one refusal of a body save with what it has to say: the article's id and its current revision (the one the patch it
+// asks for names), and whether the save sent the id.
+type bodyRefusalCase struct {
+	err          error
+	id, revision string
+	idSent       bool
+}
+
+// bodyRefusalUnread is the revision the patch names in a refusal that has not read the article (a save with an id that lacks a lesson or
+// its sources is refused before the article is read): the revision is the one the query the patch asks for shows.
+func bodyRefusalUnread(id string) string {
+	return "<revision shown by shikii wiki query lesson:" + id + ">"
+}
+
+// bodyRefusalCases makes the refusals that send an agent to a patch: the loss refusal with an id and by the title, the refusal that measures
+// against the revision the saves started from, with an id and by the title, and the two refusals of a save with an id that lacks a lesson
+// or its sources (an agent told only what is missing sends the whole article again, and a body copied wrong loses a part of it).
+func bodyRefusalCases(t *testing.T) map[string]bodyRefusalCase {
+	t.Helper()
+	b, old, d := lossBook(t)
+	short := "Only the new sentence."
+	d.Body = &short
+	_, withID := b.Ingest(d)
+	d.ID = ""
+	_, byTitle := b.Ingest(d)
+	_, noLesson := b.Ingest(Draft{ID: old.ID, Sources: d.Sources, ChangeReason: "check"})
+	noSources := d
+	noSources.ID, noSources.Sources = old.ID, nil
+	_, noSourcesErr := b.Ingest(noSources)
+
+	eb, first, ed := erosionBook(t)
+	second := erosionFirstTwoSaves(t, eb, ed) // the revision the article has now; the refusal measures against first.Revision
+	_, worn := erosionSave(eb, ed, 1, 2, 3, 4, 11, 12, 13)
+	ed.ID = ""
+	_, wornByTitle := erosionSave(eb, ed, 1, 2, 3, 4, 11, 12, 13)
+
+	cases := map[string]bodyRefusalCase{
+		"a save with an id":                            {withID, old.ID, old.Revision, true},
+		"a save by the title":                          {byTitle, old.ID, old.Revision, false},
+		"a save that wears the body away":              {worn, first.ID, second.Revision, true},
+		"a save by the title that wears the body away": {wornByTitle, first.ID, second.Revision, false},
+		"a save with an id and no lesson":              {noLesson, old.ID, bodyRefusalUnread(old.ID), true},
+		"a save with an id and no sources":             {noSourcesErr, old.ID, bodyRefusalUnread(old.ID), true},
+	}
+	for name, c := range cases {
+		if c.err == nil {
+			t.Fatalf("%s is not refused", name)
+		}
+	}
+	return cases
+}
+
+// bodyRefusalMaxBytes is the most an agent reads in one refusal of a body save (a refusal was 917 to 1429 bytes: the cause and the way on
+// were buried in sentences that explain the measure). The longest, the basis refusal of a save by the title with ids of 16 digits, is 737
+// bytes with small numbers; the rest is room for numbers of more digits.
+const bodyRefusalMaxBytes = 760
+
+// All the refusals of a body save stay short.
+func TestTheBodyRefusalsStayShort(t *testing.T) {
+	for name, c := range bodyRefusalCases(t) {
+		if n := len(c.err.Error()); n > bodyRefusalMaxBytes {
+			t.Errorf("%s: the refusal is %d bytes, over %d: %s", name, n, bodyRefusalMaxBytes, c.err)
+		}
+	}
+}
+
+// A save with an id that lacks its lesson (an agent that sends only what it adds) or its sources is refused before the article is read, and
+// the refusal used to say only what was missing: Claude Code and Codex, given a sentence to add, filled in the fields and sent the whole
+// article again, which loses a part of the body when it is copied wrong. The refusal names the patch first, as the refusal of a body save does;
+// what a save that is not a patch sends comes after it. A save without an id, or with an id that cannot be an article's, is refused as before.
+func TestTheRefusalsOfAnIdSaveThatLacksALessonOrSourcesNameThePatchBeforeTheFieldsToSendAgain(t *testing.T) {
+	cases := bodyRefusalCases(t)
+	noLesson := cases["a save with an id and no lesson"]
+	requireAskForAPatchFirst(t, noLesson.err, noLesson.id, noLesson.revision, true)
+	text := noLesson.err.Error()
+	patch, again := strings.Index(text, "shikii wiki patch"), strings.Index(text, "applies_to again")
+	if patch < 0 || again < patch {
+		t.Fatalf("the refusal of a save with an id and no lesson must name the patch before it says to send the lesson, title and applies_to again (patch %d, again %d): %s", patch, again, text)
+	}
+	if !strings.Contains(text, "lesson") {
+		t.Fatalf("the refusal of a save with an id and no lesson does not say that the lesson is missing: %s", text)
+	}
+	if text := cases["a save with an id and no sources"].err.Error(); !strings.Contains(text, "needs sources") {
+		t.Fatalf("the refusal of a save with an id and no sources does not say that the sources are missing: %s", text)
+	}
+}
+
+func TestTheRefusalsOfASaveWithoutAValidIdThatLacksAThingStayAsTheyWere(t *testing.T) {
+	const needSources = "wiki ingest needs sources: an array of source ids (from wiki capture or reflect query)"
+	const sourceReview = "reviewing a source without a lesson accepts only source ids"
+	const updateByID = "updating a page by id sends its lesson, title and applies_to again (read them with wiki query lesson:<id>), with sources and change_reason"
+	b := Book{Root: t.TempDir(), Scope: "/work/project"}
+	sources := []string{seed(t, b, 1)}
+	for _, c := range []struct {
+		name string
+		d    Draft
+		want string
+	}{
+		{"no id, no sources", Draft{Title: "a page", Lesson: "a lesson", AppliesTo: "when saving"}, needSources},
+		{"no id, no lesson, a title", Draft{Sources: sources, Title: "a page"}, sourceReview},
+		{"an id that is not an article's, no sources", Draft{ID: "not-an-id", Title: "a page", Lesson: "a lesson", AppliesTo: "when saving"}, needSources},
+		{"an id that is not an article's, no lesson", Draft{ID: "not-an-id", Sources: sources, ChangeReason: "check"}, updateByID},
+	} {
+		_, err := b.Ingest(c.d)
+		if err == nil || err.Error() != c.want {
+			t.Errorf("%s: the refusal is not as it was:\n got %v\nwant %s", c.name, err, c.want)
+		}
+	}
+}
+
 // (a) An agent that sends only its new sentence under the id of an article would replace the body with it. The save is refused with
 // the cause and the way on, and the article stays at its revision. The same holds when the id is the one made from the first title.
 func TestIngestRefusesANewShortBodyAndKeepsTheArticle(t *testing.T) {
@@ -55,6 +200,7 @@ func TestIngestRefusesANewShortBodyAndKeepsTheArticle(t *testing.T) {
 				t.Fatalf("the refusal names the cause and what to send instead, and lacks %q: %v", want, err)
 			}
 		}
+		requireAskForAPatchFirst(t, err, old.ID, old.Revision, !byTitle)
 		requireArticle(t, b, old.ID, old.Revision, lossBody)
 	}
 }
@@ -78,11 +224,12 @@ func TestTheBodyLossRefusalSaysThatAChangeInsideALineDropsTheWholeLine(t *testin
 	if err == nil {
 		t.Fatal("a one-word rewording of a body made of one long line is kept whole by the measure, as the audit found; the measure changed")
 	}
-	for _, want := range []string{"drop 98%", "changing even part of a line counts that whole line as dropped", "small edit inside a long line with patch"} {
+	for _, want := range []string{"drop 98%", "a line changed anywhere counts as dropped"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("the refusal lacks %q: %v", want, err)
 		}
 	}
+	requireAskForAPatchFirst(t, err, saved.Page.ID, saved.Page.Revision, true) // a small edit inside a long line goes through the patch
 }
 
 // A save without an id finds its article by the title (the id is made from the first title). The refusal then does not say an id was
@@ -96,28 +243,14 @@ func TestTheBodyLossRefusalOfASaveWithoutAnIdDoesNotClaimAnIdWasSent(t *testing.
 	if err == nil {
 		t.Fatal("a short body under the id of an article was accepted")
 	}
-	for _, want := range []string{"Saving with an id replaces the whole body", "shikii wiki patch", "shikii wiki query lesson:" + old.ID} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("the refusal of a save with an id lacks %q: %v", want, err)
-		}
-	}
-	if strings.Contains(err.Error(), "another title") {
-		t.Fatalf("a save with an id is told to take another title: %v", err)
-	}
+	requireAskForAPatchFirst(t, err, old.ID, old.Revision, true)
 
 	d.ID = ""
 	_, err = b.Ingest(d) // the same title, no id
 	if err == nil {
 		t.Fatal("a short body under the first title of an article was accepted")
 	}
-	for _, want := range []string{old.ID, "without an id", "first title", "give it another title", "shikii wiki patch", "shikii wiki query lesson:" + old.ID} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("the refusal of a save without an id lacks %q: %v", want, err)
-		}
-	}
-	if strings.Contains(err.Error(), "Saving with an id") {
-		t.Fatalf("the refusal of a save without an id says an id was sent: %v", err)
-	}
+	requireAskForAPatchFirst(t, err, old.ID, old.Revision, false)
 	requireArticle(t, b, old.ID, old.Revision, lossBody)
 }
 
@@ -162,7 +295,7 @@ func TestIngestBodyLossLineIsHalfOfTheBytes(t *testing.T) {
 		{"an empty previous body has nothing to lose", "", "anything", false},
 		{"only blank lines before has nothing to lose", "\n \n", "anything", false},
 	} {
-		err := bodyLossRefusal("0123456789abcdef", false, tc.previous, tc.next)
+		err := bodyLossRefusal("0123456789abcdef", false, "fedcba9876543210", tc.previous, tc.next)
 		if (err != nil) != tc.refused {
 			t.Errorf("%s: refused %v, want %v (%v)", tc.name, err != nil, tc.refused, err)
 		}
