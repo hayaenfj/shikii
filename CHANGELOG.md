@@ -2,6 +2,13 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.44.2 — When an agent's addition to a wiki article is refused, it can tell right away what to send instead
+
+### Fixes
+
+- The refusal for a save that would wipe out an article's text is shorter, and it shows how to write the `shikii wiki patch` for that article, with its id and current version filled in. When a save names an article but lacks the lesson or the sources, the refusal also tells the agent to add with a patch first.
+- When a `shikii wiki patch` is written wrongly, the refusal now says what is wrong. If the name of the part to change is missing or wrong, it lists the names that work, and it tells how many times the text to replace appears. `shikii wiki` help now shows an example patch too.
+
 ## 0.44.1 — Saves that each drop a little no longer wear a wiki article away
 
 ### Fixes

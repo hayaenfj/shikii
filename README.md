@@ -14,11 +14,11 @@ What grows is the project, not the model, so its knowledge remains when you chan
 [![Tests](https://img.shields.io/badge/tests-2905%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.44.1-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.44.2-00ADD8?style=flat-square)](CHANGELOG.md)
 
 **Recent versions**
 
-- **0.44**: A save that would wipe out an article, when the agent meant only to add a few sentences, is refused. So is a run of saves that each cut a little, once together they would drop half or more of the text from before the cuts began, and the agent is told to add at the end with `shikii wiki patch` first.
+- **0.44**: A save that would wipe out an article, when the agent meant only to add a few sentences, is refused. So is a run of saves that each cut a little, once together they would drop half or more of the text from before the cuts began, and the agent is told to add at the end with `shikii wiki patch` first; the refusal shows that patch, filled in for the article.
 - **0.42–0.43**: The memory nap (`shikii nap`). At most once a day, the agent reviews its memory: it rereads articles whose underlying files changed and adds the corrections of yours that the wiki missed. `shikii status` shows how many it caught.
 - **0.41**: `shikii forget` removes what finished sessions, such as trial runs, left behind, after showing you the list.
 
@@ -131,7 +131,7 @@ export PATH="$HOME/.local/bin:$PATH"
 shikii hook install --yes
 ```
 
-Keep `~/.local/bin` on PATH in your shell settings, then initialize the projects you choose in step 3. To install a specific release, replace `@latest` in both commands with a tag such as `@v0.44.1`.
+Keep `~/.local/bin` on PATH in your shell settings, then initialize the projects you choose in step 3. To install a specific release, replace `@latest` in both commands with a tag such as `@v0.44.2`.
 
 If the hooks stop working after you upgrade Go or move the binary, run the installer command above again: the binary itself is often what is gone (with a Go version manager such as mise, a Go upgrade removes the per-version folder `go install` put it in). When `shikii` still runs, `shikii doctor` checks whether the hooks or the Codex registration point to a shikii that cannot run, and says how to fix it.
 

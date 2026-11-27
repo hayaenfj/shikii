@@ -139,6 +139,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.43.2 | The hook's wait, which grew with every request, grows about half as fast. |
 | 0.44.0 | A save that would drop half or more of an article's text is refused. An agent changes an article with a patch that shows what goes, or sends the whole text again with its additions. |
 | 0.44.1 | A save is also compared with the text from before the agent started dropping lines, so small cuts cannot add up. An agent adds with a patch first, and shikii learns from those additions too. |
+| 0.44.2 | When a save to an article is refused, the refusal shows the patch to send instead, filled in for that article, and a wrongly written patch is told what is wrong. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -521,3 +522,7 @@ During a memory nap, three articles were found to have lost most of their text. 
 ### In 0.44.1, small cuts no longer add up
 
 After 0.44.0, the independent review found a way around the new refusal. Each save was compared only with the text just before it, so an agent that kept a little more than half each time could cut an 8-line article down to 2 lines in three saves, and none was refused. Now a save that drops lines remembers the version from before the cuts began, and later saves are compared with that version as well. A person's edit, a patch, or a save that brings every line back settles the text again. The review also pointed out that copying the whole text by hand can lose up to half of it without a refusal, so agents are now told to add with a patch first: it adds the new sentences at the end and leaves the rest untouched. Because agents now add that way, shikii also learns from patches which article a new lesson went into, as it already did from saves.
+
+### In 0.44.2, a refusal shows what to send instead
+
+After 0.44.1 we used shikii ourselves the way an agent would and watched real Claude Code and Codex sessions add a sentence to an article. Two things got in the way. First, an agent that sends only its new sentence is usually stopped before the article is even compared, because the save lacks the lesson or the sources. That refusal did not mention a patch, so one agent copied the whole article back by hand, which is the risky path. Second, the refusal that did mention a patch was long and never showed what a patch looks like, so an agent guessed the wrong field names twice before it got one through. Now every such refusal is short and ends with a patch for that article, with its id and current version already filled in. A patch that is written wrongly is told what is wrong: a missing or unknown field name, or how many times the text to replace appears. With these changes, both agents added the sentence with their first patch.
