@@ -147,7 +147,7 @@ func (b Book) buildIngestPage(d Draft, body, sourceDir string, pages []Page, ref
 				p.Body = old.Body
 			}
 			if d.refuseBodyLoss {
-				if err := bodyLossRefusal(id, old.Body, p.Body); err != nil {
+				if err := bodyLossRefusal(id, d.ID != "", old.Body, p.Body); err != nil {
 					return nil, err
 				}
 			}

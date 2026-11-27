@@ -36,11 +36,19 @@ func bodyKeptBytes(previous, next string) (kept, total int) {
 }
 
 // bodyLossRefusal refuses a body that would lose half or more of the previous one in the sense above, and says why and what to send instead.
-func bodyLossRefusal(id, previous, next string) error {
+// idSent says whether the save named the article by its id; without one the article was found by the title (the id is made from the first
+// title), so the refusal does not say an id was sent and tells a new lesson that has the same title to take another one.
+func bodyLossRefusal(id string, idSent bool, previous, next string) error {
 	kept, total := bodyKeptBytes(previous, next)
 	if total == 0 || kept*bodyKeptMin > total {
 		return nil
 	}
 	lost := (total - kept) * 100 / total
-	return fmt.Errorf("refused: this save would replace the body of article %s and drop %d%% of it (%d of %d bytes of its lines are not in the new body). Saving with an id replaces the whole body; it does not add to it. To change or shorten part of the body, send shikii wiki patch (MCP: shikii_wiki operation patch) with before/after edits, sources and a change_reason. To add to it, read the article with shikii wiki query lesson:%s and send its whole body again with your additions", id, lost, total-kept, total, id)
+	// The measure is per line: a line counts as lost when any part of it changed, so a rewording inside a long line drops that whole line.
+	measure := "A line counts as kept only when it appears whole in the new body, so changing even part of a line counts that whole line as dropped; make a small edit inside a long line with patch."
+	replaces := "Saving with an id replaces the whole body; it does not add to it."
+	if !idSent {
+		replaces = fmt.Sprintf("Saving without an id finds the article by its title, and this title is the first title of article %s, so the save replaces the whole body of that article; it does not add to it. If this is a different lesson, give it another title.", id)
+	}
+	return fmt.Errorf("refused: this save would replace the body of article %s and drop %d%% of it (%d of %d bytes of its lines are not in the new body). %s %s To change or shorten part of the body, send shikii wiki patch (MCP: shikii_wiki operation patch) with before/after edits, sources and a change_reason. To add to it, read the article with shikii wiki query lesson:%s and send its whole body again with your additions", id, lost, total-kept, total, measure, replaces, id)
 }
