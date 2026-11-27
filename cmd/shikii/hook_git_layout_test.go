@@ -30,10 +30,12 @@ type layoutBuilder struct {
 	build func(t *testing.T) layoutCase
 }
 
-// gitAt runs git in dir with an identity and with the file transport allowed (a submodule of a folder next to it).
+// gitAt runs git in dir with an identity and with the file transport allowed (a submodule of a folder next to it). Automatic maintenance
+// is off: after a commit git starts `git maintenance run --auto`, a process more (about 7 ms of a commit that takes 18) that a repository
+// of a few files never needs, and the layouts of this file are built by dozens of commits.
 func gitAt(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "protocol.file.allow=always"}, args...)...)
+	cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "protocol.file.allow=always", "-c", "maintenance.auto=false"}, args...)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Skipf("git %v: %v %s", args, err, out) // an older git without the option, or no git
@@ -45,6 +47,17 @@ func newRepoAt(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		t.Fatal(err)
+	}
+	if len(args) == 0 { // a plain repository: the .git that a real git init made once in this process (gitRepoWith), copied
+		if key, ok := gitInitEnvKey(); ok {
+			if tmpl := gitInitTemplateFor(key); tmpl != nil {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				writeTree(t, dir, tmpl)
+				return
+			}
+		}
 	}
 	if out, err := exec.Command("git", append([]string{"init", "-q"}, append(args, dir)...)...).CombinedOutput(); err != nil {
 		t.Skipf("git init: %v %s", err, out)
@@ -60,10 +73,15 @@ func commitIn(t *testing.T, top, name string) {
 	gitAt(t, top, "commit", "-q", "-m", name)
 }
 
-// where git keeps the files of the working tree at top
+// where git keeps the files of the working tree at top (both answers come from one run of git: a run is a process, and a layout is
+// built for most of the cases of this file)
 func gitDirsOf(t *testing.T, top string) (string, string) {
 	t.Helper()
-	return gitAt(t, top, "rev-parse", "--absolute-git-dir"), gitAt(t, top, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	lines := strings.Split(gitAt(t, top, "rev-parse", "--absolute-git-dir", "--path-format=absolute", "--git-common-dir"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("git rev-parse gave %d lines for the git folder and the shared one, want 2: %q", len(lines), lines)
+	}
+	return lines[0], lines[1]
 }
 
 func finishLayout(t *testing.T, c layoutCase) layoutCase {
@@ -496,17 +514,16 @@ func TestWhatTheFilesSayIsNotTrustedWhereGitSaidSomethingElse(t *testing.T) {
 	}
 	// A layout is built once for its cases and a git that lies is written once for each way of lying (a new file is slow to run the first
 	// time on macOS): a case only asks about the place, twice, and writes nothing in the layout (what it keeps goes to its own HOME). A
-	// case puts the stubs on PATH itself, after the layout is built by the real git.
+	// case puts the stub on PATH itself, after the layout is built by the real git. The calls are written down by git itself behind the
+	// stub (traceCallLog: a git that lies still runs the real one for every call), so no stub is written for the log.
 	layouts := make([]layoutCase, len(builders))
 	for i, b := range builders {
 		layouts[i] = b.build(t)
 	}
 	cleanPath := os.Getenv("PATH")
 	paths := make([]string, len(seds))
-	logs := make([]func() []string, len(seds))
 	for i, c := range seds {
 		lyingGit(t, c.sed)
-		logs[i] = gitCallLog(t)
 		paths[i] = os.Getenv("PATH")
 		t.Setenv("PATH", cleanPath)
 	}
@@ -515,8 +532,7 @@ func TestWhatTheFilesSayIsNotTrustedWhereGitSaidSomethingElse(t *testing.T) {
 			t.Run(b.name+": "+c.name, func(t *testing.T) {
 				t.Setenv("HOME", t.TempDir())
 				t.Setenv("PATH", paths[j])
-				l, calls := layouts[i], logs[j]
-				calls() // the log starts empty, as the log of a stub of its own does
+				l, calls := layouts[i], traceCallLog(t)
 				var first gitPlace
 				event(func() { first, _ = gitPlaceAt(context.Background(), l.top) })
 				if len(calls()) == 0 {

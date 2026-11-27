@@ -423,7 +423,7 @@ func TestSlashCommandListingIsPrunedWithItsSessionRecord(t *testing.T) {
 
 func gitAs(t *testing.T, repo string, args ...string) {
 	t.Helper()
-	full := append([]string{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com"}, args...)
+	full := append([]string{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "maintenance.auto=false"}, args...)
 	if out, err := exec.Command("git", full...).CombinedOutput(); err != nil {
 		t.Fatalf("git %s: %v %s", strings.Join(args, " "), err, out)
 	}

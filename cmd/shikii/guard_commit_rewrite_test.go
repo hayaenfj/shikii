@@ -50,7 +50,7 @@ func TestCommitBodyRecordsARewrittenRequestHeadAsNotVerified(t *testing.T) {
 			}
 			// dated in the past, so a commit that replaces it never gets the same id by being made within the same second
 			gitAs(t, repo, "add", "-A")
-			old := exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "docs: subject only, made before the request")
+			old := exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "maintenance.auto=false", "commit", "-q", "-m", "docs: subject only, made before the request")
 			old.Env = append(os.Environ(), "GIT_COMMITTER_DATE=2026-10-21T00:00:00Z", "GIT_AUTHOR_DATE=2026-10-21T00:00:00Z")
 			if out, err := old.CombinedOutput(); err != nil {
 				t.Fatalf("git commit: %v %s", err, out)

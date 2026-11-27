@@ -235,7 +235,7 @@ func TestHookPromptKindGetsOutcomeTruthAtStop(t *testing.T) {
 	if out, err := exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "add", "-A").CombinedOutput(); err != nil {
 		t.Fatalf("git add: %v %s", err, out)
 	}
-	if out, err := exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "x").CombinedOutput(); err != nil {
+	if out, err := exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "maintenance.auto=false", "commit", "-q", "-m", "x").CombinedOutput(); err != nil {
 		t.Fatalf("git commit: %v %s", err, out)
 	}
 	if treeSnapshot(repo) != before {

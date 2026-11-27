@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,17 +13,54 @@ import (
 	"time"
 )
 
-// gitCallLog puts a git in front of the real one that writes down the arguments of each call (one line per call), and returns a
-// function that gives the calls made since it was last asked, in order.
+// gitCallLog writes down the arguments of each git call (one line per call), and returns a function that gives the calls made since it
+// was last asked, in order.
+//
+// Where the git that runs is the real one, git writes the calls down itself (traceCallLog), and no file is written to be run: a new
+// executable is slow on its first run on macOS (writeStub pays about 0.2 s for each one), and this was asked for by every test and every
+// case of the files about git.
+//
+// Where a stub of the tests already stands in front of git (one that never answers, one that is slow to answer, one that lies), or a log
+// of that kind is already writing, a stub of its own goes in front of that one, as before: a call must be written down even when the
+// git behind it never runs, and at the time it is started, not when the git behind it gets to run (a call that runs out of time in a slow
+// stub would not be written down at all).
 func gitCallLog(t *testing.T) func() []string {
 	t.Helper()
 	real, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("no git")
 	}
+	_, stubbed := stubWarmMarkers.Load(real)
+	if !stubbed && os.Getenv("GIT_TRACE2_EVENT") == "" {
+		return traceCallLog(t)
+	}
 	bin, seen := t.TempDir(), filepath.Join(t.TempDir(), "calls.log")
 	writeStub(t, bin, "git", "printf '%s\\n' \"$*\" >> '"+seen+"'\nexec '"+real+"' \"$@\"\n")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return takeCalls(t, seen, func(b []byte) []string {
+		return strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+	})
+}
+
+// traceCallLog is gitCallLog where every call gets to the real git, also through a stub that runs it in the end (one that lies about
+// an answer): git writes down each process that is started (GIT_TRACE2_EVENT: one "start" event for it; the processes git starts for
+// itself, as `git worktree add` starts `git reset`, are no calls of the test or the hook and have a session id with a "/" in it, so they
+// are left out), at its start, which is when the stub wrote the call down. The variable is one of the process: it is set until the test
+// that asks (or its case) ends, so only one log of this kind writes at a time (gitCallLog gives a second asker a stub of its own).
+func traceCallLog(t *testing.T) func() []string {
+	t.Helper()
+	// The folder a real git init makes is made once in this process, for the first gitRepo, under the GIT_ variables that are set then
+	// (gitInitEnvKey names all of them): made while the variable of this log is set, it would suit no other test. Make it first.
+	if key, ok := gitInitEnvKey(); ok {
+		gitInitTemplateFor(key)
+	}
+	seen := filepath.Join(t.TempDir(), "calls.log")
+	t.Setenv("GIT_TRACE2_EVENT", seen)
+	return takeCalls(t, seen, startedCalls)
+}
+
+// takeCalls returns the function that reads the log at seen (parse turns its bytes into the calls), empties it, and gives the calls.
+func takeCalls(t *testing.T, seen string, parse func([]byte) []string) func() []string {
 	return func() []string {
 		t.Helper()
 		b, _ := os.ReadFile(seen)
@@ -32,7 +70,46 @@ func gitCallLog(t *testing.T) func() []string {
 		if len(b) == 0 {
 			return nil
 		}
-		return strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+		return parse(b)
+	}
+}
+
+// startedCalls is the calls in a log that git wrote with GIT_TRACE2_EVENT: the arguments after `git` of each "start" event, joined by
+// spaces as the stub joins them, of the processes the caller started (the processes of git's own have a "/" in the session id).
+func startedCalls(b []byte) []string {
+	var calls []string
+	for _, line := range strings.Split(string(b), "\n") {
+		var event struct {
+			Event string   `json:"event"`
+			Sid   string   `json:"sid"`
+			Argv  []string `json:"argv"`
+		}
+		if json.Unmarshal([]byte(line), &event) != nil || event.Event != "start" || strings.Contains(event.Sid, "/") || len(event.Argv) == 0 {
+			continue
+		}
+		calls = append(calls, strings.Join(event.Argv[1:], " "))
+	}
+	return calls
+}
+
+// What gitCallLog gives is the calls that were started, in order, each as the line the stub it replaced wrote (the arguments after
+// `git`, joined by spaces), and none of what git starts for itself: `git worktree add` starts `git branch` and `git reset`, which no
+// test or hook asked for. A reading empties the log.
+func TestGitCallLogGivesTheCallsThatWereStartedAndNotWhatGitStartsForItself(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := gitRepo(t)
+	calls := gitCallLog(t)
+	prefix := "-C " + repo + " -c user.name=t -c user.email=t@example.com -c protocol.file.allow=always -c maintenance.auto=false " // what gitAt puts before the arguments
+	gitAt(t, repo, "rev-parse", "--show-toplevel")
+	commitIn(t, repo, "a")
+	wt := filepath.Join(t.TempDir(), "wt")
+	gitAt(t, repo, "worktree", "add", "-q", wt, "-b", "feat")
+	want := []string{prefix + "rev-parse --show-toplevel", prefix + "add -A", prefix + "commit -q -m a", prefix + "worktree add -q " + wt + " -b feat"}
+	if got := calls(); !reflect.DeepEqual(got, want) {
+		t.Errorf("the calls are:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if got := calls(); len(got) != 0 {
+		t.Errorf("a reading did not empty the log: %v", got)
 	}
 }
 

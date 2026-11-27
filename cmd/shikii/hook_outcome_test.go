@@ -267,66 +267,71 @@ func TestRestatesReachesRequestEightTurnsBack(t *testing.T) {
 
 // restates names only a request this session recorded in this project: another session's, another project's or a made-up id gives
 // nothing, whether the named request is among the recent turns or eight turns back.
+//
+// The history is built once for the cases that follow it (nine rounds of hooks are most of what each case cost). Each case asserts that
+// request 1 of "planning" gets no outcome. None of the first cases gives it one when it passes, and what they add (a request of "other",
+// one more request of "planning", the store of another project) is not what a later case looks at. The last case finds request 1 on
+// purpose, as its control, and so labels it: it runs last.
 func TestRestatesIgnoresForeignTurns(t *testing.T) {
 	for _, f := range []struct {
 		name  string
+		far   bool
 		turns func(t *testing.T, repo, root, session string) (string, string)
-	}{{"recent", restateTurns}, {"eight turns back", restateFarTurns}} {
-		t.Run("another session, "+f.name, func(t *testing.T) {
+	}{{"recent", false, restateTurns}, {"eight turns back", true, restateFarTurns}} {
+		t.Run(f.name, func(t *testing.T) {
 			repo, root, _ := planningFixture(t)
 			turn, done := f.turns(t, repo, root, "planning")
 			f.turns(t, repo, root, "other")
-			runHook(t, "user-prompt-submit", map[string]any{"session_id": "other", "cwd": repo, "prompt": restateAgain})
-			restateSubmit(t, root, "other", turn)
-			if l, ok := doneLabel(t, root, done); ok {
-				t.Fatalf("restates naming another session's request is ignored: %+v", l)
+			t.Run("another session", func(t *testing.T) {
+				runHook(t, "user-prompt-submit", map[string]any{"session_id": "other", "cwd": repo, "prompt": restateAgain})
+				restateSubmit(t, root, "other", turn)
+				if l, ok := doneLabel(t, root, done); ok {
+					t.Fatalf("restates naming another session's request is ignored: %+v", l)
+				}
+			})
+			t.Run("made-up id", func(t *testing.T) {
+				runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": restateAgain})
+				restateSubmit(t, root, "planning", "0123456789abcdef")
+				if l, ok := doneLabel(t, root, done); ok {
+					t.Fatalf("restates naming an unknown request is ignored: %+v", l)
+				}
+			})
+			if !f.far {
+				return
 			}
-		})
-		t.Run("made-up id, "+f.name, func(t *testing.T) {
-			repo, root, _ := planningFixture(t)
-			_, done := f.turns(t, repo, root, "planning")
-			runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": restateAgain})
-			restateSubmit(t, root, "planning", "0123456789abcdef")
-			if l, ok := doneLabel(t, root, done); ok {
-				t.Fatalf("restates naming an unknown request is ignored: %+v", l)
-			}
+			t.Run("another project", func(t *testing.T) {
+				repo2 := gitRepo(t) // the same session id moves to another project, with its own store
+				root2, _ := initTestProject(t, repo2)
+				usePlanningSpec(t, root2)
+				t.Chdir(repo2)
+				runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo2, "prompt": restateAgain})
+				restateSubmit(t, root2, "planning", turn)
+				if l, ok := doneLabel(t, root, done); ok {
+					t.Fatalf("restates naming a request of another project is ignored: %+v", l)
+				}
+				if l, ok := doneLabel(t, root2, done); ok {
+					t.Fatalf("restates naming a request of another project is ignored: %+v", l)
+				}
+			})
+			// one store can hold several projects (scopes): a request recorded under another scope is not looked up
+			t.Run("another scope in the same record", func(t *testing.T) {
+				previous := loadSession(root, "planning")
+				frame := &planningFrame{TurnID: "next", At: time.Now(), Sources: map[string]string{"current_user": restateAgain}}
+				addPlanningContext(previous.Scope+"-elsewhere", previous, frame)
+				s := &hookSession{Scope: previous.Scope + "-elsewhere", Planning: frame}
+				if restateDone(root, s, turn) {
+					t.Fatal("restates must not find a request recorded under another project")
+				}
+				if l, ok := doneLabel(t, root, done); ok {
+					t.Fatalf("restates naming a request of another project is ignored: %+v", l)
+				}
+				// the same record and the same project finds it (so the case above fails for the right reason)
+				frame = &planningFrame{TurnID: "next", At: time.Now(), Sources: map[string]string{"current_user": restateAgain}}
+				addPlanningContext(previous.Scope, previous, frame)
+				if !restateDone(root, &hookSession{Scope: previous.Scope, Planning: frame}, turn) {
+					t.Fatal("restates must find request 1 in the same session and project")
+				}
+			})
 		})
 	}
-	t.Run("another project", func(t *testing.T) {
-		repo, root, _ := planningFixture(t)
-		turn, done := restateFarTurns(t, repo, root, "planning")
-		repo2 := gitRepo(t) // the same session id moves to another project, with its own store
-		root2, _ := initTestProject(t, repo2)
-		usePlanningSpec(t, root2)
-		t.Chdir(repo2)
-		runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo2, "prompt": restateAgain})
-		restateSubmit(t, root2, "planning", turn)
-		if l, ok := doneLabel(t, root, done); ok {
-			t.Fatalf("restates naming a request of another project is ignored: %+v", l)
-		}
-		if l, ok := doneLabel(t, root2, done); ok {
-			t.Fatalf("restates naming a request of another project is ignored: %+v", l)
-		}
-	})
-	// one store can hold several projects (scopes): a request recorded under another scope is not looked up
-	t.Run("another scope in the same record", func(t *testing.T) {
-		repo, root, _ := planningFixture(t)
-		turn, done := restateFarTurns(t, repo, root, "planning")
-		previous := loadSession(root, "planning")
-		f := &planningFrame{TurnID: "next", At: time.Now(), Sources: map[string]string{"current_user": restateAgain}}
-		addPlanningContext(previous.Scope+"-elsewhere", previous, f)
-		s := &hookSession{Scope: previous.Scope + "-elsewhere", Planning: f}
-		if restateDone(root, s, turn) {
-			t.Fatal("restates must not find a request recorded under another project")
-		}
-		if l, ok := doneLabel(t, root, done); ok {
-			t.Fatalf("restates naming a request of another project is ignored: %+v", l)
-		}
-		// the same record and the same project finds it (so the case above fails for the right reason)
-		f = &planningFrame{TurnID: "next", At: time.Now(), Sources: map[string]string{"current_user": restateAgain}}
-		addPlanningContext(previous.Scope, previous, f)
-		if !restateDone(root, &hookSession{Scope: previous.Scope, Planning: f}, turn) {
-			t.Fatal("restates must find request 1 in the same session and project")
-		}
-	})
 }

@@ -18,12 +18,14 @@ func writeGuard(t *testing.T, root string, g guard) {
 	}
 }
 
+// gitCommitAll commits everything. Automatic maintenance is off (-c maintenance.auto=false): git starts `git maintenance run --auto` after a
+// commit, a process more (about 7 ms of a commit that takes 18) that a repository of a few files never needs.
 func gitCommitAll(t *testing.T, repo, message string) {
 	t.Helper()
 	if out, err := exec.Command("git", "-C", repo, "add", "-A").CombinedOutput(); err != nil {
 		t.Fatalf("git add: %v %s", err, out)
 	}
-	if out, err := exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", message).CombinedOutput(); err != nil {
+	if out, err := exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "maintenance.auto=false", "commit", "-q", "-m", message).CombinedOutput(); err != nil {
 		t.Fatalf("git commit: %v %s", err, out)
 	}
 }
@@ -129,7 +131,7 @@ func TestStopIsBlockedByPairedFilesAndCommitBody(t *testing.T) {
 	if o, err := exec.Command("git", "-C", repo, "add", "-A").CombinedOutput(); err != nil {
 		t.Fatalf("%v %s", err, o)
 	}
-	if o, err := exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--amend", "-m", "docs: add 0.7.3\n\n元の問題: 項目が無かった。\n検証: 両方の変更履歴を目で確かめた。").CombinedOutput(); err != nil {
+	if o, err := exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "maintenance.auto=false", "commit", "-q", "--amend", "-m", "docs: add 0.7.3\n\n元の問題: 項目が無かった。\n検証: 両方の変更履歴を目で確かめた。").CombinedOutput(); err != nil {
 		t.Fatalf("%v %s", err, o)
 	}
 	runHook(t, "stop", map[string]any{"session_id": "p", "cwd": repo, "last_assistant_message": "直した", "stop_hook_active": true})
@@ -174,7 +176,7 @@ func TestCommitBodyIgnoresCommitsNotMadeInTheTurn(t *testing.T) {
 	if out, err := exec.Command("git", "-C", repo, "add", "-A").CombinedOutput(); err != nil {
 		t.Fatalf("%v %s", err, out)
 	}
-	old := exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "feature: subject only")
+	old := exec.Command("git", "-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "maintenance.auto=false", "commit", "-q", "-m", "feature: subject only")
 	old.Env = append(os.Environ(), "GIT_COMMITTER_DATE=2026-10-21T00:00:00Z", "GIT_AUTHOR_DATE=2026-10-21T00:00:00Z")
 	if out, err := old.CombinedOutput(); err != nil {
 		t.Fatalf("%v %s", err, out)
