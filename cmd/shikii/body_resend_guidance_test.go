@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -408,5 +409,54 @@ func TestHowToSubmitSaysWhatAPatchNeedsBeforeTheUniqueEnding(t *testing.T) {
 	}
 	if !strings.Contains(text[patch:ending], "id and current revision") {
 		t.Fatalf("how_to_submit does not name both the id and the current revision as what a patch needs: %q", text[patch:ending])
+	}
+}
+
+// A patch edit without a field is refused, and the texts that send an agent to a patch said only "before/after edits" (found when a patch
+// was built from the refusal of a body save). how_to_submit shows the shape of the edits where it names the patch, before the unique ending
+// it asks for.
+func TestHowToSubmitShowsTheShapeOfAPatchEdit(t *testing.T) {
+	const shape = `edits:[{field:"body",before,after}]`
+	text := reflectHowToSubmit
+	patch, at, ending := strings.Index(text, "shikii wiki patch"), strings.Index(text, shape), strings.Index(text, patchAppend)
+	if patch < 0 || at < patch || at > ending {
+		t.Fatalf("how_to_submit must show %s between naming shikii wiki patch and the unique ending (patch %d, shape %d, unique ending %d)", shape, patch, at, ending)
+	}
+}
+
+// shikii wiki --help carries a patch in the shape of the other forms: its JSON names the article, its revision, the sources, the reason and
+// the edits, and an edit names its field. The form is run as written by TestHelpPrintsFormsThatRunAsWritten.
+func TestTheWikiHelpShowsAPatchWithItsEdits(t *testing.T) {
+	help, err := captureErr(func() error { return cliCall([]string{"wiki", "--help"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	var patch *usageForm
+	for _, form := range usageForms(help) {
+		if len(form.args) >= 2 && form.args[0] == "wiki" && form.args[1] == "patch" {
+			form := form
+			patch = &form
+		}
+	}
+	if patch == nil {
+		t.Fatalf("shikii wiki --help has no form of wiki patch:\n%s", help)
+	}
+	var shape struct {
+		ID           string   `json:"id"`
+		Revision     string   `json:"revision"`
+		ChangeReason string   `json:"change_reason"`
+		Sources      []string `json:"sources"`
+		Edits        []struct {
+			Field  string `json:"field"`
+			Before string `json:"before"`
+			After  string `json:"after"`
+		} `json:"edits"`
+	}
+	input := usagePlaceholder.ReplaceAllString(patch.input, "x")
+	if err := json.Unmarshal([]byte(input), &shape); err != nil {
+		t.Fatalf("the JSON of the wiki patch form is not JSON once its placeholders are filled: %v\n%s", err, patch.input)
+	}
+	if shape.ID == "" || shape.Revision == "" || shape.ChangeReason == "" || len(shape.Sources) == 0 || len(shape.Edits) != 1 || shape.Edits[0].Field != "body" || shape.Edits[0].Before == "" || shape.Edits[0].After == "" {
+		t.Fatalf("the wiki patch form shows id, revision, sources, change_reason and edits [{field body, before, after}]: %+v\n%s", shape, patch.input)
 	}
 }

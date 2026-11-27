@@ -74,10 +74,11 @@ var agentUsages = map[string]agentUsage{
 			{"save a source you checked", "wiki capture", `{"kind":"test","title":"<title>","content":"<what you observed>","reference":"<file, command or URL>","version":"<version or commit>","observed_at":"<now, RFC 3339>"}`},
 			{"save a lesson from sources", "wiki ingest", `{"sources":["<source id>"],"title":"<title>","lesson":"<one or two sentences>","applies_to":"<when it applies>","kind":"rule","scene":"<when ...>","body":"<background, reasons, open points>"}`},
 			{"after shikii nap: say which conversations you read, with nothing to add: the ids as the only field (the entry itself, not the wiki list that reflect submit takes)", "wiki ingest", `{"sources":["<source id>"]}`},
+			{"change a lesson you read, by exact text (id and revision from wiki query lesson:<page id>; each edit names its field: title, lesson, applies_to, body, rationale, kind or scene; before is text the field has once, empty only to fill an empty field)", "wiki patch", `{"id":"<page id>","revision":"<revision>","sources":["<source id>"],"change_reason":"<why>","edits":[{"field":"body","before":"<a sentence that the body has once>","after":"<that sentence with your change>"}]}`},
 		},
 		Notes: []string{
 			"kind of a source: human, agent, code, test or release. kind of a lesson: rule, howto, criteria, fact or history.",
-			"patch, maintain, consult, reuse, organize, reconcile, diagnose and compare also read one JSON object from standard input: patch takes the patch object, maintain {page_id, revision, key, reason}, the others the arguments of shikii_wiki of the MCP server.",
+			"patch, maintain, consult, reuse, organize, reconcile, diagnose and compare also read one JSON object from standard input: patch takes the object of its form above, maintain {page_id, revision, key, reason}, the others the arguments of shikii_wiki of the MCP server.",
 			"classify <page id> <kind> <scene> and verify [pattern.md ...] read no standard input; lint takes no arguments.",
 			"withdraw {id, revision, sources, reason} takes an article out of delivery, when the work it came from was deleted, if every source it cites is one you name and it holds no correction. The article is not deleted: it stays as a withdrawn article, and a person restores or deletes it on the Knowledge page; the command line and MCP have no operation for either. It runs from the command line only.",
 		},

@@ -58,7 +58,7 @@ func bodyKeptMeasure(previous, next string) (refused bool, lost, lostBytes, tota
 // of it without any refusal (0.44.0 leftover U-11: 49% lost, below the line).
 const (
 	bodyLossMeasure = "A line counts as kept only when it appears whole in the new body, so changing even part of a line counts that whole line as dropped; make a small edit inside a long line with patch."
-	bodyWayOn       = "To add to the body, or to change or shorten part of it, send shikii wiki patch (MCP: shikii_wiki operation patch) with the article's id and current revision, sources, a change_reason and before/after edits (read the article, its id and its current revision with shikii wiki query lesson:%s first); to add at the end, make before a unique ending of the body and after that ending plus the new text. Only when a patch does not fit, send its whole body again with your additions, copied exactly"
+	bodyWayOn       = "To add to the body, or to change or shorten part of it, send shikii wiki patch (MCP: shikii_wiki operation patch) with the article's id and current revision, sources, a change_reason and edits:[{field:\"body\",before,after}] (read the article, its id and its current revision with shikii wiki query lesson:%s first); to add at the end, make before a unique ending of the body and after that ending plus the new text. Only when a patch does not fit, send its whole body again with your additions, copied exactly"
 )
 
 // bodyLossRefusal refuses a body that would lose half or more of the previous one in the sense above, and says why and what to send instead.

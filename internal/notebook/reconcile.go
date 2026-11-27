@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"unicode/utf8"
 )
 
 type ReconcileConflict struct {
@@ -140,15 +139,18 @@ func applyReconcileEdits(p Page, edits []TextEdit) (Page, error) {
 	fields := map[string]*string{"title": &p.Title, "lesson": &p.Lesson, "applies_to": &p.AppliesTo, "body": &p.Body, "rationale": &p.Rationale, "kind": &p.Kind, "scene": &p.Scene}
 	for i, e := range edits {
 		field, ok := fields[e.Field]
-		if !ok || !utf8.ValidString(e.Before) || !utf8.ValidString(e.After) || len(e.Before) > 16<<10 || len(e.After) > 16<<10 || e.Before == e.After {
-			return p, fmt.Errorf("invalid reconciliation edit %d", i+1)
+		if err := patchEditProblem("reconciliation", i+1, e, ok); err != nil {
+			return p, err
+		}
+		if e.Before == e.After {
+			return p, errors.New("a reconciliation edit must change its text")
 		}
 		if e.Before == "" {
 			if *field != "" {
 				return p, errors.New("an empty before can only fill an empty base field")
 			}
-		} else if !uniqueLearningQuote(*field, e.Before) {
-			return p, errors.New("a reconciliation edit must match exactly once in its base field")
+		} else if n := occurrences(*field, e.Before); n != 1 {
+			return p, fmt.Errorf("reconciliation edit %d: before matches %d times in %s of the base revision; quote text that the revision you read has once", i+1, n, e.Field)
 		}
 		*field = strings.Replace(*field, e.Before, e.After, 1)
 	}

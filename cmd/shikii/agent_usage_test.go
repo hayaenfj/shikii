@@ -100,7 +100,13 @@ func TestHelpPrintsFormsThatRunAsWritten(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	values := map[string]string{"<session_id>": "planning", "<source id>": source.ID, "<page id>": page.Page.ID, "<now, RFC 3339>": time.Now().UTC().Format(time.RFC3339)}
+	saved, err := b.Query("lesson:" + page.Page.ID)
+	if err != nil || len(saved.Lessons) != 1 {
+		t.Fatalf("the article is read back: %v %+v", err, saved)
+	}
+	// the revision and the sentence of the body that a patch form names are the article's own: a patch is refused for any other
+	values := map[string]string{"<session_id>": "planning", "<source id>": source.ID, "<page id>": page.Page.ID, "<now, RFC 3339>": time.Now().UTC().Format(time.RFC3339),
+		"<revision>": saved.Lessons[0].Revision, "<a sentence that the body has once>": "The export keeps the filters."}
 	fill := func(text string) string {
 		for name, value := range values {
 			text = strings.ReplaceAll(text, name, value)
@@ -114,7 +120,7 @@ func TestHelpPrintsFormsThatRunAsWritten(t *testing.T) {
 		{[]string{"work"}, map[string]int{"work prepare": 3, "work record": 1}},
 		{[]string{"hook", "plan"}, map[string]int{"hook plan query": 1}},
 		{[]string{"reflect"}, map[string]int{"reflect query": 1, "reflect place": 1, "reflect submit": 1}},
-		{[]string{"wiki"}, map[string]int{"wiki query": 3, "wiki capture": 1, "wiki ingest": 2}},
+		{[]string{"wiki"}, map[string]int{"wiki query": 3, "wiki capture": 1, "wiki ingest": 2, "wiki patch": 1}},
 		{[]string{"handoff"}, map[string]int{"handoff list": 1, "handoff read": 1, "handoff write": 1, "handoff append": 1}},
 	} {
 		name := strings.Join(c.command, " ")

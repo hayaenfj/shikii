@@ -17,6 +17,8 @@
 # entry the failure prints with a kind and a reason.
 # A line that tells to send the text again without the word body ("send the whole article text again") is not found by this check.
 cmd/shikii/agent_usage.go#3e2442e9f4741910	not-resend	an example draft whose body field holds a placeholder for the background; it does not tell to send a body again	{"sources":["<source id>"],"title":"<title>","lesson":"<one or two sente
+cmd/shikii/agent_usage.go#8da68c6c32934d2b	not-resend	the description of the wiki patch form in the help: when it is used and which fields an edit can name (body is one of them); it does not tell to send a body again	change a lesson you read, by exact text (id and revision from wiki query
+cmd/shikii/agent_usage.go#f15fe8c58c645b93	not-resend	the example JSON of a patch in the help: an edit whose field is body, with placeholders for before and after; it does not tell to send a body again	{"id":"<page id>","revision":"<revision>","sources":["<source id>"],"cha
 cmd/shikii/experience.go#b97d25cf05057401	not-resend	a struct tag naming a JSON field, no instruction	json:"body_omitted,omitempty"
 cmd/shikii/experience.go#4da24f0e2802328b	not-resend	a struct tag naming a JSON field, no instruction	json:"body_excerpts,omitempty"
 cmd/shikii/experience.go#9b11623e3cb995e0	not-resend	a struct tag naming a JSON field, no instruction	json:"body,omitempty"
@@ -41,11 +43,11 @@ cmd/shikii/mcp_tools.go#230d8358dc8e8890	not-resend	the JSON key body (a schema 
 cmd/shikii/mcp_tools.go#847eb88f9a602671	not-resend	describes the body field: a body replaces it all and losing half or more is refused (use patch); a description, not an instruction to send one	the knowledge text: background, evidence, conditions, open points. Up to
 cmd/shikii/mcp_tools.go#05d5d79a4bee0eee	not-resend	the tool description: body_excerpts come before full rereads, and ingest saves a lesson with a body; for an id it says to send lesson, title and applies_to again, not the body	Grows this project's wiki. Read the hook's prepared work when supplied; 
 cmd/shikii/planning_knowledge.go#acf0c5a6cebabc96	not-resend	an error that a page of another project cannot be read, no instruction	cannot read the body of a page in the same project
-cmd/shikii/reflect.go#f60643892c0d4e21	patch-first	names shikii wiki patch with a unique ending of the body first, and only then the existing body sent again	submit reviews:[{source_id,trace_id,truth,reason}] with your own truth y
+cmd/shikii/reflect.go#1e7b5c5fda45cb69	patch-first	names shikii wiki patch with the shape of its edits and a unique ending of the body first, and only then the existing body sent again	submit reviews:[{source_id,trace_id,truth,reason}] with your own truth y
 cmd/shikii/reflect_budget.go#8bcea8d530e24443	not-resend	a JSON key of the prepared knowledge reply (a flag or the excerpts), no instruction	body_included
 cmd/shikii/reflect_budget.go#044c776da6cc89d9	not-resend	names what a size-limited reply leaves out (lessons[].body); each query reads the lesson whole	lessons[].body and details (each query reads its lesson whole)
 cmd/shikii/reflect_budget.go#ff2ac394e448e611	not-resend	tells to read a lesson left without its body with its query; reading	Submit what is here: each conversation listed has its targets and delive
-cmd/shikii/reflect_place.go#cfae4644537deacb	patch-first	names shikii wiki patch with a unique ending of the body first, and only then its whole body sent with the additions	Until a line is drawn this is only a reference. Read the body of pages j
+cmd/shikii/reflect_place.go#c8e07cb807eeb293	patch-first	names shikii wiki patch with a unique ending of the body first, and only then its whole body sent with the additions	Until a line is drawn this is only a reference. Read the body of pages j
 cmd/shikii/work.go#8bcea8d530e24443	not-resend	a JSON key of the prepared knowledge reply (a flag or the excerpts), no instruction	body_included
 cmd/shikii/work.go#22c9e03453182115	not-resend	lists the note fields (body among them); for a read article it says to use target and exact edits, not a resent body	Optional reading:{check,sufficient,evidence:[captured refs]} reports che
 cmd/shikii/work_budget.go#8bcea8d530e24443	not-resend	a JSON key of the prepared knowledge reply (a flag or the excerpts), no instruction	body_included
@@ -74,7 +76,7 @@ internal/notebook/assistance.go#e337414908773efb	not-resend	marks an article as 
 internal/notebook/collective.go#230d8358dc8e8890	not-resend	the JSON key body (a schema property or a field name), no instruction	body
 internal/notebook/discovery.go#2085b63937e41926	not-resend	says a lookup records at most two returned article bodies; a limit	a lookup records at most two returned article bodies
 internal/notebook/ingest_body_loss.go#e98c49b0f4a1194f	not-resend	says a changed line counts whole as dropped and to make a small edit in a long line with patch	A line counts as kept only when it appears whole in the new body, so cha
-internal/notebook/ingest_body_loss.go#d2e46a61af97c87c	patch-first	the refusal's advice: a patch with a unique ending first, and only when a patch does not fit the whole body sent again	To add to the body, or to change or shorten part of it, send shikii wiki
+internal/notebook/ingest_body_loss.go#dfe4b220612cd9b1	patch-first	the refusal's advice: a patch with the shape of its edits and a unique ending first, and only when a patch does not fit the whole body sent again	To add to the body, or to change or shorten part of it, send shikii wiki
 internal/notebook/ingest_body_loss.go#823580e41a7e05ba	not-resend	the refusal's headline: this save would replace the body and drop a share of it; followed by the advice lines	refused: this save would replace the body of article %s and drop %d%% of
 internal/notebook/ingest_body_loss.go#d17814ebe798641e	not-resend	says saving with an id replaces the whole body and does not add; a description	Saving with an id replaces the whole body; it does not add to it.
 internal/notebook/ingest_body_loss.go#30c04990f4da6a40	not-resend	says saving without an id finds the article by its title and replaces the whole body; a description	Saving without an id finds the article by its title, and this title is t
@@ -90,6 +92,7 @@ internal/notebook/organize.go#230d8358dc8e8890	not-resend	the JSON key body (a s
 internal/notebook/page_validation.go#9b11623e3cb995e0	not-resend	a struct tag naming a JSON field, no instruction	json:"body,omitempty"
 internal/notebook/passages.go#07d18f57d8b6af14	not-resend	an error that an interpreted quote must occur once in the article body	each interpreted quote must occur exactly once in the article body; upda
 internal/notebook/patch.go#230d8358dc8e8890	not-resend	the JSON key body (a schema property or a field name), no instruction	body
+internal/notebook/patch.go#60dbdb0e3b06704a	not-resend	the list of article fields that a patch edit can name, put into the refusals of a patch edit; a list of names, no instruction	title, lesson, applies_to, body, rationale, kind, scene
 internal/notebook/reconcile.go#230d8358dc8e8890	not-resend	the JSON key body (a schema property or a field name), no instruction	body
 internal/notebook/reconcile_change.go#230d8358dc8e8890	not-resend	the JSON key body (a schema property or a field name), no instruction	body
 internal/notebook/search.go#230d8358dc8e8890	not-resend	the JSON key body (a schema property or a field name), no instruction	body

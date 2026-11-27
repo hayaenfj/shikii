@@ -21,6 +21,12 @@ type Patch struct {
 	Requires     []ArticleReference  `json:"requires,omitempty"`
 }
 
+// patchEditFields are the article fields an edit can name, in the order the refusals list them.
+const patchEditFields = "title, lesson, applies_to, body, rationale, kind, scene"
+
+// patchEditLimit is the most bytes of one before or after.
+const patchEditLimit = 16 << 10
+
 type TextEdit struct {
 	Field  string `json:"field"`
 	Before string `json:"before"`
@@ -93,8 +99,8 @@ func (b Book) patch(c Patch, preview bool) (Result, error) {
 	fields := map[string]*string{"title": &next.Title, "lesson": &next.Lesson, "applies_to": &next.AppliesTo, "body": &next.Body, "rationale": &next.Rationale, "kind": &next.Kind, "scene": &next.Scene}
 	for i, e := range c.Edits {
 		target, ok := fields[e.Field]
-		if !ok || !utf8.ValidString(e.Before) || !utf8.ValidString(e.After) || len(e.Before) > 16<<10 || len(e.After) > 16<<10 {
-			return Result{}, fmt.Errorf("invalid patch edit %d", i+1)
+		if err := patchEditProblem("patch", i+1, e, ok); err != nil {
+			return Result{}, err
 		}
 		if e.Before == e.After {
 			return Result{}, errors.New("a patch edit must change its text")
@@ -105,8 +111,8 @@ func (b Book) patch(c Patch, preview bool) (Result, error) {
 			}
 			*target = e.After
 		} else {
-			if strings.Index(*target, e.Before) < 0 || strings.Index(*target, e.Before) != strings.LastIndex(*target, e.Before) {
-				return Result{}, fmt.Errorf("patch edit %d must match exactly once in %s", i+1, e.Field)
+			if n := occurrences(*target, e.Before); n != 1 {
+				return Result{}, patchMatchProblem(old.ID, i+1, e.Field, n)
 			}
 			*target = strings.Replace(*target, e.Before, e.After, 1)
 		}
@@ -134,4 +140,50 @@ func (b Book) patch(c Patch, preview bool) (Result, error) {
 		result.Page.Recheck = b.premiseChanges(*result.Page)
 	}
 	return result, err
+}
+
+// patchEditProblem says why edit number n of a patch or a reconciliation (what) cannot be applied before its text is looked for: the field is missing or is not an article
+// field (known is false), or before or after is not UTF-8 or is too long. It returns nil for an edit that can be looked at.
+func patchEditProblem(what string, n int, e TextEdit, known bool) error {
+	switch {
+	case !known && e.Field == "":
+		return fmt.Errorf("%s edit %d has no field; each edit is {field,before,after} and field is one of %s", what, n, patchEditFields)
+	case !known:
+		return fmt.Errorf("%s edit %d has field %.40q, which is not an article field; field is one of %s", what, n, e.Field, patchEditFields)
+	}
+	for _, side := range []struct{ name, text string }{{"before", e.Before}, {"after", e.After}} {
+		switch {
+		case !utf8.ValidString(side.text):
+			return fmt.Errorf("%s edit %d: %s is not valid UTF-8", what, n, side.name)
+		case len(side.text) > patchEditLimit:
+			return fmt.Errorf("%s edit %d: %s is %d bytes, over the limit of %d", what, n, side.name, len(side.text), patchEditLimit)
+		}
+	}
+	return nil
+}
+
+// occurrences counts where sub is in s, overlapping places included ("aa" is twice in "aaa"), because an edit whose before overlaps itself
+// cannot be put on one place either.
+func occurrences(s, sub string) int {
+	n := 0
+	for at := 0; ; n++ {
+		i := strings.Index(s[at:], sub)
+		if i < 0 {
+			return n
+		}
+		at += i + 1
+	}
+}
+
+// patchMatchProblem says that before of edit number n of article id is not in the field exactly once, with how many times it is, and what to do. The
+// edits are applied one after the other, so from the second on the text looked in is the one the earlier edits left.
+func patchMatchProblem(id string, n int, field string, times int) error {
+	after := ""
+	if n > 1 {
+		after = " (after the earlier edits)"
+	}
+	if times == 0 {
+		return fmt.Errorf("patch edit %d: before matches 0 times in %s%s; read the article again with shikii wiki query lesson:%s and use text that its %s has", n, field, after, id, field)
+	}
+	return fmt.Errorf("patch edit %d: before matches %d times in %s%s; add words around it until it matches once", n, times, field, after)
 }
