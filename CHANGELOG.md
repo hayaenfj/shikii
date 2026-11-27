@@ -12,7 +12,7 @@
 
 ### Before you update
 
-- An article an agent has cut lines from now carries a note of the earlier version it is compared with. shikii 0.44.0 or older reads such an article as changed and skips it, and refuses `shikii wiki patch` until it is updated, so update every machine that uses the same wiki to 0.44.1. The article itself is not damaged.
+- An article an agent has cut lines from now carries a note of the earlier version it is compared with. shikii 0.44.0 or older reads such an article as changed: it skips it and refuses every save to the wiki until it is updated, so update every machine that uses the same wiki to 0.44.1. The article itself is not damaged.
 
 ## 0.44.0 — An agent can no longer wipe out a wiki article by sending only its new sentences
 
