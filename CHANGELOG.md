@@ -7,7 +7,7 @@
 ### Fixes
 
 - The refusal for a save that would wipe out an article's text is shorter, and it shows an example `shikii wiki patch` for that article, with the article's id and current revision filled in. When a save that names an existing article by its id is missing the lesson or the sources, the refusal now also tells the agent to add with `shikii wiki patch` first.
-- When a `shikii wiki patch` is written wrongly, the refusal now says what is wrong. If the field to change is missing or wrong, it lists the valid field names; if the text to replace is not found, or is found more than once, it says how many times it appears. The `shikii wiki` help now includes an example patch.
+- When a `shikii wiki patch` is written wrongly, the refusal now says what is wrong. If the field to change is missing or wrong, it lists the valid field names; if the text to replace is not found, or is found more than once, it says how many times it appears. The refusals of `shikii wiki reconcile`, which fits a change written for an earlier revision of an article to the current one, do the same. The `shikii wiki` help now includes an example patch.
 
 ## 0.44.1 — Saves that each drop a little no longer wear a wiki article away
 
