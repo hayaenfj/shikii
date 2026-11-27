@@ -26,6 +26,8 @@ func TestReconcileRefusalsSayTheReasonAndTheCount(t *testing.T) {
 		{"a field that is not an article field", TextEdit{Field: "text", Before: "alpha", After: "ALPHA"}, []string{"reconciliation edit 1", `"text"`, "body"}},
 		{"a before that is nowhere", TextEdit{Field: "body", Before: "delta", After: "DELTA"}, []string{"reconciliation edit 1", "0 times", "body"}},
 		{"a before that is there twice", TextEdit{Field: "body", Before: "beta", After: "BETA"}, []string{"reconciliation edit 1", "2 times", "body"}},
+		{"an after that is its before", TextEdit{Field: "body", Before: "alpha", After: "alpha"}, []string{"a reconciliation edit must change its text"}},
+		{"a before and an after that are both empty", TextEdit{Field: "body"}, []string{"a reconciliation edit must change its text"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, err := b.Reconcile(Patch{ID: p.ID, Revision: p.Revision, Sources: []string{s}, ChangeReason: "a checked edit", Edits: []TextEdit{c.edit}})

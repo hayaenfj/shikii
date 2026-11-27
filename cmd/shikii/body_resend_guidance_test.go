@@ -31,7 +31,8 @@ import (
 //
 // What is read: the string literals of the Go files under cmd and internal that are not tests (their values, split at the line breaks), and
 // the Markdown files under skills. Go comments are not read: an agent never receives them. A line that tells to send the text again without
-// the word body ("send the whole article text again") is out of this check.
+// the word body ("send the whole article text again") is out of this check, and so is a sentence built from literals joined with + or
+// passed to Sprintf, since each literal is read alone (0.44.2 audit U-3: left out on purpose, only a deliberate way of writing gets past it).
 //
 // The regular expression below is no longer what decides. It backs two checks on the kinds: a patch-first line must really name the unique
 // ending before it tells to send a body again, and a line listed as not-resend must not read as telling to send one.
@@ -413,14 +414,16 @@ func TestHowToSubmitSaysWhatAPatchNeedsBeforeTheUniqueEnding(t *testing.T) {
 }
 
 // A patch edit without a field is refused, and the texts that send an agent to a patch said only "before/after edits" (found when a patch
-// was built from the refusal of a body save). how_to_submit shows the shape of the edits where it names the patch, before the unique ending
-// it asks for.
+// was built from the refusal of a body save). how_to_submit, and the note that place gives with its candidates (0.44.2 audit U-6: only the
+// hash of its line in the allowlist held its shape, and a person can list a changed line again), show the shape of the edits where they name
+// the patch, before the unique ending they ask for.
 func TestHowToSubmitShowsTheShapeOfAPatchEdit(t *testing.T) {
 	const shape = `edits:[{field:"body",before,after}]`
-	text := reflectHowToSubmit
-	patch, at, ending := strings.Index(text, "shikii wiki patch"), strings.Index(text, shape), strings.Index(text, patchAppend)
-	if patch < 0 || at < patch || at > ending {
-		t.Fatalf("how_to_submit must show %s between naming shikii wiki patch and the unique ending (patch %d, shape %d, unique ending %d)", shape, patch, at, ending)
+	for name, text := range map[string]string{"how_to_submit": reflectHowToSubmit, "the note of place": placeNote} {
+		patch, at, ending := strings.Index(text, "shikii wiki patch"), strings.Index(text, shape), strings.Index(text, patchAppend)
+		if patch < 0 || at < patch || at > ending {
+			t.Errorf("%s must show %s between naming shikii wiki patch and the unique ending (patch %d, shape %d, unique ending %d)", name, shape, patch, at, ending)
+		}
 	}
 }
 

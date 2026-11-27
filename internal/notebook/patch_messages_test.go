@@ -52,6 +52,8 @@ func TestPatchRefusalsSayTheReasonTheCountAndTheFieldsThatExist(t *testing.T) {
 		{"the second edit is the one that names no field", []TextEdit{ok, {Before: "gamma", After: "GAMMA"}}, append([]string{"edit 2", "no field"}, patchFieldNames...), []string{"edit 1"}},
 		{"a before that is nowhere in the field", []TextEdit{{Field: "body", Before: "delta", After: "DELTA"}}, []string{"edit 1", "0 times", "body", "shikii wiki query lesson:" + p.ID + " "}, []string{"exactly once", "lesson:<id>"}},
 		{"a before that is in the field twice", []TextEdit{{Field: "body", Before: "beta", After: "BETA"}}, []string{"edit 1", "2 times", "body", "once"}, []string{"0 times", "shikii wiki query"}},
+		{"an edit whose after is its before", []TextEdit{{Field: "body", Before: "alpha", After: "alpha"}}, []string{"must change its text"}, []string{"0 times", "empty before"}},
+		{"an edit whose before and after are both empty", []TextEdit{{Field: "body"}}, []string{"must change its text"}, []string{"0 times", "empty before"}},
 		{"a before whose matches overlap", []TextEdit{{Field: "body", Before: "aa", After: "AA"}}, []string{"edit 1", "2 times"}, nil},
 		{"a before that is in the lesson nowhere", []TextEdit{{Field: "lesson", Before: "delta", After: "DELTA"}}, []string{"0 times", "lesson"}, []string{"body"}},
 		{"the second edit looks for what the first one removed", []TextEdit{{Field: "body", Before: "alpha", After: "omega"}, {Field: "body", Before: "alpha", After: "ALPHA"}}, []string{"edit 2", "0 times", "earlier edits"}, []string{"edit 1"}},

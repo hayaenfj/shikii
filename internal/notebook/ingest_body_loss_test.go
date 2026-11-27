@@ -124,8 +124,9 @@ func bodyRefusalCases(t *testing.T) map[string]bodyRefusalCase {
 }
 
 // bodyRefusalMaxBytes is the most an agent reads in one refusal of a body save (a refusal was 917 to 1429 bytes: the cause and the way on
-// were buried in sentences that explain the measure). The longest, the basis refusal of a save by the title with ids of 16 digits, is 737
-// bytes with small numbers; the rest is room for numbers of more digits.
+// were buried in sentences that explain the measure). The longest, the basis refusal of a save by the title with ids of 16 digits, is 755
+// bytes with small numbers (737 before the sentence said that MCP and HTTP take the patch under "patch"); the rest is room for numbers of
+// more digits.
 const bodyRefusalMaxBytes = 760
 
 // All the refusals of a body save stay short.
@@ -155,6 +156,26 @@ func TestTheRefusalsOfAnIdSaveThatLacksALessonOrSourcesNameThePatchBeforeTheFiel
 	}
 	if text := cases["a save with an id and no sources"].err.Error(); !strings.Contains(text, "needs sources") {
 		t.Fatalf("the refusal of a save with an id and no sources does not say that the sources are missing: %s", text)
+	}
+}
+
+// 0.44.2 audit U-2: the refusal of a save that sends an id and no lesson comes before the article is read, so it cannot know that the id names
+// an article, and an id of the right form may name none. It said "this save names article <id>" for any such id; it now says that the save names
+// the id, for an article that exists and for one that does not alike.
+func TestTheRefusalOfAnIdSaveWithNoLessonDoesNotSayThatTheIdIsAnArticle(t *testing.T) {
+	b, old, d := lossBook(t)
+	for _, c := range []struct{ name, id string }{{"an id that names an article", old.ID}, {"an id of the right form that names no article", "0123456789abcdef"}} {
+		_, err := b.Ingest(Draft{ID: c.id, Sources: d.Sources, ChangeReason: "check"})
+		if err == nil {
+			t.Fatalf("%s: a save with an id and no lesson was accepted", c.name)
+		}
+		text := err.Error()
+		if want := "refused: this save names the id " + c.id + " and sends no lesson"; !strings.Contains(text, want) {
+			t.Errorf("%s: the refusal lacks %q: %s", c.name, want, text)
+		}
+		if strings.Contains(text, "names article") {
+			t.Errorf("%s: the refusal calls an id that it has not looked up an article: %s", c.name, text)
+		}
 	}
 }
 

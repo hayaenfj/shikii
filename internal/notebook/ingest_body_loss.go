@@ -59,7 +59,9 @@ func bodyKeptMeasure(previous, next string) (refused bool, lost, lostBytes, tota
 // bodyWayOn names the patch first: to add, a patch whose after is a unique ending of the body plus the new text keeps every other line
 // exactly as it is, while a body copied out by hand can lose a part of it without any refusal (0.44.0 leftover U-11: 49% lost, below the
 // line). It carries the shape of the call with the article's id and its current revision filled in, so the agent has nothing to look up
-// but the ending of the body; the whole body sent again is the way only when a patch does not fit. It stays one string literal, since the
+// but the ending of the body; the whole body sent again is the way only when a patch does not fit. The object is the patch itself, which
+// the command line takes as it is; MCP and HTTP take it under the field "patch", so the sentence says so after the object (0.44.2 audit
+// A-1: an agent that sent the object flat over MCP was refused for its unknown field "edits"). It stays one string literal, since the
 // allowlist of the lines that mention a body (cmd/shikii/testdata/body_lines_allowlist.tsv) judges a line by what comes before the resend.
 //
 // bodyTitleNote is added when the save named no id: the article was found by the title (the id is made from the first title), so a
@@ -68,8 +70,8 @@ func bodyKeptMeasure(previous, next string) (refused bool, lost, lostBytes, tota
 // bodyUnreadRevision is the revision of the patch in a refusal that has not read the article (a save with an id that lacks a lesson or its
 // sources is refused before the article is read): the agent reads it with the query the patch asks for.
 const (
-	bodyWayOn     = "To add, send shikii wiki patch (MCP: shikii_wiki operation patch) {\"id\":\"%[1]s\",\"revision\":\"%[2]s\",\"sources\":[...],\"change_reason\":\"...\",\"edits\":[{\"field\":\"body\",\"before\":\"<a unique ending of the body>\",\"after\":\"<that ending plus the new text>\"}]} after reading the body with shikii wiki query lesson:%[1]s. Resend the whole body, copied exactly, only when a patch does not fit."
-	bodyTitleNote = "Without an id, the title found article %s; if this is a different lesson, give it another title."
+	bodyWayOn     = "To add, send shikii wiki patch {\"id\":\"%[1]s\",\"revision\":\"%[2]s\",\"sources\":[...],\"change_reason\":\"...\",\"edits\":[{\"field\":\"body\",\"before\":\"<a unique ending of the body>\",\"after\":\"<that ending plus the new text>\"}]} (MCP: shikii_wiki operation patch, object under patch) after reading the body with shikii wiki query lesson:%[1]s. Resend the whole body, copied exactly, only when a patch does not fit."
+	bodyTitleNote = "Without an id, the title found article %s; if it is a different lesson, give it another title."
 
 	bodyUnreadRevision = "<revision shown by shikii wiki query lesson:%s>"
 )
