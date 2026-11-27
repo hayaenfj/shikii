@@ -9,9 +9,11 @@ import (
 	"hash/fnv"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -486,23 +488,7 @@ func TestManyEqualCandidatesAreRarelyAdopted(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	var seed int
-	modelURL := serveModelInProcess(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req systemone.Request
-		_ = json.NewDecoder(r.Body).Decode(&req)
-		resp := systemone.Response{Model: "m", Answers: map[string]systemone.Answer{}}
-		for k, q := range req.Questions {
-			h := fnvHash(fmt.Sprintf("%d|%s|%s", seed, q.Instructions, req.State))
-			truthIsQ := strings.Contains(req.State, "why")
-			right := h%10 < 7
-			probs := map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0}
-			if truthIsQ == right {
-				probs = map[string]float64{"change_request": 0.1, "question": 0.9, "other": 0}
-			}
-			top, _ := argmax(probs)
-			resp.Answers[k] = systemone.Answer{Type: "choice", Choice: top, Probabilities: probs}
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
+	modelURL := serveModelInProcess(t, equalSkillModel(&seed))
 	if err := os.MkdirAll("decisions", 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -538,15 +524,45 @@ func TestManyEqualCandidatesAreRarelyAdopted(t *testing.T) {
 	}
 }
 
+// equalSkillModel is the fake model of TestManyEqualCandidatesAreRarelyAdopted: it gets each candidate right with probability 0.7, by
+// a hash of the number *seed, the wording and the state, so no candidate is better than another.
+func equalSkillModel(seed *int) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req systemone.Request
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		resp := systemone.Response{Model: "m", Answers: map[string]systemone.Answer{}}
+		for k, q := range req.Questions {
+			h := fnvHash(fmt.Sprintf("%d|%s|%s", *seed, q.Instructions, req.State))
+			truthIsQ := strings.Contains(req.State, "why")
+			right := h%10 < 7
+			probs := map[string]float64{"change_request": 0.9, "question": 0.1, "other": 0}
+			if truthIsQ == right {
+				probs = map[string]float64{"change_request": 0.1, "question": 0.9, "other": 0}
+			}
+			top, _ := argmax(probs)
+			resp.Answers[k] = systemone.Answer{Type: "choice", Choice: top, Probabilities: probs}
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+}
+
 // serveModelInProcess answers every request to the returned address with h, through the default transport (every client of the
 // package uses it), and puts the transport back when the test ends. A request to any other address goes on as it did.
+//
+// The address is one no other test uses. Goroutines that other tests leave behind (serve's wait for the local model asks closedModelURL
+// with GET /health for up to 15 minutes) go on asking the addresses they were given; one of them reaching this handler is a request
+// that is not the test's own, and its Body is nil (a client's request has no body to read), which panicked the whole test binary
+// (0.44.0 audit C-1). A request without a body is therefore given an empty one before it reaches h.
 func serveModelInProcess(t *testing.T, h http.Handler) string {
 	t.Helper()
-	const host = "127.0.0.1:1" // a port nobody listens on: a request that reached the network would be refused
+	const host = "tune-model.in-process.invalid" // never resolved: the transport answers it
 	old := http.DefaultTransport
 	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		if r.URL.Host != host {
 			return old.RoundTrip(r)
+		}
+		if r.Body == nil {
+			r.Body = http.NoBody
 		}
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, r)
@@ -554,6 +570,66 @@ func serveModelInProcess(t *testing.T, h http.Handler) string {
 	})
 	t.Cleanup(func() { http.DefaultTransport = old })
 	return "http://" + host
+}
+
+// Other tests leave goroutines behind that poll a closed model address (serve's wait for the local model asks GET /health every
+// 3 seconds for up to 15 minutes, with no body). The in-process model of the test above must not answer them: the handler decoded
+// the body of such a request, which is nil, and the panic ended the whole test binary (0.44.0 audit C-1). This is that poller, left
+// running by another test: it asks the address every test starts with (closedModelURL) while the in-process model is installed.
+// The address is counted at the real transport and the poller stops itself after the third answer, so nothing here waits on time.
+func TestAModelPollerLeftByAnotherTestNeverReachesTheInProcessModel(t *testing.T) {
+	var seed int
+	var reached atomic.Int64
+	serveModelInProcess(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached.Add(1)
+		equalSkillModel(&seed).ServeHTTP(w, r)
+	}))
+	closed, err := url.Parse(closedModelURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop := context.WithTimeout(context.Background(), 30*time.Second)
+	defer stop()
+	var polls atomic.Int64
+	inProcess := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		resp, err := inProcess.RoundTrip(r)
+		if r.URL.Host == closed.Host && polls.Add(1) == 3 {
+			stop()
+		}
+		return resp, err
+	})
+	t.Cleanup(func() { http.DefaultTransport = inProcess })
+	done := make(chan error, 1)
+	go func() { done <- systemone.WaitReady(ctx, closedModelURL, time.Millisecond, nil) }()
+	if err := <-done; err == nil {
+		t.Fatalf("the poller of the closed address got an answer after %d polls (%d reached the in-process model)", polls.Load(), reached.Load())
+	}
+	if reached.Load() != 0 || polls.Load() < 3 {
+		t.Fatalf("a poller of %s must be refused as it always was: %d of its %d polls reached the in-process model", closedModelURL, reached.Load(), polls.Load())
+	}
+}
+
+// A request that carries no body (a GET, as the model's health poll sends it) has a nil Body in the handler of an in-process model,
+// and the handler must answer it instead of panicking on it.
+func TestTheInProcessModelAnswersARequestWithoutABody(t *testing.T) {
+	var seed int
+	modelURL := serveModelInProcess(t, equalSkillModel(&seed))
+	req, err := http.NewRequest(http.MethodGet, modelURL+"/health", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Body != nil {
+		t.Fatalf("a GET built without a body has a body: %v", req.Body)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("the in-process model does not answer a request without a body: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("the in-process model answered a request without a body with %d", resp.StatusCode)
+	}
 }
 
 func fnvHash(s string) uint32 {
