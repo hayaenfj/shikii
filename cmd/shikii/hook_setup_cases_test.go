@@ -869,7 +869,7 @@ func TestAudit090ClassifyAskedOnlyWhenPossible(t *testing.T) {
 		t.Fatal(err)
 	}
 	book := notebook.Book{Root: root, Scope: scope}
-	a, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: "前の版の記事", Lesson: "前の版の教訓。", AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
+	a, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: "前のバージョンの記事", Lesson: "前のバージョンの教訓。", AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -974,7 +974,7 @@ func TestAskedTurnStaysUnjudgedWhenRecoveryNeverCompletes(t *testing.T) {
 		t.Fatalf("premise: the Stop of a short message asks for continues_previous: %s", out)
 	}
 	// the person stopped the continuation (Esc): no Stop after the block, the next request comes
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "次の版のリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。"})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "次のバージョンのリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。"})
 	if s := loadSession(root, "planning"); s.TurnID == asked {
 		t.Fatal("premise: the next request moves the turn on")
 	}

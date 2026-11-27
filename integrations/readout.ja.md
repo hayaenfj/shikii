@@ -44,7 +44,7 @@ scripts/eval-model.sh http://127.0.0.1:8090 <name>                              
 
 | 構成 | 1 問目 | 2 問目以降 |
 |---|---|---|
-| state-first、warm-up 無し（最初の版） | ≈ 5 秒 | ≈ 4 秒（毎回 280 トークン prefill、`cache_n=0`） |
+| state-first、warm-up 無し（最初のバージョン） | ≈ 5 秒 | ≈ 4 秒（毎回 280 トークン prefill、`cache_n=0`） |
 | state-last + warm-up、fork の llama-server（Bonsai 2 PQ2_0）、`-fa on -ctk/-ctv q8_0 -np 1` | 4.8 秒 | **0.83 秒** |
 | state-last + warm-up、**本家** llama.cpp 0.7.0（Ternary-Bonsai-27B Q2_g64）、同フラグ | 4.0 秒 | **0.58 秒** |
 
@@ -86,7 +86,7 @@ scripts/eval-model.sh http://127.0.0.1:8090 <name>                              
 
 - **本家 llama.cpp だけで普通の GGUF が決定モデルになった**、という経路の証明がこの表。精度は Kev-4B と同じ（all 0.919）で、
   日本語は 0.870 と Bonsai 2 の 1.000 に劣る（土台が Qwen3.6 と Qwen3.8 の差）
-- Bonsai 2 に本家対応の版が出れば、こちらに差し替えるだけで日本語も取れる見込み
+- Bonsai 2 に本家対応のバージョンが出れば、こちらに差し替えるだけで日本語も取れる見込み
 
 ### 配置を state-last + warm-up にした後（2026-10-17、同じセット、`-fa on -ctk/-ctv q8_0 -np 1`）
 

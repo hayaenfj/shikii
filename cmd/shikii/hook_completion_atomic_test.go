@@ -43,7 +43,7 @@ func completionArticleFixture(t *testing.T) (string, string, notebook.Book, note
 		}
 	}
 	if ref == "" {
-		t.Fatal("\u540c\u3058\u8a18\u4e8b\u7248\u3092\u8aad\u3081\u306a\u304b\u3063\u305f")
+		t.Fatal("\u540c\u3058\u8a18\u4e8b\u30d0\u30fc\u30b8\u30e7\u30f3\u3092\u8aad\u3081\u306a\u304b\u3063\u305f")
 	}
 	for _, phase := range []string{"start", "finish"} {
 		v, err := workCall(t, b, "record", map[string]any{"receipt": prepared["receipt"], "reasoning": reasoningInput(phase, ref)})
@@ -129,7 +129,7 @@ func TestCompletionCommitSerializesArticleMutation(t *testing.T) {
 	}
 	t.Logf("\u5224\u5b9a\u4fdd\u5b58\u4e2d\u306ewiki\u30ed\u30c3\u30af=%t \u8a18\u4e8b\u66f4\u65b0\u3068\u5224\u5b9a\u4fdd\u5b58\u306e\u91cd\u8907=%t \u5224\u5b9a\u4ef6\u6570=%d", held, overlapped.Load(), len(records))
 	if !held || overlapped.Load() {
-		t.Fatal("\u8a18\u4e8b\u306e\u7248\u78ba\u8a8d\u3068\u5224\u5b9a\u4fdd\u5b58\u306e\u9593\u306b\u6b63\u898f\u306e\u8a18\u4e8b\u66f4\u65b0\u304c\u5165\u3063\u305f")
+		t.Fatal("\u8a18\u4e8b\u306e\u30d0\u30fc\u30b8\u30e7\u30f3\u78ba\u8a8d\u3068\u5224\u5b9a\u4fdd\u5b58\u306e\u9593\u306b\u6b63\u898f\u306e\u8a18\u4e8b\u66f4\u65b0\u304c\u5165\u3063\u305f")
 	}
 }
 

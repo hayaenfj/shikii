@@ -15,7 +15,7 @@
 <rect x="64" y="346" width="512" height="390" rx="16" fill="#152236" stroke="#2b405b"/>
 <text x="86" y="386" font-size="22" font-weight="700" fill="#83d8b0">エージェントの仕事を育てる</text>
 <text x="86" y="430" font-size="19" font-weight="700" fill="#83d8b0">1.</text>
-<text x="118" y="430" font-size="20" font-weight="600" fill="#e3edfa">原資料と版を残す</text>
+<text x="118" y="430" font-size="20" font-weight="600" fill="#e3edfa">原資料とバージョンを残す</text>
 <text x="118" y="456" font-size="18" font-weight="400" fill="#b3c3d9">records/ · 会話・判定・確認結果</text>
 <text x="86" y="496" font-size="19" font-weight="700" fill="#83d8b0">2.</text>
 <text x="118" y="496" font-size="20" font-weight="600" fill="#e3edfa">教訓に統合して届ける</text>

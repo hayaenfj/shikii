@@ -107,7 +107,7 @@ export function checkKnowledgeFront(target) {
   const lang = i18n.lang; i18n.lang = 'ja';
   try { localStorage.removeItem('shikii.scene'); } catch { /* fine if missing */ }
   const mk = (i, kind, scene, extra = {}) => ({ id: String(i).padStart(16, '0'), title: '記事 ' + i, lesson: '教訓 ' + i, applies_to: 'a', kind, scene, sources: [], related: [], ...extra });
-  const lessons = [mk(1, 'rule', 'いつも'), mk(2, 'rule', 'いつも'), mk(3, 'rule', 'コミットする時'), mk(4, 'rule', 'コミットする時', { title: 'コミットの作者' }), mk(5, 'howto', 'コミットする時', { body: '## 背景\n\n- 項目A\n- `make test` を流す' }), mk(6, 'howto', '公開する時'), mk(7, 'fact', '版を出す時'), mk(8, '', '')];
+  const lessons = [mk(1, 'rule', 'いつも'), mk(2, 'rule', 'いつも'), mk(3, 'rule', 'コミットする時'), mk(4, 'rule', 'コミットする時', { title: 'コミットの作者' }), mk(5, 'howto', 'コミットする時', { body: '## 背景\n\n- 項目A\n- `make test` を流す' }), mk(6, 'howto', '公開する時'), mk(7, 'fact', 'バージョンを出す時'), mk(8, '', '')];
   const wiki = { lessons, lesson_meta: { [lessons[4].id]: { helpful: 3 } }, inbox: [], memory_effect: { stats: { delivered: 5, helpful: 1, unused: 3, harmful: 1 }, corrections: {}, recent: [{ request: 'r', quote: { lesson: 'l' }, assessment: { result: 'helpful' } }] } };
   const app = mount(Lessons, { target, props: { wiki } }); flushSync();
   const q = sel => target.querySelector(sel);

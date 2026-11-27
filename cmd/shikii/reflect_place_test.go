@@ -56,10 +56,10 @@ func TestReflectPlaceRanksPagesAndSettlesFromSubmit(t *testing.T) {
 	st := store.Store{Dir: agent}
 	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す", "ライセンスはApache-2.0またはMIT", "プロジェクトを明示的に有効化する")
 	src := fmt.Sprintf("%016x", 200)
-	if err := st.AppendFeedback(scope, store.Feedback{ID: src, Request: "変更履歴の日本語版は要る?", Summary: "返答", Reply: "日本語版は要りません"}); err != nil {
+	if err := st.AppendFeedback(scope, store.Feedback{ID: src, Request: "変更履歴の日本語バージョンは要る?", Summary: "返答", Reply: "日本語バージョンは要りません"}); err != nil {
 		t.Fatal(err)
 	}
-	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の日本語版", Lesson: "変更履歴は英語だけで保ち、日本語版は作らない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を更新する時"}
+	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の日本語バージョン", Lesson: "変更履歴は英語だけで保ち、日本語バージョンは作らない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を更新する時"}
 
 	if _, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{{Sources: []string{src}, Title: "x"}}}); err == nil {
 		t.Fatal("a draft without a lesson cannot ask for an insertion point")
@@ -108,7 +108,7 @@ func TestReflectPlaceRanksPagesAndSettlesFromSubmit(t *testing.T) {
 	}
 
 	// Replaced → the replaced page is same topic "yes" and disagreement "yes" (weight 1)
-	draft2 := notebook.Draft{Sources: []string{src}, Title: "変更履歴は英語だけ", Lesson: "変更履歴は日本語版を作らず英語だけにする", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を更新する時"}
+	draft2 := notebook.Draft{Sources: []string{src}, Title: "変更履歴は英語だけ", Lesson: "変更履歴は日本語バージョンを作らず英語だけにする", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を更新する時"}
 	out, err = runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft2}})
 	if err != nil {
 		t.Fatal(err)
@@ -178,10 +178,10 @@ func TestPlacementOutcomeFollowsRewrittenMergesThroughIngest(t *testing.T) {
 	st := store.Store{Dir: agent}
 	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す", "ライセンスはApache-2.0またはMIT")
 	src := fmt.Sprintf("%016x", 300)
-	if err := st.AppendFeedback(scope, store.Feedback{ID: src, Request: "変更履歴の版の見出しは?", Summary: "返答", Reply: "見出しは版と題にして"}); err != nil {
+	if err := st.AppendFeedback(scope, store.Feedback{ID: src, Request: "変更履歴のバージョンの見出しは?", Summary: "返答", Reply: "見出しはバージョンと題にして"}); err != nil {
 		t.Fatal(err)
 	}
-	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
+	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「バージョン — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
 	out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}})
 	if err != nil {
 		t.Fatal(err)
@@ -199,7 +199,7 @@ func TestPlacementOutcomeFollowsRewrittenMergesThroughIngest(t *testing.T) {
 		t.Fatalf("an unrelated save attaches no truth: %+v", place)
 	}
 	// A save that edits the same page with text loosely related to the placed draft (coverage 30-60%) does not attach a truth to that draft (audit 0.8.3: it passed even with a lower bound of 0.3)
-	weakBody := "## 見出しの日付\n変更履歴の見出しには日付を書かない。版の形は version.go と揃える。"
+	weakBody := "## 見出しの日付\n変更履歴の見出しには日付を書かない。バージョンの形は version.go と揃える。"
 	weak := notebook.Draft{ID: c[0].PageID, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃える", Lesson: "変更履歴は英語と日本語を揃える。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &weakBody}
 	if cov := coverageOf(draft.Lesson, weak); cov < 0.3 || cov >= placeMatchMin {
 		t.Fatalf("this negative example must have coverage between 0.3 and 0.6 to test the lower bound: %.2f", cov)
@@ -211,9 +211,9 @@ func TestPlacementOutcomeFollowsRewrittenMergesThroughIngest(t *testing.T) {
 		t.Fatalf("a loosely related edit attaches no truth: %+v", place)
 	}
 	// Merge into the closest page with wiki ingest, rewriting the lesson text (the body also rephrases the draft text; coverage 0.6-0.95)
-	body := weakBody + "\n\n## 見出し\n見出しを「版 — 題」にする。公開前の見出しのまま出さない。" // the body the page has now, with the addition: an id save replaces the whole body
-	merged := notebook.Draft{ID: c[0].PageID, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しは版と題にする",
-		Lesson: "変更履歴は英語と日本語を揃える。見出しは版と題の形にする。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時",
+	body := weakBody + "\n\n## 見出し\n見出しを「バージョン — 題」にする。公開前の見出しのまま出さない。" // the body the page has now, with the addition: an id save replaces the whole body
+	merged := notebook.Draft{ID: c[0].PageID, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しはバージョンと題にする",
+		Lesson: "変更履歴は英語と日本語を揃える。見出しはバージョンと題の形にする。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時",
 		Body: &body}
 	if cov := coverageOf(draft.Lesson, merged); cov < placeMatchMin || cov >= 0.95 {
 		t.Fatalf("a rewritten merge must have coverage between 0.6 and 0.95 to test the lower bound: %.2f", cov)
@@ -307,10 +307,10 @@ func TestPlacementTwoDraftsInOnePlaceLabelsTheMergedOne(t *testing.T) {
 	}{
 		{
 			name: "Japanese", page: "変更履歴は英語と日本語を揃える", other: "コミットの説明を丁寧に残す",
-			a:      draft{"変更履歴の見出し", "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", "変更履歴を書く時"},
-			b:      draft{"変更履歴の項目", "変更履歴は英語と日本語の両方に、版ごとに同じ項目を同じ順で書く", "変更履歴を書く時"},
-			merged: draft{"変更履歴は英語と日本語を揃え、見出しは版と題にする", "変更履歴は英語と日本語を揃える。見出しは「版 — 題」にし、未公開のまま出さない。", "変更履歴を書く時"},
-			body:   "## 揃え方\n変更履歴は英語と日本語の両方に、版ごとに同じ項目を書く。片方だけに足さない。順も同じにする。\n## 見出し\n見出しは「版 — 題」の形にし、未公開の見出しのまま出さない。",
+			a:      draft{"変更履歴の見出し", "変更履歴の見出しは「バージョン — 題」の形にし、未公開の見出しのまま出さない", "変更履歴を書く時"},
+			b:      draft{"変更履歴の項目", "変更履歴は英語と日本語の両方に、バージョンごとに同じ項目を同じ順で書く", "変更履歴を書く時"},
+			merged: draft{"変更履歴は英語と日本語を揃え、見出しはバージョンと題にする", "変更履歴は英語と日本語を揃える。見出しは「バージョン — 題」にし、未公開のまま出さない。", "変更履歴を書く時"},
+			body:   "## 揃え方\n変更履歴は英語と日本語の両方に、バージョンごとに同じ項目を書く。片方だけに足さない。順も同じにする。\n## 見出し\n見出しは「バージョン — 題」の形にし、未公開の見出しのまま出さない。",
 		},
 		{
 			name: "English", page: "Status page first", other: "Commit author identity",
@@ -377,13 +377,13 @@ func TestPlacementReplacementWithRewrittenLesson(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
 	pid := ids["変更履歴は英語と日本語を揃える"]
-	a := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
+	a := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「バージョン — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
 	out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{a}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	tr := placedTrace(t, out, 0, pid)
-	nd := notebook.Draft{Sources: []string{src}, Replaces: []string{pid}, Title: "変更履歴の見出しと言語", Lesson: "変更履歴は英語と日本語を揃え、見出しは「版 — 題」にして未公開のまま出さない。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
+	nd := notebook.Draft{Sources: []string{src}, Replaces: []string{pid}, Title: "変更履歴の見出しと言語", Lesson: "変更履歴は英語と日本語を揃え、見出しは「バージョン — 題」にして未公開のまま出さない。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
 	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: nd}); err != nil {
 		t.Fatal(err)
 	}
@@ -418,14 +418,14 @@ func TestPlacementSameDraftPlacedTwice(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
 	pid := ids["変更履歴は英語と日本語を揃える"]
-	a := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
+	a := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「バージョン — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
 	for i := 0; i < 2; i++ {
 		if _, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{a}}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	body := "## 見出し\n見出しを「版 — 題」にする。公開前の見出しのまま出さない。"
-	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しは版と題にする", Lesson: "変更履歴は英語と日本語を揃える。見出しは版と題の形にする。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &body}
+	body := "## 見出し\n見出しを「バージョン — 題」にする。公開前の見出しのまま出さない。"
+	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しはバージョンと題にする", Lesson: "変更履歴は英語と日本語を揃える。見出しはバージョンと題の形にする。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &body}
 	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: merged}); err != nil {
 		t.Fatal(err)
 	}
@@ -463,13 +463,13 @@ func TestPlacementWindowSkipsDraftsPlacedLongAgo(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
 	pid := ids["変更履歴は英語と日本語を揃える"]
-	a := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
+	a := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「バージョン — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
 	if _, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{a}}); err != nil {
 		t.Fatal(err)
 	}
 	ageRecords(t, st, "wiki-place", a.Lesson, placeMatchWindow+time.Hour)
-	body := "## 見出し\n見出しを「版 — 題」にする。公開前の見出しのまま出さない。"
-	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しは版と題にする", Lesson: "変更履歴は英語と日本語を揃える。見出しは版と題の形にする。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &body}
+	body := "## 見出し\n見出しを「バージョン — 題」にする。公開前の見出しのまま出さない。"
+	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しはバージョンと題にする", Lesson: "変更履歴は英語と日本語を揃える。見出しはバージョンと題の形にする。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &body}
 	if cov := coverageOf(a.Lesson, merged); cov < placeMatchMin {
 		t.Fatalf("the limit cannot be tested unless everything but the time would match: %.2f", cov)
 	}
@@ -500,7 +500,7 @@ func TestPlacementLeftoverExactRecordDoesNotShadowMerge(t *testing.T) {
 				Inputs: map[string]string{"new_lesson": "変更履歴は英語と日本語を揃える。", "lesson": tc.candidate}}); err != nil {
 				t.Fatal(err)
 			}
-			draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
+			draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「バージョン — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
 			out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}})
 			if err != nil {
 				t.Fatal(err)
@@ -524,12 +524,12 @@ func TestPlacementPrefersTheNewestDraftOfTheMergedPage(t *testing.T) {
 	agent, scope, st, src := audit083Setup(t)
 	ids := seedLessons(t, st, scope, "変更履歴は英語と日本語を揃える", "コミットの説明を丁寧に残す")
 	pid := ids["変更履歴は英語と日本語を揃える"]
-	old := notebook.Draft{Sources: []string{src}, Title: "変更履歴の両方", Lesson: "変更履歴は版ごとに英語と日本語の両方へ同じ項目を書き、片方だけに足さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
+	old := notebook.Draft{Sources: []string{src}, Title: "変更履歴の両方", Lesson: "変更履歴はバージョンごとに英語と日本語の両方へ同じ項目を書き、片方だけに足さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
 	if _, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{old}}); err != nil {
 		t.Fatal(err)
 	}
 	ageRecords(t, st, "wiki-place", old.Lesson, 48*time.Hour) // the old draft was placed the day before (recheck: of 2 placed at the same time, pick by score)
-	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「版 — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
+	draft := notebook.Draft{Sources: []string{src}, Title: "変更履歴の見出し", Lesson: "変更履歴の見出しは「バージョン — 題」の形にし、未公開の見出しのまま出さない", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時"}
 	out, err := runReflect(agent, scope, reflectRequest{Operation: "place", Wiki: []notebook.Draft{draft}})
 	if err != nil {
 		t.Fatal(err)
@@ -540,8 +540,8 @@ func TestPlacementPrefersTheNewestDraftOfTheMergedPage(t *testing.T) {
 			tr = c.SameTopic.TraceID
 		}
 	}
-	body := "## 前に足したこと\n" + old.Lesson + "\n## 見出し\n見出しは「版 — 題」にし、未公開のまま出さない。"
-	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しは版と題にする", Lesson: "変更履歴は英語と日本語を揃える。見出しは「版 — 題」にし、未公開のまま出さない。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &body}
+	body := "## 前に足したこと\n" + old.Lesson + "\n## 見出し\n見出しは「バージョン — 題」にし、未公開のまま出さない。"
+	merged := notebook.Draft{ID: pid, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しはバージョンと題にする", Lesson: "変更履歴は英語と日本語を揃える。見出しは「バージョン — 題」にし、未公開のまま出さない。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時", Body: &body}
 	if _, err := runNotebook(agent, scope, notebookRequest{Operation: "ingest", Draft: merged}); err != nil {
 		t.Fatal(err)
 	}
@@ -627,10 +627,10 @@ func placedRecs(now time.Time, page string, placed ...string) []store.Record {
 func TestPlaceMatchPrefersTheDraftThatAddedSomething(t *testing.T) {
 	now := time.Now()
 	page := "変更履歴は英語と日本語を揃える。"
-	restated := "英語と日本語を揃える"              // B: only restates part of the current lesson (fully contained in the merged text)
-	added := "見出しは版と題の形にし、未公開の見出しのまま出さない" // A: the added content (slightly rewritten when merged)
+	restated := "英語と日本語を揃える"                  // B: only restates part of the current lesson (fully contained in the merged text)
+	added := "見出しはバージョンと題の形にし、未公開の見出しのまま出さない" // A: the added content (slightly rewritten when merged)
 	recs := placedRecs(now, page, added, restated)
-	d := notebook.Draft{ID: "p1", Title: "変更履歴", Lesson: "変更履歴は英語と日本語を揃える。見出しは版と題の形にし、未公開のまま出さない。"}
+	d := notebook.Draft{ID: "p1", Title: "変更履歴", Lesson: "変更履歴は英語と日本語を揃える。見出しはバージョンと題の形にし、未公開のまま出さない。"}
 	if got := matchPlacedDraft(d, recs, map[string]store.Label{}, map[string]string{page: "p1"}, now); got != added {
 		t.Fatalf("goes to the added draft A: got %q", got)
 	}

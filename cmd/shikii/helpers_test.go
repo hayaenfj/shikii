@@ -370,7 +370,7 @@ const (
 	restateSecond = "合計の検算も足して" // short (under 40 characters): request 1 gets no outcome from them, as in the real-agent check
 	restateThird  = "READMEにも書いて"
 	restateAgain  = "最初に頼んだ、invoices/ の請求書ごとに合計を検算するスクリプトを check-totals.sh に書いて、ずれていたら直し、全部通ることを見せてください。"
-	restateOther  = "来週の打ち合わせの議題を、今週の作業の振り返りと、次の版で入れたいことの二つに分けて、箇条書きで用意してください。"
+	restateOther  = "来週の打ち合わせの議題を、今週の作業の振り返りと、次のバージョンで入れたいことの二つに分けて、箇条書きで用意してください。"
 )
 
 // restateTurns runs three requests with their Stops in the session and returns the first one's turn id and done-as-asked trace.

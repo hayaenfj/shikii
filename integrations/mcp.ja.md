@@ -41,7 +41,7 @@ args = ["mcp", "--local", "http://127.0.0.1:8080"]
 4. 終了時は`shikii_wiki`の`operation:"record"`へ`work:{receipt,result:{changed,checked?,evidence?,remaining?},...}`を渡し、必要な観察・記事・振り返りをまとめます。例の結果を転記せず、実際の結果を記録します。
 5. `complete`・`storage`・`errors`・`pending`と振り返りの残件を確かめ、失敗した参照だけを再送します。保存済みの証拠を重ねて書く必要はありません。
 
-同じreceiptの`collective.notice_from`は、変わらない固定説明を以前の配送へ結ぶ場合があります。以前の応答を読めなければ、同じreceiptとqueryに`reasoning:{depth:focused}`を付けて準備し直し、全文を戻します。条件・例外・不足と同版の原文回復は引き続き必要です。
+同じreceiptの`collective.notice_from`は、変わらない固定説明を以前の配送へ結ぶ場合があります。以前の応答を読めなければ、同じreceiptとqueryに`reasoning:{depth:focused}`を付けて準備し直し、全文を戻します。条件・例外・不足と同バージョンの原文回復は引き続き必要です。
 
 プログラムからは、`structuredContent`があれば優先し、`isError`と必要な状態を保持します。無ければ元の`content`を残します。本文はMarkdownやJSON、画像、資料への参照の場合があります。AIへは完全な結果を1回渡し、構造化結果に無い追加の内容も残します。サーバーは両形式を保持します。[MCPの知識配送](../docs/mcp-knowledge.ja.md)と[記録の契約](../skills/shikii/references/recording.md)を参照してください。
 
@@ -66,4 +66,4 @@ MCPからの正解登録は`source:mcp`となり、人の答えには自動で�
 
 ## 検証
 
-MCPの検査は、初期化、共通手順、判定と正解登録の境界、出典と版、数値の精度、エラー、結果の全値、同receiptの配送と回復を確認します。`go test ./cmd/shikii -run '^TestMCP'`で実行でき、リポジトリ全体の検査はCLI・HTTP・作業記録の境界も確認します。
+MCPの検査は、初期化、共通手順、判定と正解登録の境界、出典とバージョン、数値の精度、エラー、結果の全値、同receiptの配送と回復を確認します。`go test ./cmd/shikii -run '^TestMCP'`で実行でき、リポジトリ全体の検査はCLI・HTTP・作業記録の境界も確認します。

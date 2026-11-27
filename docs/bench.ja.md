@@ -40,7 +40,7 @@ B の注意: 最初は検索の元を leave-one-out（その行以外の 61 件�
 
 ## 3 腕を同じ土台で（Qwen3-4B、2026-10-18）
 
-三値の 27B は学習できないので、3 腕を揃える土台は普通のモデル `Qwen/Qwen3-4B`（Kev-4B の土台の系統）。A・B は同じモデルの GGUF（Q8_0）を本家 llama.cpp + `shikii-readout` で、C は HF 版（bf16）を mlx-lm で学習・採点した。手順は `scripts/bench/lora/run.sh`（分割の作成 `make_folds.py`、採点 `score.py`、物差し `report.py`）。
+三値の 27B は学習できないので、3 腕を揃える土台は普通のモデル `Qwen/Qwen3-4B`（Kev-4B の土台の系統）。A・B は同じモデルの GGUF（Q8_0）を本家 llama.cpp + `shikii-readout` で、C は HF バージョン（bf16）を mlx-lm で学習・採点した。手順は `scripts/bench/lora/run.sh`（分割の作成 `make_folds.py`、採点 `score.py`、物差し `report.py`）。
 
 - C の学習: 62 件を 5 分割、各分割で残り約 50 件を 200 歩（batch 4、LoRA 8 層、lr 1e-4）。1 分割あたり数分
 - C の採点: 生成せず、prompt の次トークンの対数確率を 5 つの id の最初のトークンで読んで softmax（`shikii-readout` と同じ考え方）。各行は「それを見ていない adapter」の答えなので 62 件全部が out-of-sample

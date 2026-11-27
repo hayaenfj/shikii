@@ -86,7 +86,7 @@ func TestWorkRegressionR2ContractRecoveryAndReuse(t *testing.T) {
 	}
 	row = third["knowledge"].([]any)[0].(map[string]any)
 	if row["reused"] != true || row["body_included"] != false {
-		t.Fatal("\u540c\u3058\u7248\u306e\u63d0\u793a\u6e08\u307f\u672c\u6587\u304c\u518d\u5229\u7528\u3055\u308c\u306a\u3044")
+		t.Fatal("\u540c\u3058\u30d0\u30fc\u30b8\u30e7\u30f3\u306e\u63d0\u793a\u6e08\u307f\u672c\u6587\u304c\u518d\u5229\u7528\u3055\u308c\u306a\u3044")
 	}
 	recovered, err := workCall(t, b, "prepare", map[string]any{"receipt": first["receipt"], "query": "lesson:" + page.ID + "@" + page.Revision})
 	if err != nil {
@@ -94,9 +94,9 @@ func TestWorkRegressionR2ContractRecoveryAndReuse(t *testing.T) {
 	}
 	row = recovered["knowledge"].([]any)[0].(map[string]any)
 	if row["body_included"] != true || row["article"].(map[string]any)["body"] != page.Body {
-		t.Fatal("\u660e\u793a\u3057\u305f\u8a18\u4e8b\u7248\u306e\u5168\u6587\u3092\u56de\u5fa9\u3067\u304d\u306a\u3044")
+		t.Fatal("\u660e\u793a\u3057\u305f\u8a18\u4e8b\u30d0\u30fc\u30b8\u30e7\u30f3\u306e\u5168\u6587\u3092\u56de\u5fa9\u3067\u304d\u306a\u3044")
 	}
-	t.Log("\u7701\u7565\u672c\u6587\u3092\u65e2\u8aad\u306b\u305b\u305a\u3001\u5168\u6587\u63d0\u793a\u5f8c\u3060\u3051\u518d\u5229\u7528\u3057\u3001\u660e\u793a\u3057\u305f\u540c\u4e00\u7248\u306e\u5168\u6587\u3092\u56de\u5fa9\u3057\u305f")
+	t.Log("\u7701\u7565\u672c\u6587\u3092\u65e2\u8aad\u306b\u305b\u305a\u3001\u5168\u6587\u63d0\u793a\u5f8c\u3060\u3051\u518d\u5229\u7528\u3057\u3001\u660e\u793a\u3057\u305f\u540c\u4e00\u30d0\u30fc\u30b8\u30e7\u30f3\u306e\u5168\u6587\u3092\u56de\u5fa9\u3057\u305f")
 }
 
 func TestWorkRegressionR2ContractCorrectionEvidence(t *testing.T) {

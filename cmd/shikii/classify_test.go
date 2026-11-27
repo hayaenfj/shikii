@@ -32,7 +32,7 @@ func TestHookAsksToClassifyLegacyPagesAndStopsUntilDone(t *testing.T) {
 	book := notebook.Book{Root: root, Scope: scope}
 	var ids []string
 	for i := 0; i < 6; i++ {
-		res, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: fmt.Sprintf("前の版の記事 %d", i), Lesson: fmt.Sprintf("前の版の教訓 %d。", i), AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
+		res, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: fmt.Sprintf("前のバージョンの記事 %d", i), Lesson: fmt.Sprintf("前のバージョンの教訓 %d。", i), AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -90,7 +90,7 @@ func TestResponsesCarryRemainingUnclassifiedPages(t *testing.T) {
 	book := notebook.Book{Root: agent, Scope: scope}
 	var ids []string
 	for i := 0; i < 2; i++ {
-		res, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: fmt.Sprintf("前の版 %d", i), Lesson: fmt.Sprintf("前の版の教訓 %d。", i), AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
+		res, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: fmt.Sprintf("前のバージョン %d", i), Lesson: fmt.Sprintf("前のバージョンの教訓 %d。", i), AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -158,7 +158,7 @@ func TestClassifyRitualIgnoresAsksFromAnotherTurn(t *testing.T) {
 	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "w", "cwd": repo, "prompt": "README を直して"})
 	book := notebook.Book{Root: root, Scope: scope}
-	res, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: "後から前の版になった記事", Lesson: "教訓。", AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
+	res, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: "後から前のバージョンになった記事", Lesson: "教訓。", AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestAudit090bSourceIssueElsewhereDoesNotBlockAsk(t *testing.T) {
 		t.Fatal(err)
 	}
 	book := notebook.Book{Root: agent, Scope: scope}
-	a, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: "前の版の記事", Lesson: "前の版の教訓。", AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
+	a, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: "前のバージョンの記事", Lesson: "前のバージョンの教訓。", AppliesTo: "a", Kind: "rule", Scene: "作業する時"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestAudit090bClassifyFiveInOrderAndInParallel(t *testing.T) {
 	book := notebook.Book{Root: root, Scope: scope}
 	var ids []string
 	for i := 0; i < 10; i++ {
-		r, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: fmt.Sprintf("前の版の記事 %d", i), Lesson: fmt.Sprintf("前の版の教訓 %d。", i), AppliesTo: "a", Kind: "rule", Scene: "作業する時", Related: func() []string {
+		r, err := book.Ingest(notebook.Draft{Sources: []string{src}, Title: fmt.Sprintf("前のバージョンの記事 %d", i), Lesson: fmt.Sprintf("前のバージョンの教訓 %d。", i), AppliesTo: "a", Kind: "rule", Scene: "作業する時", Related: func() []string {
 			if len(ids) > 0 {
 				return []string{ids[len(ids)-1]}
 			}
@@ -280,7 +280,7 @@ func TestAudit090bClassifyFiveInOrderAndInParallel(t *testing.T) {
 	// Lesson, related and change reason do not change
 	live, _ := book.Live()
 	for _, p := range live {
-		if !strings.HasPrefix(p.Lesson, "前の版の教訓") || (p.Title != "前の版の記事 0" && len(p.Related) != 1) {
+		if !strings.HasPrefix(p.Lesson, "前のバージョンの教訓") || (p.Title != "前のバージョンの記事 0" && len(p.Related) != 1) {
 			t.Fatalf("classify changed the lesson or related: %+v", p)
 		}
 	}

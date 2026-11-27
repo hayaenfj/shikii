@@ -345,7 +345,7 @@ func TestIngestRequiresKindAndScene(t *testing.T) {
 		t.Fatalf("kind and scene are inherited if omitted when editing: %+v %v", again.Page, err)
 	}
 	// A page from the previous version without kind or scene cannot be saved when edited without them
-	legacyDraft := draft(id, "前の版の記事")
+	legacyDraft := draft(id, "前のバージョンの記事")
 	lres, err := b.Ingest(legacyDraft)
 	if err != nil {
 		t.Fatal(err)
@@ -374,7 +374,7 @@ func TestClassifyLegacyPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = first
-	lres, err := b.Ingest(draft(id, "前の版の記事"))
+	lres, err := b.Ingest(draft(id, "前のバージョンの記事"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +408,7 @@ func TestClassifyLegacyPages(t *testing.T) {
 func TestQueryPageListsUnclassifiedPages(t *testing.T) {
 	b := Book{Root: t.TempDir(), Scope: "/work/project"}
 	id := seed(t, b, 1)
-	res, err := b.Ingest(draft(id, "前の版の記事"))
+	res, err := b.Ingest(draft(id, "前のバージョンの記事"))
 	if err != nil {
 		t.Fatal(err)
 	}

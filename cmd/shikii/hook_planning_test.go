@@ -646,7 +646,7 @@ func TestStopDoesNotAskContinuesPreviousOtherwise(t *testing.T) {
 	}{
 		"organizing without continues_previous": {reply: "OKです", bare: true},
 		"listed acknowledgement":                {reply: "ok"},
-		"long message":                          {reply: "次の版のリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。"},
+		"long message":                          {reply: "次のバージョンのリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。"},
 		"organizing came":                       {reply: "OKです", submit: true},
 	}
 	for name, c := range cases {

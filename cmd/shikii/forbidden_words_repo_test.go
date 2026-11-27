@@ -14,9 +14,28 @@ import (
 // separator line, the file's name). The forbidden-words guard no-shirushi stops a turn that adds it; this test fails when any tracked
 // file keeps it, written as the character or as the Go escape of its code point.
 func TestTheForbiddenCharacterAppearsNowhereInTheRepository(t *testing.T) {
+	if hits := linesThatSpell(t, spellsTheForbiddenCharacter); len(hits) > 0 {
+		t.Fatalf("the forbidden character (U+5370) is written in %d tracked lines; say what the thing shows instead:\n%s", len(hits), strings.Join(hits, "\n"))
+	}
+}
+
+// The person's rule of 2026-11-28: the Japanese word for a version (U+7248, the one-character word used for "edition") is not used; the
+// documents, the page and the tests say the loanword for version instead, and the whole repository was rewritten that way. This test
+// fails when any tracked file writes the character again, as the character or as the Go escape of its code point.
+func TestTheWordForAVersionIsWrittenAsTheLoanwordEverywhereInTheRepository(t *testing.T) {
+	if hits := linesThatSpell(t, func(text string) bool { return spellsRune(text, versionWordRune) }); len(hits) > 0 {
+		t.Fatalf("the one-character word for a version (U+7248) is written in %d tracked lines; write the loanword for version (U+30D0 U+30FC U+30B8 U+30E7 U+30F3) instead:\n%s", len(hits), strings.Join(hits, "\n"))
+	}
+}
+
+// versionWordRune is the character of the second rule (U+7248). Like forbiddenRune it is built from its code point, never written.
+const versionWordRune = rune(0x7248)
+
+// linesThatSpell returns the tracked and new files (by name, link target and line) that written reports.
+func linesThatSpell(t *testing.T, written func(string) bool) []string {
+	t.Helper()
 	root := strings.TrimSpace(run(t, "git", "rev-parse", "--show-toplevel"))
 	out := run(t, "git", "-C", root, "ls-files", "-co", "--exclude-standard", "-z") // tracked and new files, as they are on disk
-	written := spellsTheForbiddenCharacter
 	var hits []string
 	for _, name := range strings.Split(strings.TrimRight(out, "\x00"), "\x00") {
 		if name == "" {
@@ -44,9 +63,7 @@ func TestTheForbiddenCharacterAppearsNowhereInTheRepository(t *testing.T) {
 			}
 		}
 	}
-	if len(hits) > 0 {
-		t.Fatalf("the forbidden character (U+5370) is written in %d tracked lines; say what the thing shows instead:\n%s", len(hits), strings.Join(hits, "\n"))
-	}
+	return hits
 }
 
 func run(t *testing.T, name string, args ...string) string {
@@ -77,8 +94,11 @@ const forbiddenRune = rune(0x5370)
 // references, URL encoding, byte or octal escapes, \u{...}, CSS, \N{...}) are not how anyone writes text here; three audits in a row
 // found one more of them, so they are out of this check's scope rather than listed (the guard no-shirushi still stops a turn that adds
 // the character itself). 0.12.
-func spellsTheForbiddenCharacter(text string) bool {
-	if strings.Contains(text, string(forbiddenRune)) {
+func spellsTheForbiddenCharacter(text string) bool { return spellsRune(text, forbiddenRune) }
+
+// spellsRune reports whether text writes r as the character or as a \u or \U escape of its code point (see spellsTheForbiddenCharacter).
+func spellsRune(text string, r rune) bool {
+	if strings.Contains(text, string(r)) {
 		return true
 	}
 	for i := 0; i+6 <= len(text); i++ {
@@ -87,12 +107,12 @@ func spellsTheForbiddenCharacter(text string) bool {
 		}
 		switch text[i+1] {
 		case 'u':
-			if v, err := strconv.ParseInt(text[i+2:i+6], 16, 64); err == nil && v == int64(forbiddenRune) {
+			if v, err := strconv.ParseInt(text[i+2:i+6], 16, 64); err == nil && v == int64(r) {
 				return true
 			}
 		case 'U':
 			if i+10 <= len(text) {
-				if v, err := strconv.ParseInt(text[i+2:i+10], 16, 64); err == nil && v == int64(forbiddenRune) {
+				if v, err := strconv.ParseInt(text[i+2:i+10], 16, 64); err == nil && v == int64(r) {
 					return true
 				}
 			}

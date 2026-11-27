@@ -239,7 +239,7 @@ func TestRecallStrongIdentifierNeedsAShortRequestOrCoverage(t *testing.T) {
 		d := draft(source, "教訓"+string(rune('A'+i)))
 		d.Lesson, d.AppliesTo = "決まり "+string(rune('A'+i)), a
 		if i == 0 {
-			d.Title = "版を出す前に監査を入れる"
+			d.Title = "バージョンを出す前に監査を入れる"
 		}
 		if _, err := b.Ingest(d); err != nil {
 			t.Fatal(err)
@@ -273,7 +273,7 @@ func TestRecallGateBoundariesOnBothSides(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	add("版を出す前に監査を入れる", "hook の実装と監査の経緯を見直したい時")
+	add("バージョンを出す前に監査を入れる", "hook の実装と監査の経緯を見直したい時")
 	add("教訓B", "CHANGELOG を書く時")
 	add("教訓C", "画面の色を決める時")
 	for _, c := range []struct {

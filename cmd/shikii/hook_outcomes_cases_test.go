@@ -581,7 +581,7 @@ func TestAudit6LateJudgmentDoesNotUseThePreviousTurnsReply(t *testing.T) {
 	if _, err := planningCall(t, "submit", askedJSON(t, recoveryOutput(t, out)["reason"].(string))); err != nil {
 		t.Fatal(err)
 	}
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "次の版のリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。"})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "次のバージョンのリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。"})
 	recs, err := (store.Store{Dir: root}).Records("done-as-asked", 0)
 	if err != nil {
 		t.Fatal(err)
@@ -650,7 +650,7 @@ func TestAudit6JudgedAskedTurnIsNotJudgedAgainAfterANotice(t *testing.T) {
 		t.Fatal("premise: the Stop after the block judges the turn")
 	}
 	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "<task-notification>background job finished</task-notification>"})
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "次の版のリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。"})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "次のバージョンのリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。"})
 	recs, err := (store.Store{Dir: root}).Records("done-as-asked", 0)
 	if err != nil {
 		t.Fatal(err)
@@ -697,7 +697,7 @@ func TestAudit6LateJudgmentWaitsForThePersonsRequest(t *testing.T) {
 // 0.9.3 audit 4: the 40 for a "done" truth counts characters, not bytes. A Japanese message under 40 characters is over 40 bytes
 // (3 bytes a character), so counting bytes would turn most short Japanese corrections and answers back into "done" truths.
 func TestAudit3ShortReplyIsNotDoneYes(t *testing.T) {
-	const underInCharacters = "違います、README の英語版の手順の方を直して" // 25 characters, 55 bytes
+	const underInCharacters = "違います、README の英語バージョンの手順の方を直して" // 29 characters, 73 bytes
 	if n := utf8.RuneCountInString(underInCharacters); n >= outcomeMovedMinRunes || len(underInCharacters) < outcomeMovedMinRunes {
 		t.Fatalf("the fixture must be under the minimum in characters and over it in bytes: %d characters, %d bytes", n, len(underInCharacters))
 	}
@@ -746,7 +746,7 @@ func TestAudit3SubmitDuringStopKeepsTheJudgment(t *testing.T) {
 // a turn whose organizing and Stop never came still settles the previous outcome at the next request (test hole: mutation M4)
 func TestAudit3NextRequestSettlesDeferredOutcome(t *testing.T) {
 	repo, root, _ := planningFixture(t)
-	done := continuesTurn(t, repo, root, "次の版のリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。")
+	done := continuesTurn(t, repo, root, "次のバージョンのリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。")
 	if l, ok := doneLabel(t, root, done); ok {
 		t.Fatalf("the outcome waits for the organizing or the Stop: %+v", l)
 	}
@@ -783,7 +783,7 @@ func TestNoPlanKeepsListDecision(t *testing.T) {
 	})
 	t.Run("long", func(t *testing.T) {
 		repo, root, _ := planningFixture(t)
-		done := continuesTurn(t, repo, root, "次の版のリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。")
+		done := continuesTurn(t, repo, root, "次のバージョンのリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。")
 		runHook(t, "stop", map[string]any{"session_id": "planning", "cwd": repo, "last_assistant_message": "Wrote them."})
 		if l, ok := doneLabel(t, root, done); !ok || l.Truth != "yes" || l.Source != "outcome" {
 			t.Fatalf("a long, different request settles the previous outcome by the Stop: %+v %v", l, ok)

@@ -105,7 +105,7 @@ func round4CodeWatchSnapshotRecovery(t *testing.T, changeDuring bool) {
 		t.Fatal(after, readError)
 	}
 	if e != nil || retry["complete"] != true {
-		t.Fatalf("\u540c\u4e00\u5165\u529b\u306e\u518d\u9001\u304c\u516c\u958b\u6e08\u307f\u306e\u7248\u3078\u623b\u3089\u306a\u3044: complete=%v pending=%d errors=%v error=%v", retry["complete"], len(pending), retry["errors"], e)
+		t.Fatalf("\u540c\u4e00\u5165\u529b\u306e\u518d\u9001\u304c\u516c\u958b\u6e08\u307f\u306e\u30d0\u30fc\u30b8\u30e7\u30f3\u3078\u623b\u3089\u306a\u3044: complete=%v pending=%d errors=%v error=%v", retry["complete"], len(pending), retry["errors"], e)
 	}
 
 }

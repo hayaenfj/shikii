@@ -12,7 +12,7 @@
 ```sh
 git clone --depth 1 https://github.com/ChezRD/bonjev ~/git/third-party/bonjev
 cd ~/git/third-party/bonjev
-sh scripts/fetch-prism.sh cpu      # PrismML の llama.cpp fork のビルド済みライブラリ(macOS 版には Metal も入っている)
+sh scripts/fetch-prism.sh cpu      # PrismML の llama.cpp fork のビルド済みライブラリ(macOS バージョンには Metal も入っている)
 cargo build --release               # 約 40 秒
 hf download prism-ml/Ternary-Bonsai-2-27B-gguf Ternary-Bonsai-2-27B-PQ2_0.gguf   # 7.2GB、Apache 2.0
 ./target/release/bonjev serve --model bonsai2 --no-vision --ctx 4096 --threads 8 --port 8083

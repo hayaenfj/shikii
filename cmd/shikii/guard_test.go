@@ -236,7 +236,7 @@ func TestAudit6LateJudgmentDoesNotCountAGuardAsFixed(t *testing.T) {
 	if err := os.WriteFile(notes, []byte("a fine word\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "次の版のリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。"})
+	runHook(t, "user-prompt-submit", map[string]any{"session_id": "planning", "cwd": repo, "prompt": "次のバージョンのリリースノートを書いて、0.9.2 からの変更をすべて並べ、英語と日本語の両方で用意してください。"})
 	guards, err := loadGuards(root)
 	if err != nil {
 		t.Fatal(err)
