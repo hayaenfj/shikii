@@ -137,6 +137,7 @@ This comparison is with the public description of the memory feature as checked 
 | 0.43.0 | The memory nap counts the missed corrections it caught. Instead of an operation that checks whether the agent read, it counts what the person said that no article held when the agent was shown it and that later became an article. |
 | 0.43.1 | When you reopen an earlier conversation in OpenCode and carry on, the memory nap notice comes with the request you just sent. |
 | 0.43.2 | The hook's wait, which grew with every request, grows about half as fast. |
+| 0.44.0 | A save that would drop half or more of an article's text is refused. An agent changes an article with a patch that shows what goes, or sends the whole text again with its additions. |
 
 What was thought at each version is under "Looking back at each version" at the end. Details of each change are in the [changelog](../CHANGELOG.md), how to use shikii is in the [guide](guide.md), and how knowledge is handed over through MCP is in [MCP knowledge delivery](mcp-knowledge.md).
 
@@ -511,3 +512,7 @@ The notice itself was also checked with real agents and fixed. With the 0.43.0 c
 ### In 0.43.2, hold back the wait that grew with every request
 
 While making the tests faster, we measured how long one run of the hook (what shikii runs before and after each request) takes. It got longer with every request. For each lesson ever delivered to the agent, shikii looked for a saved assessment, opening the folders again each time. Only the last 256 requests count, so the growth stops there. Even so, in a project that had reached that point, the step before a request took about 70% longer than at the start. shikii now looks at the folder of assessments once and opens only those that are saved. The hook still gets a little longer as requests pile up, but about half as fast.
+
+### In 0.44.0, an article is no longer replaced by accident
+
+During a memory nap, three articles were found to have lost most of their text. An agent had meant to add a few sentences to each. It sent only those sentences with the article's id, and a save with an id replaces the whole text. The earlier versions were still there, so the text was restored, but the same kind of loss had happened before. A rule asking agents to take care did not stop it, so the save itself now refuses it. shikii compares the lines of the old text with the new one, and a save that would drop half or more of them is refused. The refusal tells the agent what to do instead: change the article with a patch, which names what goes and what replaces it, or send the whole text again with its additions. When you edit an article on the Knowledge page, the change is yours, so it is not refused.

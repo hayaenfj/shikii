@@ -2,6 +2,12 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.44.0 — An agent can no longer wipe out a wiki article by sending only its new sentences
+
+### Changes
+
+- When an agent saved to an existing wiki article with only the sentences it meant to add (`shikii wiki ingest` or `shikii reflect submit`), those sentences replaced the article's whole text and the rest was lost. A save that would drop half or more of an article's text is now refused, and the agent is told to change the article with `shikii wiki patch` or to send the whole text again with its additions. Your own edits on the Knowledge page are not refused.
+
 ## 0.43.2 — Requests in a project used for a while wait less for shikii
 
 ### Changes
