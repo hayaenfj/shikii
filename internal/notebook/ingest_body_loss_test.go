@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -124,17 +125,29 @@ func bodyRefusalCases(t *testing.T) map[string]bodyRefusalCase {
 }
 
 // bodyRefusalMaxBytes is the most an agent reads in one refusal of a body save (a refusal was 917 to 1429 bytes: the cause and the way on
-// were buried in sentences that explain the measure). The longest, the basis refusal of a save by the title with ids of 16 digits, is 755
-// bytes with small numbers (737 before the sentence said that MCP and HTTP take the patch under "patch"); the rest is room for numbers of
-// more digits.
-const bodyRefusalMaxBytes = 760
+// were buried in sentences that explain the measure). The longest, the basis refusal of a save by the title, is 761 bytes with the numbers
+// at their widest (refusalAtWidestNumbers); the rest is room for a few words.
+const bodyRefusalMaxBytes = 770
 
-// All the refusals of a body save stay short.
+// refusalAtWidestNumbers is the refusal with its numbers as wide as they can be: the share lost is at most 100% and a body is at most
+// 16 KiB, so its bytes have at most 5 digits. The cases of the test have small articles, and the length a large article's refusal has is
+// what the limit is about (0.44.2 confirming audit C-3).
+var refusalShare, refusalBytes = regexp.MustCompile(`\b\d+%`), regexp.MustCompile(`\b\d+ of \d+ bytes`)
+
+func refusalAtWidestNumbers(text string) string {
+	return refusalBytes.ReplaceAllString(refusalShare.ReplaceAllString(text, "100%"), "16384 of 16384 bytes")
+}
+
+// All the refusals of a body save stay short, with their numbers at their widest.
 func TestTheBodyRefusalsStayShort(t *testing.T) {
 	for name, c := range bodyRefusalCases(t) {
-		if n := len(c.err.Error()); n > bodyRefusalMaxBytes {
-			t.Errorf("%s: the refusal is %d bytes, over %d: %s", name, n, bodyRefusalMaxBytes, c.err)
+		if n := len(refusalAtWidestNumbers(c.err.Error())); n > bodyRefusalMaxBytes {
+			t.Errorf("%s: the refusal is %d bytes with its numbers at their widest, over %d: %s", name, n, bodyRefusalMaxBytes, c.err)
 		}
+	}
+	// negative: the widening reaches the numbers of a refusal (a refusal whose numbers it missed would be measured short)
+	if got := refusalAtWidestNumbers("drop 7% of it (9 of 12 bytes of its lines"); got != "drop 100% of it (16384 of 16384 bytes of its lines" {
+		t.Fatalf("the numbers are not widened: %q", got)
 	}
 }
 
