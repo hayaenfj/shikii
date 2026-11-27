@@ -170,7 +170,7 @@ shikii wiki lint
 
 検索は題・適用条件・要約・本文を調べ、一致した欄と語、候補の版を返す。候補だけでは意味の関連性を確定できないため、本文と必要な原資料を確認する。`CURSOR`は直前の応答の`next_cursor`に置き換え、同じ検索語または出典IDで続きを取得する。末尾へ着いたことと、必要な知識を見つけたことは別。応答が大きければ分割されるが、記事数や出典数で探索を打ち切らない。同じプロジェクト・同じ版の実際に読んだ内容は作業中に再利用する。
 
-`article.json`の短い`lesson`と詳しい`body`を分け、背景・根拠・適用条件・未確定点を既存記事へ統合する。`related`で関連をつなぎ、意味の編集には`change_reason`を残す。既存の記事の`id`(または、その記事の最初の題と同じ題)を付けて保存すると、送った`body`が前の本文を丸ごと置き換える。足すのではない。足す時は、前の本文に足した全文を送る。前の本文の半分以上がなくなる保存は断る。shikii は前の本文を行に分け(空行は除く)、新しい本文にもう無い行のバイト数を数える。断りの文は、どれだけ失うかと次にすること(書き直す・短くする・消すは`shikii wiki patch`で前後を示して行う。または前の本文を全部含めて足して送り直す)を書く。`body`を送らなければ前の本文が残り、前の本文が空の記事に本文を付けるのは通り、知識の画面での人の編集はこの断りの対象外である。`shikii reflect submit`の`wiki`も同じ。利用できる長い会話原文は引用時に別のハッシュとともに保持し、元の判定記録を消した後も参照できる。原資料や原文が欠けている時は、その限界を残す。
+`article.json`の短い`lesson`と詳しい`body`を分け、背景・根拠・適用条件・未確定点を既存記事へ統合する。`related`で関連をつなぎ、意味の編集には`change_reason`を残す。既存の記事の`id`(または、その記事の最初の題と同じ題)を付けて保存すると、送った`body`が前の本文を丸ごと置き換える。足すのではない。足す時は、前の本文に足した全文を送る。前の本文の半分以上がなくなる保存は断る。shikii は前の本文を行に分け(空行は除く)、新しい本文にもう無い行のバイト数を数える。1 行が長い段落だけの本文は、1 語直しただけでその行が残らないと数えて断るので、そういう直しは `shikii wiki patch` で行う。断りの文は、どれだけ失うかと次にすること(書き直す・短くする・消すは`shikii wiki patch`で前後を示して行う。または前の本文を全部含めて足して送り直す)を書く。`body`を送らなければ前の本文が残り、前の本文が空の記事に本文を付けるのは通り、知識の画面での人の編集はこの断りの対象外である。`shikii reflect submit`の`wiki`も同じ。利用できる長い会話原文は引用時に別のハッシュとともに保持し、元の判定記録を消した後も参照できる。原資料や原文が欠けている時は、その限界を残す。
 
 着手前の整理の古い入口 `hook plan query` は、検索上位の教訓に加え、その記事が `related` で直接結ぶ有効な `criteria` を最大2件返す（0.14）。要約と適用条件は末尾を切らず、種類と場面も渡す。`pages` 未指定なら判断基準を先に、本文が丸ごと収まる記事を最大2件・本文合計8000バイト以内で `article:<id>:<revision>` として返す。入らない本文は既存の `pages` 指定（最大2件）や `wiki query` で読める。応答の `wiki_context` は全記事の一覧を繰り返さず `available_count` を返すが、判定記録の `knowledge_context.available` には全版を保存する。関連候補・本文取得・実際の引用を区別し、関連や過去の判断を現在の許可とは扱わない。
 
@@ -582,7 +582,7 @@ MCP では、同じ計画をクライアントが人に質問として見せる(
 | `POST /v1/tune/review` | `{"spec","run","keep":true}` | エージェントが意味を確かめて自動で採用した聞き方を、人が「このままでよい」(true)か「元に戻す」(false。採用した版は `.reverted` に名を変えて残す) |
 | `POST /v1/tune/sync` | `{"spec","propose"}` | その場で聞き方の改善を回して結果を返す(MCP の `shikii_tune` が使う。採用はしない) |
 | `GET /v1/wiki` · `POST /v1/wiki/claim` | | wiki の主張の一覧 · 主張の状態を変える(promote / delete。変えるのは人だけ) |
-| `POST /v1/wiki/notebook` | `operation: prepare / record / query / consult / reuse / organize / reconcile / ingest / patch / diagnose / compare / capture / classify / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append` | プロジェクトのwiki。原資料と記事の検索・登録・見直し・点検。教訓は仮説。handoff_* は作業記録の読み書き(MCP と同じ操作。画面そのものは読むだけ) |
+| `POST /v1/wiki/notebook` | `operation: prepare / record / query / consult / reuse / organize / reconcile / ingest / patch / diagnose / compare / capture / classify / maintain / lint / handoff_list / handoff_read / handoff_write / handoff_append` | プロジェクトのwiki。原資料と記事の検索・登録・見直し・点検。教訓は仮説。handoff_* は作業記録の読み書き(MCP と同じ操作。画面そのものは読むだけ)。ingest は既存の記事の本文の半分以上がなくなる本文を断る(上の wiki の節) |
 | `POST /v1/wiki/article` | `action: edit / delete / restore`、`id`、`revision`。editは`title`、`lesson`、`applies_to`、`body`、`kind`、`scene` | このプロジェクトの記事を編集・削除する。仕事が取り下げた記事は元に戻す(restore)か削除する(`GET /v1/wiki`の`withdrawn`に並ぶ)。古い版は409で、取り下げた記事は画面が見せた版を名指した時だけ元に戻す・削除できる。削除後は検索・配信から外し、出典と履歴を残す。 |
 | `GET /v1/handoff/file?path=` | `path`(.shikii/handoff/ からの相対) | 作業記録の 1 件。画像は画像、文字と HTML は text/plain、それ以外は保存。置き場の外は 400 |
 | `POST /v1/review` | `operation: query / submit` | 会話と結果から仮採点。原文・対象・訂正例を取得し、根拠付きで保存。人の確認は抜き取りと保留 |
