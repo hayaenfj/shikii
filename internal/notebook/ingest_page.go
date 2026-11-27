@@ -146,6 +146,11 @@ func (b Book) buildIngestPage(d Draft, body, sourceDir string, pages []Page, ref
 			if d.Body == nil {
 				p.Body = old.Body
 			}
+			if d.refuseBodyLoss {
+				if err := bodyLossRefusal(id, old.Body, p.Body); err != nil {
+					return nil, err
+				}
+			}
 			p.Passages = append([]KnowledgePassage(nil), old.Passages...)
 			if d.Related == nil {
 				p.Related = old.Related

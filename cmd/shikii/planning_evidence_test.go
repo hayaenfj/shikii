@@ -66,10 +66,7 @@ func TestPlanningDoesNotCountAnUndeliveredBodyAsRead(t *testing.T) {
 		}
 	}
 	body := "Short new condition never delivered by query."
-	changed, err := book.Ingest(notebook.Draft{ID: goal.ID, Title: goal.Title, Lesson: goal.Lesson, AppliesTo: goal.AppliesTo, Sources: []string{goal.Sources[0].ID}, Body: &body})
-	if err != nil {
-		t.Fatal(err)
-	}
+	changed := rewriteBody(t, book, goal.ID, goal.Sources[0].ID, body) // another body under the same summary: a patch, since Ingest refuses to replace a body
 	response, err := planningCall(t, "submit", payload)
 	if err != nil {
 		return
@@ -82,7 +79,7 @@ func TestPlanningDoesNotCountAnUndeliveredBodyAsRead(t *testing.T) {
 		t.Fatal("missing decision", err)
 	}
 	for _, ref := range records[0].KnowledgeContext.Read {
-		if ref.ID == changed.Page.ID && ref.Revision == changed.Page.Revision {
+		if ref.ID == changed.ID && ref.Revision == changed.Revision {
 			t.Fatalf("never-delivered article revision counted as read: query_article_count=0 recorded_read_count=%d", len(records[0].KnowledgeContext.Read))
 		}
 	}

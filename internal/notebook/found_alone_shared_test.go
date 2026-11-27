@@ -3,6 +3,7 @@ package notebook
 import (
 	"math/rand"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -59,11 +60,16 @@ func sharedSearchBook(t *testing.T, rng *rand.Rand) (Book, sharedSearchWords) {
 		return out
 	}
 	var pages []Page
+	used := map[string]bool{}
 	for i := 0; i < 12; i++ {
 		title := "Notes " + cased(pick(words.plain, 1)[0])
 		if i < len(words.titleOnly) {
 			title = "Notes " + words.titleOnly[i] // a title word is in the title of one article only
 		}
+		if used[title] {
+			title += " " + strconv.Itoa(i) // a repeated title is the id of the first article, and Ingest refuses to replace its body
+		}
+		used[title] = true
 		var lesson, body strings.Builder
 		for _, w := range pick(words.plain, 4+rng.Intn(4)) {
 			lesson.WriteString(cased(w) + " ")

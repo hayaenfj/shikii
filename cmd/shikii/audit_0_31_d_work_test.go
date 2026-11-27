@@ -118,9 +118,7 @@ func TestAuditD_A2_StandaloneRefusalsNameCurrent(t *testing.T) {
 		t.Fatal("the page was not delivered")
 	}
 	edited := "The export keeps the filters and the totals."
-	if _, err := b.Ingest(notebook.Draft{ID: page.Page.ID, Sources: []string{source.ID}, Title: "CSV export keeps filters", Lesson: "Keep the filters when exporting CSV.", AppliesTo: "CSV export filters", Kind: "rule", Scene: "when exporting CSV", Body: &edited}); err != nil {
-		t.Fatal(err)
-	}
+	rewriteBody(t, b, page.Page.ID, source.ID, edited) // the same summary with another body: a patch, since Ingest refuses to replace a body
 	saved, _ = workCall(t, b, "record", map[string]any{"receipt": prepared["receipt"], "result": map[string]any{"changed": "Renamed the button, third.", "evidence": []any{ref}}})
 	if text := errorsOf(saved); strings.Contains(text, "(current, an observation)") {
 		t.Errorf("3) evidence %s after another writer's edit: the refusal offers current: %s", ref, text)

@@ -22,7 +22,10 @@ func (b Book) IngestPreparedCreate(d Draft, prepared Page) (Result, error) {
 	return b.Ingest(d)
 }
 
+// Ingest is the save the agents call (wiki ingest, reflect submit). It refuses a body that would replace most of the existing one;
+// the person's edit (Manage) and Patch reach ingest without that refusal.
 func (b Book) Ingest(d Draft) (Result, error) {
+	d.refuseBodyLoss = true
 	return b.ingest(d, false)
 }
 

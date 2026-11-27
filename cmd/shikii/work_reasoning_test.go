@@ -204,6 +204,7 @@ func TestReasoningEndingArticleIsRecheckedAtStop(t *testing.T) {
 	saveReasoning(t, b, v["receipt"], reasoningInput("finish", ref), nil)
 	body = "Check ownership and quoted input before export."
 	draft := notebook.Draft{ID: page.Page.ID, Title: page.Page.Title, Lesson: "Check quoted input as well.", Body: &body, AppliesTo: page.Page.AppliesTo, Kind: "howto", Scene: "exporting", Sources: []string{source}}
+	rewriteBody(t, b, page.Page.ID, source, body) // the new body goes in by patch (Ingest refuses to replace a body), the lesson by the save below
 	if _, err = b.Ingest(draft); err != nil {
 		t.Fatal(err)
 	}

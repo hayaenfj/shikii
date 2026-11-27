@@ -185,9 +185,7 @@ func TestPlanningReasoningRejectsStaleLinkedEvidence(t *testing.T) {
 	key := "article:" + goal.ID + ":" + goal.Revision
 	payload["agreed"] = map[string]any{"summary": "Use the condition.", "evidence": []map[string]string{{"source": "current_user", "quote": "keep the existing filters"}, {"source": key, "quote": goal.Body}}}
 	newBody := "The new condition."
-	if _, err := book.Ingest(notebook.Draft{ID: goal.ID, Title: goal.Title, Lesson: goal.Lesson, AppliesTo: goal.AppliesTo, Sources: []string{goal.Sources[0].ID}, Body: &newBody}); err != nil {
-		t.Fatal(err)
-	}
+	rewriteBody(t, book, goal.ID, goal.Sources[0].ID, newBody) // the same summary with another body: a patch, since Ingest refuses to replace a body
 	before := calls.Load()
 	if _, err := planningCall(t, "submit", payload); err == nil || calls.Load() != before {
 		t.Fatal("stale linked evidence reached the decision model", err)

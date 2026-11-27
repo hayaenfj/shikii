@@ -534,9 +534,17 @@ func TestNotebookArticleKeepsSummaryAndVersions(t *testing.T) {
 	if err != nil || articleField(t, next.Page, "body") != body || next.Page.Previous != got.Page.Revision {
 		t.Fatal("an old-format update does not erase the body", err)
 	}
-	cleared, err := b.Ingest(articleDraft(t, update, map[string]any{"body": ""}))
+	// An agent's save that sends an empty body would drop the whole body: refused, and the article stays as it was.
+	if _, err := b.Ingest(articleDraft(t, update, map[string]any{"body": ""})); err == nil || !strings.Contains(err.Error(), "wiki patch") {
+		t.Fatal("an explicit empty body drops the whole body and is refused with the patch to use instead", err)
+	}
+	if kept, err := b.Query("lesson:" + next.Page.ID); err != nil || len(kept.Lessons) != 1 || kept.Lessons[0].Body != body || kept.Lessons[0].Revision != next.Page.Revision {
+		t.Fatal("the refused save left the article as it was", err)
+	}
+	// Clearing a body is a patch, which shows what goes.
+	cleared, err := b.Patch(Patch{ID: next.Page.ID, Revision: next.Page.Revision, Sources: d.Sources, ChangeReason: "clear the body", Edits: []TextEdit{{Field: "body", Before: body, After: ""}}})
 	if err != nil || articleField(t, cleared.Page, "body") != nil {
-		t.Fatal("an explicit empty body clears it", err)
+		t.Fatal("a patch clears the body", err)
 	}
 	after, _ := os.ReadFile(legacyPath)
 	if !bytes.Equal(before, after) {

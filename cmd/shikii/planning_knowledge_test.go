@@ -56,10 +56,7 @@ func TestPlanningReadsFullArticleAndPinsEvidenceVersion(t *testing.T) {
 		t.Fatal("search candidates and quotes are counted apart from the effect assessment", stats, err)
 	}
 	newBody := "CSV exports have a revised behavior."
-	d.Body = &newBody
-	if _, err := book.Ingest(d); err != nil {
-		t.Fatal(err)
-	}
+	rewriteBody(t, book, p.ID, p.Sources[0].ID, newBody) // the same summary with another body: a patch, since Ingest refuses to replace a body
 	old, err := book.Query("lesson:" + p.ID + "@" + p.Revision)
 	if err != nil || len(old.Lessons) != 1 || old.Lessons[0].Body != body {
 		t.Fatal("the assessment can go back to the body at the time, without mixing in later knowledge", old, err)

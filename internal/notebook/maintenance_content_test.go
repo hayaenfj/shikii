@@ -43,10 +43,12 @@ func restoreRelatedContent(t *testing.T, b Book, d Draft) Page {
 	changed := "An intermediate condition that must still be reviewed when present."
 	edit := d
 	edit.Body = &changed
-	if _, err := b.Ingest(edit); err != nil {
+	// Both saves replace the whole body, which the agents' Ingest refuses (ingest_body_loss.go). This test is about what maintenance
+	// reuses when related content comes back exactly, so it saves through ingest, as Patch and Manage do.
+	if _, err := b.ingest(edit, false); err != nil {
 		t.Fatal(err)
 	}
-	p, err := b.Ingest(d)
+	p, err := b.ingest(d, false)
 	if err != nil {
 		t.Fatal(err)
 	}

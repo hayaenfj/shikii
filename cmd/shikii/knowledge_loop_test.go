@@ -35,6 +35,12 @@ func loopPage(t *testing.T, b notebook.Book, source string, fields map[string]an
 		t.Fatal(err)
 	}
 	r, err := b.Ingest(draft)
+	if err != nil && draft.ID != "" && draft.Body != nil && strings.Contains(err.Error(), "shikii wiki patch") {
+		// A later writer rewrote the whole body, which Ingest refuses (an id save replaces the body). The body goes in through
+		// wiki patch, which the refusal names, and the other fields through Ingest as before.
+		rewriteBodyAndPassages(t, b, draft.ID, source, *draft.Body, draft.Passages)
+		r, err = b.Ingest(draft)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

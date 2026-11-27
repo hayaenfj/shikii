@@ -59,6 +59,8 @@ type Draft struct {
 	baseRevision   string
 	preview        bool
 	preparedCreate *Page
+	// refuseBodyLoss is set by Ingest, the agents' save, and by no other caller: a body that loses half of the existing one or more is refused (ingest_body_loss.go)
+	refuseBodyLoss bool
 }
 
 type Issue struct {

@@ -211,7 +211,7 @@ func TestPlacementOutcomeFollowsRewrittenMergesThroughIngest(t *testing.T) {
 		t.Fatalf("a loosely related edit attaches no truth: %+v", place)
 	}
 	// Merge into the closest page with wiki ingest, rewriting the lesson text (the body also rephrases the draft text; coverage 0.6-0.95)
-	body := "## 見出し\n見出しを「版 — 題」にする。公開前の見出しのまま出さない。"
+	body := weakBody + "\n\n## 見出し\n見出しを「版 — 題」にする。公開前の見出しのまま出さない。" // the body the page has now, with the addition: an id save replaces the whole body
 	merged := notebook.Draft{ID: c[0].PageID, Sources: []string{src}, Title: "変更履歴は英語と日本語を揃え、見出しは版と題にする",
 		Lesson: "変更履歴は英語と日本語を揃える。見出しは版と題の形にする。", Kind: "rule", Scene: "テストの時", AppliesTo: "変更履歴を書く時",
 		Body: &body}
