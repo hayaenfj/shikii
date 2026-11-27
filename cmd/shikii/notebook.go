@@ -135,7 +135,7 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 		if req.Patch == nil {
 			return nil, errors.New("wiki patch needs a patch object")
 		}
-		return b.Patch(*req.Patch)
+		return patchWithOutcome(root, scope, *req.Patch) // attach the truth from the result to the insertion-point decision, as ingest does
 	case "ingest":
 		res, err := ingestWithOutcome(root, scope, req.Draft) // attach the truth from the result to the insertion-point decision (0.8.3)
 		if err == nil {

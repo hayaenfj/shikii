@@ -23,7 +23,7 @@ func publishWorkNote(book notebook.Book, w *workState, n workNote, d notebook.Dr
 			return item, nil, err
 		}
 		var value notebook.Result
-		err = commit(func() error { var e error; value, e = book.Patch(patch); return e })
+		err = commit(func() error { var e error; value, e = patchWithOutcome(book.Root, book.Scope, patch); return e })
 		if value.Page != nil {
 			item.ID, item.Revision, item.Warnings = value.Page.ID, value.Page.Revision, value.Warnings
 		}

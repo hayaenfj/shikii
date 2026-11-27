@@ -129,7 +129,7 @@ func liveScenes(live []notebook.Page) []sceneCount {
 	return out
 }
 
-const placeNote = "Until a line is drawn this is only a reference. Read the body of pages judged to be the same topic; to add to one, use shikii wiki patch on it first (before is a unique ending of the body, after is that ending plus your new text; a patch records no answer for place), and only when that does not fit put its id in submit with its whole body and your additions copied exactly (a body that drops half or more of the old one is refused); to change or shorten one, use shikii wiki patch; to replace one, put it in replaces. For a page suspected to disagree, check which one rests on newer sources before deciding. If the topic is not among the candidates, make a new page. Saving needs a kind (rule / howto / criteria / fact / history) and a scene. If a scene in scenes is close, use the same wording (when merging, leave it out to carry it over)."
+const placeNote = "Until a line is drawn this is only a reference. Read the body of pages judged to be the same topic; to add to one, use shikii wiki patch on it first (before is a unique ending of the body, after is that ending plus your new text), and only when that does not fit put its id in submit with its whole body and your additions copied exactly (a body that drops half or more of the old one is refused); to change or shorten one, use shikii wiki patch; to replace one, put it in replaces. For a page suspected to disagree, check which one rests on newer sources before deciding. If the topic is not among the candidates, make a new page. Saving needs a kind (rule / howto / criteria / fact / history) and a scene. If a scene in scenes is close, use the same wording (when merging, leave it out to carry it over)."
 
 // placeDrafts returns, for each draft, the same-topic candidates (highest p first) and the top suspected contradictions. The decisions are recorded and get their truth from the result of submit.
 func placeDrafts(root, scope string, drafts []notebook.Draft) (placeResult, error) {
@@ -249,23 +249,59 @@ func placeCandidatePages(book notebook.Book, live []notebook.Page, d notebook.Dr
 	return picked, nil
 }
 
-// placementOutcome is the truth from the result for the insertion-point and contradiction decisions asked about this draft (built before saving, written after the save succeeds).
+// placementOutcome is the truth from the result for the insertion-point and contradiction decisions asked about this draft (built before saving, written after the save succeeds; a patch reads the pages before and builds after, see patchWithOutcome).
 // Pages added to (id) or replaced (replaces) are "yes" for same topic; others are "no" (partial). Contradiction is "yes" if replaced and "no" (partial) if added to without replacing.
 // Which draft a decision belongs to is looked up by the draft text at placing time (new_lesson). Merging often rewrites the lesson text, so even when not exactly the same,
 // a draft counts as the same if most (placeMatchMin) of the text at placing time is in the draft being saved (title, lesson, body) (0.8.3. With exact matches only,
 // truths were attached only when a new page was made, and every insertion-point truth became "no").
 func placementOutcome(root, scope string, d notebook.Draft) ([]store.Label, error) {
-	lesson := strings.TrimSpace(d.Lesson)
-	if lesson == "" {
+	if strings.TrimSpace(d.Lesson) == "" {
 		return nil, nil
 	}
-	live, err := (notebook.Book{Root: root, Scope: scope}).Live()
+	state, err := readPlacementState(root, scope)
 	if err != nil {
 		return nil, err
 	}
-	pageOf := map[string]string{} // page lesson text → id (to find the page from the decision's input)
+	return state.outcome(d)
+}
+
+// placementState is what the truths of a save are built from: the live pages by lesson text (the decisions point at the lessons the pages had
+// when the draft was placed), the decisions of the wiki questions, and which of them already have a truth. It must be read before a save that
+// changes those lessons (a patch can rewrite one), and the truths built from it after the save has succeeded.
+type placementState struct {
+	pageOf    map[string]string // page lesson text → id (to find the page from the decision's input)
+	recsBy    map[string][]store.Record
+	labeledBy map[string]map[string]store.Label
+}
+
+func readPlacementState(root, scope string) (placementState, error) {
+	live, err := (notebook.Book{Root: root, Scope: scope}).Live()
+	if err != nil {
+		return placementState{}, err
+	}
+	s := placementState{pageOf: map[string]string{}, recsBy: map[string][]store.Record{}, labeledBy: map[string]map[string]store.Label{}}
 	for _, p := range live {
-		pageOf[p.Lesson] = p.ID
+		s.pageOf[p.Lesson] = p.ID
+	}
+	st := store.Store{Dir: root}
+	for _, specID := range wikiSpecs {
+		recs, err := st.Records(specID, 0)
+		if err != nil {
+			return placementState{}, err
+		}
+		labeled, err := st.LabeledTraces(specID)
+		if err != nil {
+			return placementState{}, err
+		}
+		s.recsBy[specID], s.labeledBy[specID] = recs, labeled
+	}
+	return s, nil
+}
+
+// outcome is the truths for the decisions asked about the draft d, which is the page as saved (id, replaces, title, lesson, body).
+func (s placementState) outcome(d notebook.Draft) ([]store.Label, error) {
+	if strings.TrimSpace(d.Lesson) == "" {
+		return nil, nil
 	}
 	chosen := map[string]bool{}
 	if d.ID != "" {
@@ -275,32 +311,18 @@ func placementOutcome(root, scope string, d notebook.Draft) ([]store.Label, erro
 	for _, id := range d.Replaces {
 		chosen[id], replaced[id] = true, true
 	}
-	st := store.Store{Dir: root}
-	recsBy := map[string][]store.Record{}
-	labeledBy := map[string]map[string]store.Label{}
-	for _, specID := range wikiSpecs {
-		recs, err := st.Records(specID, 0)
-		if err != nil {
-			return nil, err
-		}
-		labeled, err := st.LabeledTraces(specID)
-		if err != nil {
-			return nil, err
-		}
-		recsBy[specID], labeledBy[specID] = recs, labeled
-	}
-	placed := matchPlacedDraft(d, recsBy["wiki-place"], labeledBy["wiki-place"], pageOf, time.Now())
+	placed := matchPlacedDraft(d, s.recsBy["wiki-place"], s.labeledBy["wiki-place"], s.pageOf, time.Now())
 	if placed == "" {
 		return nil, nil
 	}
 	var out []store.Label
 	for _, specID := range wikiSpecs {
-		for i := range recsBy[specID] {
-			rec := &recsBy[specID][i]
-			if _, done := labeledBy[specID][rec.TraceID]; done || strings.TrimSpace(rec.Inputs["new_lesson"]) != placed {
+		for i := range s.recsBy[specID] {
+			rec := &s.recsBy[specID][i]
+			if _, done := s.labeledBy[specID][rec.TraceID]; done || strings.TrimSpace(rec.Inputs["new_lesson"]) != placed {
 				continue
 			}
-			page, ok := pageOf[rec.Inputs["lesson"]]
+			page, ok := s.pageOf[rec.Inputs["lesson"]]
 			if !ok {
 				continue
 			}
@@ -477,9 +499,35 @@ func ingestWithPreparedOutcome(root, scope string, d notebook.Draft, prepared *n
 	if err != nil {
 		return res, err
 	}
+	attachOutcome(root, outcome, oerr)
+	return res, nil
+}
+
+// patchWithOutcome applies a patch and, if it succeeds, attaches truths to the decisions asked about the draft the way ingestWithOutcome does for a save.
+// An agent adds to an existing article with a patch as often as with an id save (the guidance sends it to wiki patch first), so a draft that was placed
+// gets its truths from either. A patch sends edits, not the page, so the draft the truths are built from is the page after the patch (its id, title, lesson
+// and body); the pages the decisions point at are read before the patch, since the patch can rewrite a lesson. Entries that save a patch (the command line,
+// MCP and HTTP wiki patch, and the notes of a work record) go through here; a preview saves nothing and does not.
+func patchWithOutcome(root, scope string, p notebook.Patch) (notebook.Result, error) {
+	state, oerr := readPlacementState(root, scope)
+	res, err := (notebook.Book{Root: root, Scope: scope}).Patch(p)
+	if err != nil {
+		return res, err
+	}
+	var outcome []store.Label
+	if oerr == nil && res.Page != nil {
+		after := *res.Page
+		outcome, oerr = state.outcome(notebook.Draft{ID: after.ID, Title: after.Title, Lesson: after.Lesson, AppliesTo: after.AppliesTo, Body: &after.Body})
+	}
+	attachOutcome(root, outcome, oerr)
+	return res, nil
+}
+
+// attachOutcome writes the truths after a save that succeeded. It never fails the save: a cause is written to the log and the decisions stay without a truth.
+func attachOutcome(root string, outcome []store.Label, oerr error) {
 	if oerr != nil {
 		hookLog("wiki place: " + oerr.Error())
-		return res, nil
+		return
 	}
 	bySpec := map[string][]store.Label{} // appended per spec
 	for _, l := range outcome {
@@ -490,5 +538,4 @@ func ingestWithPreparedOutcome(root, scope string, d notebook.Draft, prepared *n
 			hookLog("wiki place: " + err.Error())
 		}
 	}
-	return res, nil
 }
