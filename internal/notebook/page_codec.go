@@ -75,6 +75,9 @@ func parsePage(data []byte) (Page, error) {
 	if p.Previous != "" && !idPattern.MatchString(p.Previous) {
 		return p, errors.New("invalid previous wiki revision")
 	}
+	if p.KeptFrom != "" && !idPattern.MatchString(p.KeptFrom) {
+		return p, errors.New("invalid kept_from wiki revision")
+	}
 	if len(p.Rationale) > 1600 || len(p.Premises) > 4 {
 		return p, errors.New("invalid rationale or premise metadata")
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -66,6 +67,16 @@ func (f *overwriteFixture) article(t *testing.T, name string) notebook.Page {
 	t.Helper()
 	body := overwriteBody
 	saved, err := f.book.Ingest(notebook.Draft{Sources: f.sources, Title: "Saving into an existing article by " + name, Lesson: "An id save replaces the body.", AppliesTo: "saving into an existing wiki article", Kind: "rule", Scene: "when saving an article", Body: &body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return *saved.Page
+}
+
+// articleWith is article with a body of the caller's.
+func (f *overwriteFixture) articleWith(t *testing.T, name, body string) notebook.Page {
+	t.Helper()
+	saved, err := f.book.Ingest(notebook.Draft{Sources: f.sources, Title: "Saving in small steps by " + name, Lesson: "An id save replaces the body.", AppliesTo: "saving into an existing wiki article", Kind: "rule", Scene: "when saving an article", Body: &body})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,6 +230,39 @@ func TestAgentEntriesRefuseABodyThatReplacesMostOfAnArticle(t *testing.T) {
 			}
 			if _, after := f.body(t, p.ID); !strings.Contains(after, "is done with wiki patch") {
 				t.Fatalf("the rewording was not saved: %q", after)
+			}
+		})
+	}
+}
+
+// 0.44.0 leftover C-4 through every entry: three saves that each keep more than half of the body before them take an article of 8 lines to 4
+// of its first lines. The first two are saved, and the third is refused with the revision it is measured against. Every line is 18 bytes.
+func TestAgentEntriesRefuseABodyThatWearsAwayInSmallSaves(t *testing.T) {
+	f := newOverwriteFixture(t)
+	rows := func(numbers ...int) string {
+		lines := make([]string, 0, len(numbers))
+		for _, n := range numbers {
+			lines = append(lines, fmt.Sprintf("row %02dxxxxxxxxxxxx", n))
+		}
+		return strings.Join(lines, "\n")
+	}
+	for name, entry := range overwriteEntries(t, f) {
+		t.Run(name, func(t *testing.T) {
+			p := f.articleWith(t, name, rows(1, 2, 3, 4, 5, 6, 7, 8))
+			for _, step := range [][]int{{1, 2, 3, 4, 5, 6, 11}, {1, 2, 3, 4, 5, 11, 12}} {
+				if refusal := entry(t, f, f.draft(p, rows(step...))); refusal != "" {
+					t.Fatalf("a save that keeps more than half of the body before it and of the first revision is refused: %s", refusal)
+				}
+			}
+			_, kept := f.body(t, p.ID)
+			refusal := entry(t, f, f.draft(p, rows(1, 2, 3, 4, 11, 12, 13)))
+			for _, want := range []string{"refused", "revision " + p.Revision, "drop 50%", "shikii wiki patch"} {
+				if !strings.Contains(refusal, want) {
+					t.Fatalf("the third save, which keeps 4 of the 8 lines the article started from, is not refused with the cause (lacks %q): %q", want, refusal)
+				}
+			}
+			if _, after := f.body(t, p.ID); after != kept {
+				t.Fatalf("the refused save changed the article: %q", after)
 			}
 		})
 	}

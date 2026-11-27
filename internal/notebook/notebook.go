@@ -31,6 +31,7 @@ type Page struct {
 	Replaces     []string           `json:"replaces,omitempty" yaml:"replaces,omitempty"`
 	Revision     string             `json:"revision" yaml:"revision"`
 	Previous     string             `json:"previous,omitempty" yaml:"previous,omitempty"`
+	KeptFrom     string             `json:"kept_from,omitempty" yaml:"kept_from,omitempty"` // the revision the agents' saves since are measured against (ingest_body_loss.go); empty once a person's edit or a patch settled the body
 	Correction   *store.Correction  `json:"correction,omitempty" yaml:"correction,omitempty"`
 	Body         string             `json:"body,omitempty" yaml:"body,omitempty"`
 	Rationale    string             `json:"rationale,omitempty" yaml:"rationale,omitempty"`
