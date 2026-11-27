@@ -478,11 +478,15 @@ func TestAdoptionIsUndoneWhenCalibrationRefuses(t *testing.T) {
 
 // Null hypothesis: if all candidates are equally good, adoption stays rare however many candidates are added (one-sided sign test p < 0.05).
 // A fake model that gets each candidate right with probability 0.7 using independent random numbers. Measures the adoption rate over 20 candidates × 30 runs.
+//
+// The model's answers are served inside the process (the default transport hands each request to the handler, no socket): the 30 runs
+// ask the model about 25,000 times, and what the test measures (how often the gate adopts a wording) does not depend on how a request
+// reaches the model.
 func TestManyEqualCandidatesAreRarelyAdopted(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	var seed int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	modelURL := serveModelInProcess(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req systemone.Request
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		resp := systemone.Response{Model: "m", Answers: map[string]systemone.Answer{}}
@@ -499,7 +503,6 @@ func TestManyEqualCandidatesAreRarelyAdopted(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
-	t.Cleanup(srv.Close)
 	if err := os.MkdirAll("decisions", 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -524,7 +527,7 @@ func TestManyEqualCandidatesAreRarelyAdopted(t *testing.T) {
 	const runs = 30
 	for seed = 1; seed <= runs; seed++ {
 		out := capture(t, func() error {
-			return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", srv.URL, "--store", filepath.Join(dir, ".shikii")})
+			return cmdTune([]string{specPath, "--labeled", labeledPath, "--local", modelURL, "--store", filepath.Join(dir, ".shikii")})
 		})
 		if strings.Contains(out, "dry run: pass --write") {
 			adopted++
@@ -533,6 +536,24 @@ func TestManyEqualCandidatesAreRarelyAdopted(t *testing.T) {
 	if adopted > runs*15/100 {
 		t.Fatalf("with 20 candidates of equal skill, %d/%d runs would adopt a wording: the holdout gate is not holding (want ≤ 5%% nominal)", adopted, runs)
 	}
+}
+
+// serveModelInProcess answers every request to the returned address with h, through the default transport (every client of the
+// package uses it), and puts the transport back when the test ends. A request to any other address goes on as it did.
+func serveModelInProcess(t *testing.T, h http.Handler) string {
+	t.Helper()
+	const host = "127.0.0.1:1" // a port nobody listens on: a request that reached the network would be refused
+	old := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host != host {
+			return old.RoundTrip(r)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		return rec.Result(), nil
+	})
+	t.Cleanup(func() { http.DefaultTransport = old })
+	return "http://" + host
 }
 
 func fnvHash(s string) uint32 {
