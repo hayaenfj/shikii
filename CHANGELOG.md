@@ -8,7 +8,11 @@
 
 - An agent could shorten an article step by step: each save kept more than half of the text before it, so none was refused, and the article shrank. A save is now also compared with the text from before the agent started dropping lines, and is refused when half or more of that would be gone.
 - When an agent adds to an article, it is now told to use `shikii wiki patch` first, which adds the new sentences at the end and leaves the rest as it is. Sending the whole text again could silently lose a part the agent failed to copy.
-- shikii learns which article a new lesson belongs to by checking where the agent actually put it. It did not check additions made with `shikii wiki patch`, and now it does.
+- shikii gets better at choosing which article a new lesson should go into by looking at where the agent actually put it. Lessons added with `shikii wiki patch` were not counted, and now they are.
+
+### Before you update
+
+- An article an agent has cut lines from now carries a note of the earlier version it is compared with. shikii 0.44.0 or older reads such an article as changed and skips it, and refuses `shikii wiki patch` until it is updated, so update every machine that uses the same wiki to 0.44.1. The article itself is not damaged.
 
 ## 0.44.0 — An agent can no longer wipe out a wiki article by sending only its new sentences
 

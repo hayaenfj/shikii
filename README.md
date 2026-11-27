@@ -4,7 +4,7 @@
 
 # shikii: grow your agent to fit your project
 
-Hand work to an AI agent and you tend to repeat the same explanations and corrections. shikii keeps what you said, decided and checked in the project's `.shikii/`, and hands it to the agent before the next piece of work. When the work ends, the agent records whether the knowledge it got helped and what it newly learned. Rules a machine can check become checks the agent cannot finish without passing.
+When you hand work to an AI agent, you end up repeating the same explanations and corrections. shikii keeps what you said, decided and checked in the project's `.shikii/`, and hands it to the agent before the next piece of work. When the work ends, the agent records whether the knowledge it got helped and what it newly learned. Rules a machine can check become checks the agent cannot finish without passing.
 
 What grows is the project, not the model, so its knowledge remains when you change models. Claude Code, Codex and OpenCode connected to the same project share the same knowledge.
 
@@ -18,7 +18,7 @@ What grows is the project, not the model, so its knowledge remains when you chan
 
 **Recent versions**
 
-- **0.44**: A save that would wipe out an article, when the agent meant only to add a few sentences, is refused. So are saves that each cut a little until most of the article is gone, and the agent is told to add at the end with `shikii wiki patch` first.
+- **0.44**: A save that would wipe out an article, when the agent meant only to add a few sentences, is refused. So is a run of saves that each cut a little, once together they would drop half or more of the text from before the cuts began, and the agent is told to add at the end with `shikii wiki patch` first.
 - **0.42–0.43**: The memory nap (`shikii nap`). At most once a day, the agent reviews its memory: it rereads articles whose underlying files changed and adds the corrections of yours that the wiki missed. `shikii status` shows how many it caught.
 - **0.41**: `shikii forget` removes what finished sessions, such as trial runs, left behind, after showing you the list.
 
@@ -59,7 +59,7 @@ Like someone who has worked on the project for a long time, the agent picks up f
 
 1. **It remembers what you said.** From the corrections and decisions of ordinary conversations, the agent writes lessons with sources into the wiki. Each lesson carries a kind (a rule decided in this project, a how-to, criteria for a choice, a fact or assumption, or history) and a scene it applies to ("when committing", "when sending an invoice"). Up to two relevant lessons arrive before similar requests, and in Claude Code and Codex also right before the agent changes a file or runs a command that a lesson names. One topic stays in one article, and the decision model finds the article a new lesson belongs to.
 2. **It never needs telling twice.** Corrections a machine can check (“keep both changelogs in step”, “never use that word”, “write the original problem and the verification in the commit body”) become guards. When one fails, the agent cannot end the turn until it fixes the work. A guard on commands, such as “no push until allowed”, refuses the command right before it runs in Claude Code and Codex.
-3. **It follows the routine.** When a request arrives, the agent gets the request, what the conversation so far has agreed and left open, and the relevant lessons. It reads them before it works, and before it ends it saves the result, whether the delivered lessons helped, and what it learned. If it tries to end without saving, shikii returns the operation to run. What it records as left reaches the next task when that task starts, and words it searched the wiki for without finding anything are remembered, so a later search of the same words is pointed to the earlier work record. These checks are built in, also in projects without `CLAUDE.md` or `AGENTS.md`.
+3. **It follows the routine.** When a request arrives, the agent gets the request, what the conversation so far has agreed and left open, and the relevant lessons. It reads them before it works, and before it ends it saves the result, whether the delivered lessons helped, and what it learned. If it tries to end without saving, shikii returns the operation to run; when the remaining work shrinks, it is asked to continue, and when it does not, the turn ends marked incomplete and automatic continuing stops. What it records as left reaches the next task when that task starts, and words it searched the wiki for without finding anything are remembered, so a later search of the same words is pointed to the earlier work record. These checks are built in, also in projects without `CLAUDE.md` or `AGENTS.md`.
 4. **It leaves a trail.** Audit reports, release steps, diffs and screenshots that the agent keeps editing go to `.shikii/handoff/<task>/`, and subagents are told to write their reports there too. They are not committed; you read them on the page under Knowledge → Work records.
 5. **It earns room to act alone.** A model returns a probability, “probably 0.9”. From the truths people and results supply, shikii measures how the model's confidence relates to how often it is right, and draws a line above which it may act on its own. Until the line exists, nothing is automatic. Truths live apart from the model, so changing models does not start you over.
 
@@ -74,7 +74,7 @@ The AI part of the page and `shikii status` show whether it is working: whether 
 - **Edit or delete knowledge.** Open an article and choose Edit or Delete. Deletion removes it from search and delivery, while its sources and history remain. Your edits are not subject to the refusal on agents' saves (see Tending the knowledge below).
 - **Read the work records when you want.** On the page, under Knowledge → Work records, you can read the agent's reports and see its screenshots.
 - **Check a wording when it changes.** When the agent changes how a question is asked, a notice appears under Answer. Choose "Keep it" or "Undo".
-- **Ask for a tidy-up or a review.** Ask the agent to "tidy shikii": it checks the wiki's wording against its sources and corrects overstatement and repeated explanations. Ask it to "optimize shikii" and, after the tidy-up, it also reviews the articles against their original sources for the current version's way of writing.
+- **Ask for a tidy-up or a review.** Ask the agent to "tidy shikii": it checks the wiki's wording against its sources and corrects overstatement and repeated explanations. Ask it to "optimize shikii" and, after the tidy-up, it also reviews the articles against their original sources for the current version's way of writing (ask to "upgrade the memory" for that review alone).
 
 Everything else is the machine's job.
 
@@ -100,9 +100,9 @@ Everything else is the machine's job.
 
 ### 1. Put a TypeSafe API key in the environment (recommended)
 
-Get an API key from [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart) and put it in the environment of your shell and your agent (`export TYPESAFE_API_KEY=…`). Nothing is downloaded and an ordinary PC is enough. With the API key, the hooks and the built-in questions go to Jev and no local model is started (`shikii up` does not start one either). The request text, the agent's reply and wiki lessons are sent to TypeSafe for the built-in questions; they also stay in the local records. 
+Get an API key from [TypeSafe AI](https://docs.typesafe.ai/introduction/quickstart) and put it in the environment of your shell and your agent (`export TYPESAFE_API_KEY=…`). Nothing is downloaded and an ordinary PC is enough. With the API key, the hooks and the built-in questions go to Jev and no local model is started (`shikii up` does not start one either). The request text, the agent's reply and wiki lessons are sent to TypeSafe for the built-in questions; they also stay in the local records.
 
-Each project can also choose which model it uses, on its page (Settings in the menu) or with `shikii init --model local` / `shikii init --model hosted`. A project set to `local` keeps its requests, replies and file excerpts on this machine even with an API key. The choice is kept in `.shikii/project.json` and comes before the `SHIKII_MODEL` environment variable (`local` or `hosted`) and the API key.
+Each project can also choose which model it uses, on its page (Settings in the menu) or with `shikii init --model local` / `shikii init --model hosted`. A project set to `local` keeps its requests, replies and file excerpts on this machine even with an API key. The choice is kept in `.shikii/project.json` and comes before the `SHIKII_MODEL` environment variable (`local` or `hosted`) and the API key; running `shikii init` again without `--model` keeps it.
 
 **Without an API key: llama.cpp.** shikii runs a local model. It is a 27B model that needs about 10 GB of memory while running, which can be heavy for an ordinary PC. On macOS with Homebrew:
 
@@ -193,10 +193,10 @@ shikii update
 
 `shikii update` fetches the latest stable release, verifies its hashes and replaces shikii and readout. When any of shikii's hooks, or shikii's OpenCode plugin, runs the shikii it replaced, `shikii update` then runs `shikii hook install --yes` itself: it rewrites shikii's hooks for all three agents (Claude Code, Codex and OpenCode), so a hook you removed by hand comes back too, and it applies what the new version changes in your agents' settings and prints each change. If that step fails, update says so; run `shikii hook install --yes` then. Without hooks, rerun `shikii --init` in an initialized project instead: the data stays and the hooks stay off.
 
-If other machines or processes write to the same project, update them all to the same version. Afterwards, reopen your agent sessions and restart the page and MCP. Existing records are kept. When a new version changes how pages are written, work to review existing pages against their original sources (the memory upgrade) reaches the agent a little at a time at breaks in its work. [Memory and learning](docs/memory-and-learning.md) explains what changes.
+If other machines or processes write to the same project, update them all to the same version. From 0.44.1, an article an agent has cut lines from carries a note of the version it is compared with, and shikii 0.44.0 or older reads such an article as changed: it skips it and refuses `shikii wiki patch` until it is updated (the article itself is not damaged). Afterwards, reopen your agent sessions and restart the page and MCP. Updates from 0.7.0 onwards keep existing records; **updating from 0.6.0 or earlier erases them** (see the notes below). When a new version changes how pages are written, work to review existing pages against their original sources (the memory upgrade) reaches the agent a little at a time at breaks in its work. [Memory and learning](docs/memory-and-learning.md) explains what changes.
 
 <details>
-<summary>Notes for updating from an old version (0.6.0 to 0.28.0)</summary>
+<summary>Notes for updating from an old version (0.6.0 to 0.31.0)</summary>
 
 **Updating from 0.6.0 or earlier erases the contents of `.shikii/` in every initialized project and initializes them again.** Earlier conversations, lessons, truths and lines are removed; back up anything you want to keep. Updates from 0.7.0 onwards keep them.
 
@@ -256,7 +256,7 @@ The decision model writes no text; it returns only the probability of yes/no or 
 | Did the changed files stay within the request? (`changes-in-scope`) | At the end |
 | Was the request completed? (`done-as-asked`) | At the end |
 
-`shikii init` also puts one question in each project for tools built on shikii: does this passage of a cited file support this claim of a report? (`quote-supports`). chiten asks it about the quotes of its research reports.
+`shikii init` also puts one question in each project for tools built on shikii: does this passage of a cited file support this claim of a report? (`quote-supports`). chiten asks it about the quotes of its research reports. It carries an excerpt of a file in your project to the model the project chose.
 
 These answers reach the agent as advice only once a line has been drawn. None of them ever stops the agent's tools from running. Every decision falls into one of four bands: `act` proceeds automatically, `ask` goes to a person, `discard` does nothing, `abstain` means an input or an endpoint is missing. When a line is drawn, or when there are enough truths but no line can be drawn, you are told once at the end of a turn.
 
@@ -279,7 +279,7 @@ A lesson is not finished when it is written; it is revised as it gets used.
 
 - **Lessons that do not help stop being delivered.** A lesson repeatedly unused in the same situation, or one that got in the way of a decision, goes back for review with the decisions and evidence. The agent checks the sources before changing it, and can also record that no change is needed.
 - **The same goes for your past answers.** A past answer of yours shown before a similar request stops being shown when it does not help, and is listed on the page under "Past answers the AI judged not useful", where you can undo that.
-- **Articles are not wiped out by accident.** When an agent saves to an existing article, a save that would drop half or more of its text is refused. Saves that each cut a little are refused too, by comparing with the text from before the cuts began. To add, the agent is told to use `shikii wiki patch`, which adds sentences at the end. Earlier versions always stay in the history.
+- **Articles are not wiped out by accident.** When an agent saves to an existing article, a save that would drop half or more of its text is refused. A run of saves that each cut a little is refused too, once together they would drop half or more of the text from before the cuts began. To add, the agent is told to use `shikii wiki patch`, which adds sentences at the end. Earlier versions always stay in the history.
 - **A review at most once a day.** When 24 hours have passed and at least 5 requests have ended since the last one, the agent reviews its memory at the start of a session (`shikii nap`). It rereads articles whose underlying files changed, and adds the corrections you recently gave that the wiki does not hold yet. `shikii status` shows how many it caught.
 - **What was left undone, and what could not be found, are passed on.** What a work record lists as left reaches the next task when it starts. Words searched in the wiki without result are remembered, and when the same words find nothing again, the earlier work record that speaks of them is pointed to.
 - **Experience grows into procedures.** A procedure used before is read with its conditions, failures and fixes from that time, and compared with the conditions now. An earlier success is not taken as this time's success. How much to read and how to proceed are also chosen again from actual results.
