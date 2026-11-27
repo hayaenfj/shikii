@@ -248,9 +248,9 @@ func rootOpensOutsideTheAllowlist(t *testing.T, name, src string) ([]string, int
 	return rootOpensInPackage(t, exp, "example.com/x", []namedSource{{name, src}})
 }
 
-// rootOpensInPackage type-checks the files of one package (a type error fails the test, so nothing goes unseen for want of a type)
-// and returns each use of a root opener that is not allowed, and how many are inside the opener itself.
-func rootOpensInPackage(t *testing.T, exp map[string]string, path string, srcs []namedSource) ([]string, int) {
+// typeCheckSources parses and type-checks the files of one package against the export data of what they import (a type error fails the
+// test, so nothing goes unseen for want of a type) and returns the file set, the files and the type information.
+func typeCheckSources(t *testing.T, exp map[string]string, path string, srcs []namedSource) (*token.FileSet, []*ast.File, *types.Info) {
 	t.Helper()
 	fset := token.NewFileSet()
 	var files []*ast.File
@@ -271,6 +271,14 @@ func rootOpensInPackage(t *testing.T, exp map[string]string, path string, srcs [
 	if _, err := conf.Check(path, fset, files, info); err != nil {
 		t.Fatalf("type-check %s: %v", path, err)
 	}
+	return fset, files, info
+}
+
+// rootOpensInPackage type-checks the files of one package and returns each use of a root opener that is not allowed, and how many are
+// inside the opener itself.
+func rootOpensInPackage(t *testing.T, exp map[string]string, path string, srcs []namedSource) ([]string, int) {
+	t.Helper()
+	fset, files, info := typeCheckSources(t, exp, path, srcs)
 	var hits []string
 	allowed := 0
 	for i, f := range files {
