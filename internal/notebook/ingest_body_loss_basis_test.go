@@ -229,7 +229,9 @@ func TestTheBodyLossRefusalsPointToAPatchThatAddsAtTheEndBeforeResendingTheBody(
 	eb, _, ed := erosionBook(t)
 	erosionFirstTwoSaves(t, eb, ed)
 	_, worn := erosionSave(eb, ed, 1, 2, 3, 4, 11, 12, 13)
-	for name, refusal := range map[string]error{"a save with an id": withID, "a save by the title": byTitle, "a save that wears the body away": worn} {
+	ed.ID = ""
+	_, wornByTitle := erosionSave(eb, ed, 1, 2, 3, 4, 11, 12, 13)
+	for name, refusal := range map[string]error{"a save with an id": withID, "a save by the title": byTitle, "a save that wears the body away": worn, "a save by the title that wears the body away": wornByTitle} {
 		if refusal == nil {
 			t.Fatalf("%s is not refused", name)
 		}
@@ -243,5 +245,97 @@ func TestTheBodyLossRefusalsPointToAPatchThatAddsAtTheEndBeforeResendingTheBody(
 				t.Fatalf("%s: the refusal lacks %q: %s", name, want, text)
 			}
 		}
+		// A patch needs the article's id and its current revision, and the article is read first (0.44.1 audit D-3): the way on says so
+		// before the unique ending, not only in the branch for a patch that does not fit.
+		read := strings.Index(text, "current revision")
+		query := strings.Index(text, "shikii wiki query lesson:")
+		if read < patch || read > ending || query < patch || query > ending {
+			t.Fatalf("%s: the refusal must say, between naming the patch and the unique ending, that a patch needs the article's id and current revision and that the article is read first with shikii wiki query lesson:<id> (patch %d, current revision %d, query %d, unique ending %d): %s", name, patch, read, query, ending, text)
+		}
+	}
+}
+
+// A save that sends no body (it changes the lesson or another field and leaves the body out) keeps the body the page has, and is guarded
+// like the saves that send one: the reference revision is carried on, so the saves that follow cannot use it to start the count again
+// (a save that leaves the body out between two that cut would otherwise give the wearing away a fresh start every time).
+func TestASaveWithoutABodyCarriesTheReferenceRevisionOn(t *testing.T) {
+	b, first, d := erosionBook(t)
+	second := erosionFirstTwoSaves(t, b, d)
+	if second.KeptFrom != first.Revision {
+		t.Fatalf("the two saves that cut did not leave the first revision as the reference: %q", second.KeptFrom)
+	}
+	noBody := d
+	noBody.Body = nil
+	noBody.Lesson = "Check model startup instructions and the license files when updating README installation instructions."
+	kept, err := b.Ingest(noBody)
+	if err != nil {
+		t.Fatalf("a save that leaves the body out and changes the lesson is refused: %v", err)
+	}
+	if kept.Page.Body != second.Body || kept.Page.Lesson != noBody.Lesson || kept.Page.Previous != second.Revision {
+		t.Fatalf("the save without a body did not change the lesson and keep the body: %+v", kept.Page)
+	}
+	if kept.Page.KeptFrom != first.Revision {
+		t.Fatalf("a save that sends no body dropped the reference revision (%q, want %q): the next saves would start the count again", kept.Page.KeptFrom, first.Revision)
+	}
+	// The save that follows is measured against the first revision still: 6 of the 7 lines of the page, 4 of the 8 lines of the first.
+	_, err = erosionSave(b, d, 1, 2, 3, 4, 11, 12, 13)
+	if err == nil {
+		t.Fatal("a save after one without a body is not measured against the first revision any more: the body wears away in small steps again")
+	}
+	if !strings.Contains(err.Error(), "revision "+first.Revision) {
+		t.Fatalf("the refusal does not name the revision the saves started from: %v", err)
+	}
+	requireArticle(t, b, kept.Page.ID, kept.Page.Revision, kept.Page.Body)
+}
+
+// A save that names no id finds its article by the title (the id is made from the first title), and the comparison with the revision the
+// saves started from works there as with an id: the third save is refused and names that revision, and the article stays as it was.
+func TestASaveByTheTitleIsMeasuredAgainstTheRevisionTheSavesStartedFrom(t *testing.T) {
+	b, first, d := erosionBook(t)
+	d.ID = "" // the title of the draft is the first title of the article
+	if _, err := erosionSave(b, d, 1, 2, 3, 4, 5, 6, 11); err != nil {
+		t.Fatalf("the first save by the title keeps 6 of 8 lines and is refused: %v", err)
+	}
+	second, err := erosionSave(b, d, 1, 2, 3, 4, 5, 11, 12)
+	if err != nil {
+		t.Fatalf("the second save by the title keeps 6 of 7 lines and is refused: %v", err)
+	}
+	if second.Page.ID != first.ID || second.Page.KeptFrom != first.Revision {
+		t.Fatalf("the saves by the title did not reach the article or did not keep its first revision as the reference: %q %q", second.Page.ID, second.Page.KeptFrom)
+	}
+	_, err = erosionSave(b, d, 1, 2, 3, 4, 11, 12, 13) // 6 of 7 lines of the page, 4 of 8 of the first revision
+	if err == nil {
+		t.Fatal("a save by the title that keeps 4 of the 8 lines of the revision the saves started from was accepted: the comparison is skipped when no id is sent")
+	}
+	for _, want := range []string{"refused", first.ID, "revision " + first.Revision, "drop 50%"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("the refusal of a save by the title lacks %q: %v", want, err)
+		}
+	}
+	requireArticle(t, b, second.Page.ID, second.Page.Revision, second.Page.Body)
+}
+
+// The refusal that measures against the revision the saves started from tells a save without an id what the refusal of the first kind
+// tells it: the article was found by the title, so a different lesson that has the same title takes another one. A save with an id is
+// not told that (it names the article itself).
+func TestTheBasisRefusalOfASaveWithoutAnIdTellsADifferentLessonToTakeAnotherTitle(t *testing.T) {
+	b, first, d := erosionBook(t)
+	erosionFirstTwoSaves(t, b, d)
+	_, withID := erosionSave(b, d, 1, 2, 3, 4, 11, 12, 13)
+	d.ID = ""
+	_, byTitle := erosionSave(b, d, 1, 2, 3, 4, 11, 12, 13)
+	if withID == nil || byTitle == nil {
+		t.Fatalf("a save that wears the body away is accepted: with an id %v, by the title %v", withID, byTitle)
+	}
+	for _, want := range []string{"revision " + first.Revision, "Saving without an id finds the article by its title", "first title of article " + first.ID, "give it another title", "shikii wiki patch"} {
+		if !strings.Contains(byTitle.Error(), want) {
+			t.Fatalf("the refusal of a save by the title lacks %q: %v", want, byTitle)
+		}
+	}
+	if strings.Contains(byTitle.Error(), "Saving with an id") {
+		t.Fatalf("the refusal of a save without an id says an id was sent: %v", byTitle)
+	}
+	if !strings.Contains(withID.Error(), "Saving with an id replaces the whole body") || strings.Contains(withID.Error(), "another title") {
+		t.Fatalf("the refusal of a save with an id must say that an id replaces the body, and must not tell it to take another title: %v", withID)
 	}
 }
