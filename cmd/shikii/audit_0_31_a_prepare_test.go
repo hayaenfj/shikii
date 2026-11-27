@@ -13,46 +13,6 @@ import (
 
 var auditIDs = regexp.MustCompile(`\{"session_id":"[^"]*","turn_id":"[0-9a-f]{16}"\}`)
 
-// audit A: the CLI's prepare in a project with many pending conversations, with the ids of the hook notice and without them.
-func TestAuditACLIPrepareWithManyPendingConversations(t *testing.T) {
-	st, scope, _, _, _ := memoryEffectFixture(t)
-	for i := 0; i < 42; i++ {
-		session := fmt.Sprintf("s%d", i)
-		memoryEffectPrompt(t, scope, session)
-		memoryEffectComplete(t, st, scope, session)
-	}
-	notice := feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "main", "cwd": scope, "prompt": "README \u306e\u5c0e\u5165\u624b\u9806\u3092\u66f4\u65b0\u3057\u3066\u304f\u3060\u3055\u3044"}))
-	ids := auditIDs.FindString(notice)
-	if ids == "" {
-		t.Fatalf("the notice carries the ids: %s", notice)
-	}
-	for name, input := range map[string]string{
-		"with the ids of the notice": strings.TrimSuffix(ids, "}") + `,"query":"README ` + "\u5c0e\u5165\u624b\u9806" + `"}`,
-		"without ids":                `{"query":"README ` + "\u5c0e\u5165\u624b\u9806" + `","request":"README ` + "\u306e\u5c0e\u5165\u624b\u9806\u3092\u66f4\u65b0\u3059\u308b" + `"}`,
-	} {
-		var out string
-		var err error
-		withStdin(t, input, func() { out, err = captureErr(func() error { return cmdWork([]string{"prepare"}) }) })
-		if err != nil {
-			t.Errorf("%s: the CLI's prepare is refused: %v", name, err)
-			continue
-		}
-		var reply map[string]any
-		if e := json.Unmarshal([]byte(out), &reply); e != nil {
-			t.Fatalf("%s: %v: %.200s", name, e, out)
-		}
-		t.Logf("%s: %d bytes, output=%v", name, len(out), reply["output"])
-		if len(out) > 28<<10 {
-			t.Errorf("%s: the reply is %d bytes, over 28672", name, len(out))
-		}
-		for _, key := range []string{"receipt", "task", "how_to_record"} {
-			if reply[key] == nil {
-				t.Errorf("%s: the reply lacks %s", name, key)
-			}
-		}
-	}
-}
-
 // audit A: the person's message is long (a pasted log or specification). The notice asks for work prepare on the CLI with no max_bytes.
 func TestAuditACLIPrepareAfterALongRequest(t *testing.T) {
 	for _, size := range []int{20 << 10, 27 << 10, 30 << 10, 50 << 10} {

@@ -35,9 +35,8 @@ func mcpToolCall(t *testing.T, h http.Handler, name, arguments string) (map[stri
 // corrections, the lessons at the end of the list, and last the raw text of the second conversation, which becomes a head like the
 // ones after it. What the agent needs to submit stays: each conversation listed with its targets and the keys of its delivered
 // lessons, and how_to_submit. When even the short forms do not fit, the newest conversations wait: they are counted in more_pending
-// and the next query lists them (TestTheReflectionBoundTakesTheLeastUsefulPartsFirst and
-// TestAuditAReflectQueryWithManyPendingConversations check that). output names what was left out. A reply that fits is returned as
-// it was, and the HTTP endpoint is not bounded.
+// and the next query lists them (TestTheReflectionBoundTakesTheLeastUsefulPartsFirst checks that). output names what was left out. A
+// reply that fits is returned as it was, and the HTTP endpoint is not bounded.
 func TestTheReflectionQueryFitsWhatAnAgentsToolShows(t *testing.T) {
 	st, scope, h, draft, _ := memoryEffectFixture(t)
 	b := notebook.Book{Root: st.Dir, Scope: scope}
