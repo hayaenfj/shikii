@@ -2,6 +2,14 @@
 
 **English** · [日本語](CHANGELOG_ja.md)
 
+## 0.44.1 — Saves that each drop a little no longer wear a wiki article away
+
+### Fixes
+
+- An agent could shorten an article step by step: each save kept more than half of the text before it, so none was refused, and the article shrank. A save is now also compared with the text from before the agent started dropping lines, and is refused when half or more of that would be gone.
+- When an agent adds to an article, it is now told to use `shikii wiki patch` first, which adds the new sentences at the end and leaves the rest as it is. Sending the whole text again could silently lose a part the agent failed to copy.
+- shikii learns which article a new lesson belongs to by checking where the agent actually put it. It did not check additions made with `shikii wiki patch`, and now it does.
+
 ## 0.44.0 — An agent can no longer wipe out a wiki article by sending only its new sentences
 
 ### Changes
