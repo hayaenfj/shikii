@@ -297,9 +297,11 @@ const planningShape = `agreed and open are each one object, not an array: "agree
 // groupingAsk reports whether this turn's Stop asks only for continues_previous (0.9.3 real-agent check medium 3): the hook asked for the
 // organizing, none came, and the message is short (under outcomeMovedMinRunes) and not in the acknowledgement list, so the list's
 // provisional "new request" may be wrong. Claude Code skips the organizing in turns that change no files. Once per turn, like the other rituals.
+// A turn that is reasoning only is never asked: the Stop's plan block is not for it, and the notice (hook_ending.go) asks exactly when
+// this function says the Stop would.
 func groupingAsk(s *hookSession) bool {
 	p := s.Planning
-	if p == nil || s.TurnID == "" || p.TurnID != s.TurnID || p.Result != nil || s.Judged || s.RitualStopped == s.TurnID {
+	if p == nil || s.TurnID == "" || p.TurnID != s.TurnID || p.ReasoningOnly || p.Result != nil || s.Judged || s.RitualStopped == s.TurnID {
 		return false
 	}
 	return p.Grouping != nil && !p.Grouping.Settled && groupingShort(p.Grouping)

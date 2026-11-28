@@ -133,15 +133,22 @@ func quoteKeys(t *testing.T, context string) []string {
 	return keys
 }
 
-// memoryHint is the sentence of the notice that gives the memory form, "" when the notice has none.
+// memoryHint is the sentence of the notice that gives the memory form, and only that sentence (it ends at "as text).", where
+// memoryHintEnd is the last of what endingHints.text writes for it), "" when the notice has none.
 func memoryHint(context string) string {
 	_, rest, found := strings.Cut(context, "With that record send memory:[")
 	if !found {
 		return ""
 	}
-	sentence, _, _ := strings.Cut(rest, "\n")
-	return "With that record send memory:[" + sentence
+	sentence, _, found := strings.Cut(rest, memoryHintEnd)
+	if !found {
+		return ""
+	}
+	return "With that record send memory:[" + sentence + memoryHintEnd
 }
+
+// memoryHintEnd is how the memory sentence of the hints ends (hook_ending.go).
+const memoryHintEnd = "as text)."
 
 // The quotes of a request are delivered right after its notice is written; the notice then names them. Every notice the hook writes does:
 // the planning one and the reasoning one, with the work prepared or not. A request no quote reaches gets no memory sentence.
@@ -222,6 +229,48 @@ func TestTheNoticeAsksForContinuesPreviousExactlyWhenTheStopWould(t *testing.T) 
 				reason := f.stop(t)
 				if got := strings.Contains(reason, "continues_previous"); got != c.hinted {
 					t.Errorf("the Stop asks for continues_previous: %v, but the notice's sentence is %v\nthe Stop's reason: %s", got, c.hinted, reason)
+				}
+			})
+		}
+	}
+}
+
+// The notice asks for continues_previous by the Stop's own test (groupingAsk), and the Stop adds to it what the notice cannot see:
+// the plan block is for a turn that is not reasoning only, and a turn the agent has prepared itself needs no question at its end. The
+// same turn, in the same states, is put to both: the notice's test on the state the notice is written for, and the Stop on the state at
+// the end. They agree wherever the state is the same; the one difference is in time (an agent that prepares after the notice was
+// written), and there the notice's sentence is still what lets the first record carry the answer.
+func TestTheNoticeAndTheStopAskForContinuesPreviousInTheSameStates(t *testing.T) {
+	for _, flow := range []endingFlow{{"planning notice, work prepared by the hook", true, true}, {"planning notice, work left to the agent", true, false}} {
+		for _, c := range []struct {
+			name   string
+			change func(*hookSession)
+			notice bool // the notice's test on the state
+			stop   bool // the Stop on the state
+		}{
+			{"as the hook left it after a short message", func(*hookSession) {}, true, true},
+			{"the decision says no planning is needed (reasoning only, with the grouping still open)", func(s *hookSession) { s.Planning.ReasoningOnly = true }, false, false},
+			{"the grouping was settled", func(s *hookSession) { s.Planning.Grouping.Settled = true }, false, false},
+			{"the work was recorded", func(s *hookSession) { s.Planning.Result = &planningReceipt{} }, false, false},
+			// the difference in time: the agent prepares after the notice was written, and the Stop no longer asks; the notice did, for
+			// the record that ends the work, and the answer reaches the same place
+			{"the agent prepared the work itself afterwards", func(s *hookSession) {
+				s.Planning.Work = nil
+				s.Reasoning.PreparedAt = time.Now()
+			}, true, false},
+		} {
+			t.Run(flow.name+": "+c.name, func(t *testing.T) {
+				f := endingSetup(t, flow)
+				f.first(t)
+				f.request(t, endingShort)
+				if err := updateSession(f.root, "ending", c.change); err != nil {
+					t.Fatal(err)
+				}
+				if got := groupingAsk(loadSession(f.root, "ending")); got != c.notice {
+					t.Errorf("the notice's test on this state: %v, want %v", got, c.notice)
+				}
+				if got := strings.Contains(f.stop(t), "continues_previous"); got != c.stop {
+					t.Errorf("the Stop asks for continues_previous: %v, want %v", got, c.stop)
 				}
 			})
 		}
@@ -452,6 +501,11 @@ func TestTheSentencesTheHintsAddStayShort(t *testing.T) {
 	memoryOnly, groupingOnly := endingHints{quotes: widest.quotes}.text(), endingHints{grouping: true}.text()
 	if n := len(memoryOnly); n > maxMemory {
 		t.Errorf("the memory sentence is %d bytes, over %d: %s", n, maxMemory, memoryOnly)
+	}
+	// memoryHint cuts the sentence out of a notice at its last words: the measure in TestMemoryDeliversRelevantLessonOncePerRevision
+	// leaves out the memory sentence and nothing after it
+	if !strings.HasSuffix(memoryOnly, memoryHintEnd) || strings.Count(memoryOnly, memoryHintEnd) != 1 {
+		t.Errorf("the memory sentence ends with %q, which memoryHint cuts at: %s", memoryHintEnd, memoryOnly)
 	}
 	if n := len(groupingOnly); n > maxGrouping {
 		t.Errorf("the grouping sentence is %d bytes, over %d: %s", n, maxGrouping, groupingOnly)

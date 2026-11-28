@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
@@ -91,11 +92,40 @@ func leaveOutLastFields(reply map[string]any, quoted map[string]string, omitted 
 	}
 	for keep := len(entries) - 1; keep >= 0; keep-- {
 		reply["knowledge"] = entries[:keep]
-		if update(append(slices.Clone(omitted), fmt.Sprintf("knowledge[] after the first %d (the query lesson:<id>@<revision> reads one; prepare with this receipt and topic words in query finds others)", keep))) {
-			return true
+		// the entries that went are named by the lesson they hold, as many as fit (at most omittedLessonsListed), then counted
+		for listed := min(len(entries)-keep, omittedLessonsListed); listed >= 0; listed-- {
+			if update(append(slices.Clone(omitted), omittedEntriesName(keep, entries[keep:], listed))) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// omittedLessonsListed is the most lessons the name of the entries that went lists by id and revision; the others are counted.
+const omittedLessonsListed = 8
+
+// omittedEntriesName is the name output gives to the entries of knowledge after the first keep, which went: how to read them, then
+// the first listed of them as the query reads each ("lesson:<id>@<revision>") and the number of the rest.
+func omittedEntriesName(keep int, gone []any, listed int) string {
+	name := fmt.Sprintf("knowledge[] after the first %d (the query lesson:<id>@<revision> reads one; prepare with this receipt and topic words in query finds others)", keep)
+	names := []string{}
+	for _, raw := range gone[:listed] {
+		e, _ := raw.(map[string]any)
+		id, _ := e["id"].(string)
+		revision, _ := e["revision"].(string)
+		if id != "" && revision != "" {
+			names = append(names, "lesson:"+id+"@"+revision)
+		}
+	}
+	if len(names) == 0 {
+		return name + fmt.Sprintf(": %d lessons", len(gone))
+	}
+	name += ": " + strings.Join(names, ", ")
+	if rest := len(gone) - len(names); rest > 0 {
+		name += fmt.Sprintf(" and %d more", rest)
+	}
+	return name
 }
 
 func dropField(reply map[string]any, field string) bool {

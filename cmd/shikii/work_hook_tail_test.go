@@ -225,6 +225,15 @@ func TestHookPreparationDeliversWhenCarriedIsLarge(t *testing.T) {
 	if omitted := replyOmitted(t, prepared); !containsName(omitted, omittedCarried) || !strings.Contains(omittedCarried, "stay valid with this receipt") {
 		t.Fatalf("output names carried and says its references stay valid: %q", omitted)
 	}
+	// the way back the documents give (recording.md): preparing again with the hook's ids, which makes a new receipt, lists them again
+	again, err := workCall(t, f.book, "prepare", map[string]any{"session_id": "planning", "turn_id": f.turn, "query": "CSV export filters"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, _ := again["carried"].(map[string]any)
+	if articles, _ := listed["articles"].([]any); len(articles) < 28 {
+		t.Fatalf("a new preparation with the hook's ids lists the references the hook's reply left out: %v", again["carried"])
+	}
 }
 
 // The knowledge entries of a reply, down to their references, are what is left when the filler is large: the two sentences each
@@ -259,24 +268,25 @@ func TestHookPreparationKnowledgeEntriesLoseTheirRepeatedSentencesBeforeAnyEntry
 	}
 }
 
-// The CLI's and the MCP server's prepare go through the same bound. At the smallest max_bytes a caller can name, an article with
-// feedback made the preparation refused ("the task and reference inventory exceed max_bytes"); now its maintenance task goes down
-// to its head, and the reply is within the bound with the recovery named.
-func TestPrepareAtTheSmallestBoundDeliversWhenMaintenanceIsLarge(t *testing.T) {
+// The CLI's, the MCP server's and the HTTP API's prepare go through the same bound but not through the last try that the hook has: a
+// refusal is what tells the caller to ask again with a larger max_bytes, and a reply without its last fields would take that away.
+// At the smallest max_bytes a caller can name, an article with feedback made the preparation refused ("the task and reference
+// inventory exceed max_bytes"), and it still is, with the same words; the hook's third try, which does leave the last fields out, is
+// what delivers the same preparation (TestHookPreparationDeliversWhenMaintenanceIsLarge).
+func TestPrepareAtTheSmallestBoundIsRefusedAsBeforeWhenMaintenanceIsLarge(t *testing.T) {
 	f := newHookTailFixture(t)
 	p := f.article("CSV export filters and totals")
 	f.ask(hookTailRequest)
 	f.addFeedback(p, 4)
-	reply, err := workCall(t, f.book, "prepare", map[string]any{"request": "Check the CSV export filters and totals.", "query": "CSV export filters and totals", "max_bytes": workMinBudget})
+	_, err := workCall(t, f.book, "prepare", map[string]any{"request": "Check the CSV export filters and totals.", "query": "CSV export filters and totals", "max_bytes": workMinBudget})
+	if err == nil || err.Error() != fmt.Sprintf("the task and reference inventory exceed max_bytes (%d); prepare again with a larger max_bytes (up to %d)", workMinBudget, workSourceBudget*3) {
+		t.Fatalf("the preparation is refused with the words that name the larger max_bytes: %v", err)
+	}
+	reply, err := workCall(t, f.book, "prepare", map[string]any{"request": "Check the CSV export filters and totals.", "query": "CSV export filters and totals", "max_bytes": 28 << 10})
 	if err != nil {
-		t.Fatal("the preparation is not refused:", err)
+		t.Fatal("the larger max_bytes the refusal names delivers the preparation:", err)
 	}
-	raw, _ := json.Marshal(reply)
-	if len(raw) > workMinBudget {
-		t.Fatalf("the reply is %d bytes, over the bound", len(raw))
-	}
-	items, _ := reply["maintenance"].([]any)
-	if len(items) != 1 || items[0].(map[string]any)["incomplete"] != true || !containsName(replyOmitted(t, reply), omittedMaintenanceDetails) {
-		t.Fatalf("the task is down to its head and output names it: %v", reply["output"])
+	if reply["output"] != nil {
+		t.Fatalf("it delivers the fields whole: %v", reply["output"])
 	}
 }

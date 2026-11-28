@@ -202,6 +202,8 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		quoted[ref] = planningArticleSource(p)
 		read = append(read, store.KnowledgeReference{ID: p.ID, Revision: p.Revision})
 		entry := map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "recheck": p.Recheck, "body_included": true, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}}
+		// A first binding: focusWorkKnowledge below replaces it for every entry made here (this branch has no proposal or conditions, the
+		// only case that skips it), so the orientation that is written is the one it binds; TestPreparedArticleCandidateOmitsTheTextsItsArticleHolds holds that value.
 		bindOrientation(entry, notebook.Orient(p, task+" "+query, 2400))
 		setWorkLearning(book, entry, p, req.Query)
 		if strings.HasPrefix(req.Query, "lesson:") && strings.Contains(req.Query, "@") {

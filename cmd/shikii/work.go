@@ -107,6 +107,7 @@ type workRequest struct {
 	fromHook          bool                   // Internal preparation whose complete reply is delivered by the prompt hook.
 	responseSize      func(any) int          // Host transport sizing; never supplied by the caller.
 	taskMax           int                    // The hook's bound on the delivered task, in characters as the hook writes it; 0 is none.
+	leaveOutLast      bool                   // Internal: the bound may leave out its last fields (work_budget_tail.go). Only the hook sets it, after its two other tries were refused.
 	MaxBytes          int                    `json:"max_bytes,omitempty"`
 	Result            *workCompletion        `json:"result,omitempty"`
 	Reading           *workReadingFeedback   `json:"reading,omitempty"`
@@ -170,6 +171,7 @@ type workReply struct {
 type workState struct {
 	reviewingResult bool                                  // Trusted ending persistence; never decoded from input.
 	candidateCursor func(kept int) string                 // This reply's search page: the cursor that continues after its first kept candidates; never saved.
+	leaveOutLast    bool                                  // The bound of this reply may leave out its last fields (workRequest.leaveOutLast); never saved.
 	Loop            *workLoopState                        `json:"loop,omitempty"`
 	Delivery        *workDeliveryState                    `json:"delivery,omitempty"`
 	Result          *workCompletionRef                    `json:"result,omitempty"`
@@ -519,6 +521,7 @@ func prepareWork(root, scope string, req workRequest) (out any, err error) {
 	}
 	w := &workState{Replies: map[string]workReply{}, Nonce: store.NewTraceID() + store.NewTraceID(), At: time.Now().UTC(), Standalone: standalone, Query: req.Query, Current: s.Planning.Sources["current_user"], Pages: s.Planning.KnowledgePages, Keys: map[string]string{}, Sources: map[string]string{}, Articles: map[string]store.KnowledgeReference{}, Reviews: map[string]workReviewRef{}, Memory: map[string]workMemoryRef{}, Maintenance: map[string]notebook.MaintenanceReview{}, Captures: map[string]workCapture{}, Saved: map[string]workItem{}, Pending: map[string]notebook.Draft{}, PendingKeys: map[string]string{}, PendingOrigins: map[string]string{}, Expected: map[string]store.KnowledgeReference{}}
 	w.HookPrepared = req.fromHook && s.Planning.Work == nil
+	w.leaveOutLast = req.leaveOutLast
 	handover, again := s.Planning.Handover, false // the references of the request this one interrupted
 	if previous := s.Planning.Work; previous != nil {
 		// This request prepared again (the agent no longer held the receipt). The new receipt keeps what the earlier one read,

@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 	"github.com/hayaenfj/shikii/internal/store"
@@ -34,15 +35,18 @@ func TestLimitWorkPreparationMakesTheSameReplyThatFitsToday(t *testing.T) {
 	if want := len(limitShapeNames) * len(limitShapeBounds); len(golden) != want {
 		t.Fatalf("the golden file holds %d replies, want %d", len(golden), want)
 	}
-	for _, name := range limitShapeNames {
-		for _, bound := range limitShapeBounds {
-			key := fmt.Sprintf("%s@%d", name, bound)
-			t.Run(key, func(t *testing.T) {
-				got, want := runLimitShape(name, bound), golden[key]
-				if got.Err != want.Err || got.Reply != want.Reply || !slices.Equal(got.Quoted, want.Quoted) || fmt.Sprint(got.Read) != fmt.Sprint(want.Read) {
-					t.Fatalf("a reply that fit before changed:\nwant %s\n got %s\nerr want %q got %q", want.Reply, got.Reply, want.Err, got.Err)
-				}
-			})
+	// the same bytes whether or not the caller lets the bound leave out its last fields: none of these replies is refused without them
+	for _, leaveOutLast := range []bool{false, true} {
+		for _, name := range limitShapeNames {
+			for _, bound := range limitShapeBounds {
+				key := fmt.Sprintf("%s@%d", name, bound)
+				t.Run(fmt.Sprintf("%s last fields %v", key, leaveOutLast), func(t *testing.T) {
+					got, want := runLimitShape(name, bound, leaveOutLast), golden[key]
+					if got.Err != want.Err || got.Reply != want.Reply || !slices.Equal(got.Quoted, want.Quoted) || fmt.Sprint(got.Read) != fmt.Sprint(want.Read) {
+						t.Fatalf("a reply that fit before changed:\nwant %s\n got %s\nerr want %q got %q", want.Reply, got.Reply, want.Err, got.Err)
+					}
+				})
+			}
 		}
 	}
 }
@@ -50,7 +54,7 @@ func TestLimitWorkPreparationMakesTheSameReplyThatFitsToday(t *testing.T) {
 // tailShape is a reply that does not fit any bound until the last fields go: forty articles, two maintenance tasks with their
 // feedback, a long list of carried references, and a task of 3,000 bytes (a task is never cut by the bound).
 func tailShape() (map[string]any, *workState, map[string]string) {
-	w := &workState{Sources: map[string]string{}}
+	w := &workState{Sources: map[string]string{}, leaveOutLast: true}
 	quoted := map[string]string{}
 	entries := []any{}
 	for i := 1; i <= 40; i++ {
@@ -174,6 +178,88 @@ func TestLeaveOutLastFieldsNameTheWayBackInTheReply(t *testing.T) {
 	}
 }
 
+// The entries that go from the end of knowledge are named, each by the query that reads it (lesson:<id>@<revision>), as many as the
+// bound leaves room for and at most omittedLessonsListed, and the rest are counted: the reply says which lessons it did not carry,
+// not only how many. Across the bounds that drop entries, the lessons named are exactly those that are gone (the first ones that are
+// gone, in the order they were), and none that stays is named.
+func TestLeaveOutLastFieldsNameTheLessonsOfTheEntriesThatWent(t *testing.T) {
+	counted, listedAll := false, false
+	keptAt := func(bound int) int {
+		reply, w, quoted := tailShape()
+		if _, err := limitWorkPreparation(notebook.Book{}, w, reply, quoted, bound); err != nil {
+			return -1
+		}
+		return len(reply["knowledge"].([]any))
+	}
+	// the largest bound that leaves an entry out, found by halving; the bounds tried are the few below it, where one or two entries
+	// go, and a few steps down to the smallest
+	low, high := workMinBudget, 20000
+	for low < high {
+		if middle := (low + high + 1) / 2; keptAt(middle) < 40 {
+			low = middle
+		} else {
+			high = middle - 1
+		}
+	}
+	bounds := []int{}
+	for bound := low; bound > low-120; bound -= 3 {
+		bounds = append(bounds, bound)
+	}
+	for bound := low - 400; bound >= workMinBudget; bound -= 700 {
+		bounds = append(bounds, bound)
+	}
+	bounds = append(bounds, workMinBudget)
+	for _, bound := range bounds {
+		reply, w, quoted := tailShape()
+		before := slices.Clone(reply["knowledge"].([]any))
+		if _, err := limitWorkPreparation(notebook.Book{}, w, reply, quoted, bound); err != nil {
+			continue
+		}
+		output, _ := reply["output"].(map[string]any)
+		if output == nil {
+			continue
+		}
+		var name string
+		for _, n := range output["omitted"].([]string) {
+			if strings.HasPrefix(n, "knowledge[] after the first ") {
+				name = n
+			}
+		}
+		if name == "" {
+			continue
+		}
+		kept := len(reply["knowledge"].([]any))
+		gone := before[kept:]
+		named := regexp.MustCompile(`lesson:[0-9a-f]+@[0-9a-f]+`).FindAllString(name, -1)
+		named = slices.DeleteFunc(named, func(s string) bool { return s == "lesson:<id>@<revision>" })
+		want := []string{}
+		for _, raw := range gone[:min(len(named), len(gone))] {
+			e := raw.(map[string]any)
+			want = append(want, "lesson:"+e["id"].(string)+"@"+e["revision"].(string))
+		}
+		if len(named) > omittedLessonsListed || !slices.Equal(named, want) {
+			t.Fatalf("bound %d: the name lists the lessons that went, first first: %q, want %q", bound, named, want)
+		}
+		for _, raw := range reply["knowledge"].([]any) {
+			e := raw.(map[string]any)
+			if strings.Contains(name, "lesson:"+e["id"].(string)+"@"+e["revision"].(string)) {
+				t.Fatalf("bound %d: a lesson that stays is named as gone: %s", bound, name)
+			}
+		}
+		if rest := len(gone) - len(named); rest > 0 && len(named) > 0 && !strings.HasSuffix(name, fmt.Sprintf(" and %d more", rest)) {
+			t.Fatalf("bound %d: the others are counted (%d): %s", bound, rest, name)
+		}
+		if len(named) == 0 && !strings.HasSuffix(name, fmt.Sprintf(": %d lessons", len(gone))) {
+			t.Fatalf("bound %d: with no room to name them, the lessons are counted (%d): %s", bound, len(gone), name)
+		}
+		counted = counted || len(named) < len(gone)
+		listedAll = listedAll || len(named) == len(gone)
+	}
+	if !counted || !listedAll {
+		t.Fatalf("the bounds tried name all the lessons that went at one and count the others at another: counted %v, all named %v", counted, listedAll)
+	}
+}
+
 // What the last fields leave behind still holds the state of what was read: a knowledge entry that lost its text keeps body_included
 // false and attention_limited true, and no quote of it stays registered, so nothing unseen is scored as read.
 func TestLeaveOutLastFieldsKeepTheStateOfWhatWasRead(t *testing.T) {
@@ -202,8 +288,14 @@ func TestLeaveOutLastFieldsStillRefuseWhatTheFixedFieldsAloneDoNotFit(t *testing
 	}
 }
 
-// scanReplyFields returns the names a source gives to the fields of a variable called reply: reply["name"] = ... and the keys of
-// reply := map[string]any{...}.
+// replyVariables are the names the code gives to a map that becomes a reply of prepare: reply in the code that builds it, and v and
+// copy in the code that adds the assignment's context to it (work_assignment_*.go). A reply that is handed on under another name is
+// not seen here, and TestRepliesOfRealPreparationsCarryOnlyRegisteredFields is what sees it: it reads the fields of the replies that
+// every real way of preparing makes.
+var replyVariables = []string{"reply", "v", "copy"}
+
+// scanReplyFields returns the names a source gives to the fields of a reply: reply["name"] = ... (and v and copy, replyVariables) and
+// the keys of reply := map[string]any{...}.
 func scanReplyFields(name string, src []byte) ([]string, error) {
 	file, err := parser.ParseFile(token.NewFileSet(), name, src, 0)
 	if err != nil {
@@ -224,7 +316,7 @@ func scanReplyFields(name string, src []byte) ([]string, error) {
 		for i, lhs := range as.Lhs {
 			switch l := lhs.(type) {
 			case *ast.IndexExpr:
-				if id, ok := l.X.(*ast.Ident); ok && id.Name == "reply" {
+				if id, ok := l.X.(*ast.Ident); ok && slices.Contains(replyVariables, id.Name) {
 					key(l.Index)
 				}
 			case *ast.Ident:
@@ -296,51 +388,70 @@ func TestEveryFieldBuiltIntoAPreparationReplyIsRegistered(t *testing.T) {
 
 // Negative example of the allow list: a field the registry does not know is named, whether it is a field of a reply or a name found in code.
 func TestAnUnregisteredFieldOfAReplyIsCaught(t *testing.T) {
-	src := []byte("package main\nfunc f() {\n\treply := map[string]any{\"receipt\": 1, \"stray_in_literal\": 2}\n\treply[\"stray_by_assignment\"] = 3\n\treply[\"output\"] = 4\n}\n")
+	src := []byte("package main\nfunc f() {\n\treply := map[string]any{\"receipt\": 1, \"stray_in_literal\": 2}\n\treply[\"stray_by_assignment\"] = 3\n\treply[\"output\"] = 4\n\tv[\"stray_under_v\"] = 5\n\tcopy[\"teamwork\"] = 6\n}\n")
 	names, err := scanReplyFields("x.go", src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := unregisteredReplyFields(names); !slices.Equal(got, []string{"stray_by_assignment", "stray_in_literal"}) {
-		t.Fatalf("the scan names the two fields that are not registered: %q from %q", got, names)
+	if got := unregisteredReplyFields(names); !slices.Equal(got, []string{"stray_by_assignment", "stray_in_literal", "stray_under_v"}) {
+		t.Fatalf("the scan names the three fields that are not registered: %q from %q", got, names)
 	}
 	if got := unregisteredReplyFields(replyFieldNames(map[string]any{"receipt": 1, "stray": 2})); !slices.Equal(got, []string{"stray"}) {
 		t.Fatalf("a reply with a field that is not registered fails: %q", got)
 	}
 }
 
-// The replies real preparations make carry only registered fields: a standalone prepare, the hook's, and a receipt that adds to them
-// (a lesson read, the memory upgrade, a source read and a consult).
+// The replies real preparations make carry only registered fields, through every way of making one: a standalone prepare (whole, and
+// under a named bound), the hook's (whole, and as its third try with its last fields left out), a receipt that adds to them (a lesson
+// read, the memory upgrade, a search, a consult, a reuse and a source read), and the assignment a host gives (new, and on a receipt),
+// which adds its context to the reply under a name of its own. The reading of the code (TestEveryFieldBuiltIntoAPreparationReplyIsRegistered)
+// follows the variables called reply, v and copy; this is what sees a field that goes by any other name. The union of what the
+// replies carried is held to a floor, so that a way of preparing that stops being reached cannot make the check empty.
 func TestRepliesOfRealPreparationsCarryOnlyRegisteredFields(t *testing.T) {
 	f := newHookTailFixture(t)
 	p := f.article("CSV export filters and totals")
 	f.ask(hookTailRequest)
 	f.addFeedback(p, 4)
 	f.ask(hookTailRequest)
+	seen := map[string]bool{}
 	check := func(label string, reply map[string]any) {
 		t.Helper()
+		for field := range reply {
+			seen[field] = true
+		}
 		if missing := unregisteredReplyFields(replyFieldNames(reply)); len(missing) > 0 {
 			t.Errorf("%s: fields that are not registered: %q", label, missing)
 		}
 	}
 	_, hook := f.prepare(0)
 	check("hook", hook)
+	// the hook's third try: the filler takes what the last fields need
+	if _, tail := f.prepare(f.capacity()); tail == nil || tail["output"] == nil {
+		t.Fatalf("the hook's preparation at its capacity is delivered with its output: %v", tail)
+	} else {
+		check("hook, last fields left out", tail)
+	}
 	standalone, err := workCall(t, f.book, "prepare", map[string]any{"request": "Check the export.", "query": "CSV export filters"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	check("standalone", standalone)
-	tight, err := workCall(t, f.book, "prepare", map[string]any{"request": "Check the export.", "query": "CSV export filters", "max_bytes": workMinBudget})
+	bounded, err := workCall(t, f.book, "prepare", map[string]any{"request": "Check the export.", "query": "CSV export filters", "max_bytes": 12288})
 	if err != nil {
 		t.Fatal(err)
 	}
-	check("standalone at the smallest bound", tight)
+	check("standalone under a named bound", bounded)
+	original, err := f.book.CaptureObserved(notebook.Observation{Kind: "test", Title: "Long original", Content: strings.Repeat("<routing condition>", 2048), Reference: "synthetic", Version: "1", ObservedAt: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for label, extra := range map[string]map[string]any{
 		"lesson":         {"query": "lesson:" + p.ID + "@" + p.Revision},
 		"memory-upgrade": {"query": "memory-upgrade"},
 		"search":         {"query": "CSV export"},
 		"consult":        {"proposal": "Keep the export filters on while the totals are checked."},
 		"reuse":          {"conditions": "The export is for the finance team."},
+		"source":         {"query": original.ID, "max_bytes": 8192},
 	} {
 		extra["receipt"] = standalone["receipt"]
 		reply, err := workCall(t, f.book, "prepare", extra)
@@ -348,6 +459,22 @@ func TestRepliesOfRealPreparationsCarryOnlyRegisteredFields(t *testing.T) {
 			t.Fatalf("%s: %v", label, err)
 		}
 		check(label, reply)
+	}
+	a := assignmentInput("fields-job", "case-1", "reviewer", "review")
+	assigned, err := workCall(t, f.book, "prepare", map[string]any{"query": "CSV export filters", "assignment": a})
+	if err != nil {
+		t.Fatal("an assignment's preparation:", err)
+	}
+	check("assignment", assigned)
+	extended, err := workCall(t, f.book, "prepare", map[string]any{"query": "CSV export", "assignment": a, "receipt": assigned["receipt"]})
+	if err != nil {
+		t.Fatal("an assignment's preparation on its receipt:", err)
+	}
+	check("assignment on a receipt", extended)
+	for _, field := range []string{"receipt", "task", "how_to_record", "knowledge", "maintenance", "carried", "output", "source", "source_query", "experience", "teamwork"} {
+		if !seen[field] {
+			t.Errorf("no real preparation of this test carried %s: the check is not looking at it", field)
+		}
 	}
 }
 
@@ -413,7 +540,11 @@ func TestKeptFieldsStayWithinTheirCaps(t *testing.T) {
 	}
 	size("knowledge_query", map[string]any{"operation": "query", "query": strings.Repeat("<", requestMax), "cursor": strings.Repeat("c", 200)})
 	// output with every name the bound can give
-	names := []string{omittedMaintenanceDetails, omittedKnowledgeSentences, omittedCarried, omittedMaintenance, fmt.Sprintf("knowledge[] after the first %d (the query lesson:<id>@<revision> reads one; prepare with this receipt and topic words in query finds others)", 63), "knowledge[] text and summaries, the last entries first (each query reads its lesson whole)", "knowledge[] titles, the last entries first"}
+	gone := []any{}
+	for i := 1; i <= 64; i++ {
+		gone = append(gone, limitShapeEntry(i, 100))
+	}
+	names := []string{omittedMaintenanceDetails, omittedKnowledgeSentences, omittedCarried, omittedMaintenance, omittedEntriesName(63, gone, omittedLessonsListed), "knowledge[] text and summaries, the last entries first (each query reads its lesson whole)", "knowledge[] titles, the last entries first"}
 	for field, spec := range workReplyFields {
 		if !spec.Kept && field != "knowledge" && field != "maintenance" && field != "carried" {
 			names = append(names, field)

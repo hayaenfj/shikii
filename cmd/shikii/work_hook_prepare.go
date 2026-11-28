@@ -43,6 +43,13 @@ func prepareHookWork(root string, in *hookInput, out *hookOut) {
 		req.taskMax = hookTaskHeadMax
 		v, err = prepareWork(root, s.Scope, req)
 	}
+	if err != nil && strings.Contains(err.Error(), "exceed max_bytes") {
+		// Not even the head of the request fits: the last fields of the reply (maintenance, carried, the articles' entries) go too,
+		// with output naming each. Before this, the hook fell back to the manual prepare, a second call with a reply of 28 KiB.
+		// This is the last try, so that what the first two would have delivered is never traded for it.
+		req.leaveOutLast = true
+		v, err = prepareWork(root, s.Scope, req)
+	}
 	if err != nil {
 		logRefusedPreparation(base, err)
 		return

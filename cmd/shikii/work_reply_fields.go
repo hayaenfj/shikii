@@ -37,6 +37,9 @@ var workReplyFields = map[string]workReplyField{
 	"experience":          {Kept: true, Cap: workSourceBudget * 3},
 	"source":              {Kept: true, Cap: workSourceBudget * 3},
 	"source_query":        {Kept: true, Cap: 2 * 16000},
+	// the context of the assignment a host gave (work_assignment_prepare_view.go): added after the bound, which has reserved the
+	// room of its identity, and shrunk by its own loop to the bound and to 24 KiB
+	"teamwork": {Kept: true, Cap: 24 << 10},
 
 	// may go: the order is limitWorkPreparation's, then leaveOutLastFields' (maintenance, carried, knowledge)
 	"memory_upgrade":       {Back: "memory-upgrade"},

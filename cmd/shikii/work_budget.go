@@ -203,9 +203,10 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		return size(reply) <= budget
 	}
 	if !update(omitted) {
-		// Where this function refused the preparation, the fields it could not shrink go too (work_budget_tail.go): a refusal made
-		// the hook fall back to a manual prepare. Only what still does not fit then is refused.
-		if !leaveOutLastFields(reply, quoted, omitted, update) {
+		// The fields it could not shrink go too (work_budget_tail.go), but only when the caller says its other ways are used up: a
+		// refusal is the sign for the hook to try the head of the request and for the CLI to widen its bound, and both give the
+		// agent more than a reply without its last fields.
+		if !w.leaveOutLast || !leaveOutLastFields(reply, quoted, omitted, update) {
 			return nil, fmt.Errorf("the task and reference inventory exceed max_bytes (%d); prepare again with a larger max_bytes (up to %d)", responseBudget, workSourceBudget*3)
 		}
 	}

@@ -130,8 +130,9 @@ type limitShapeResult struct {
 	Quoted []string                   `json:"quoted,omitempty"`
 }
 
-func runLimitShape(name string, bound int) limitShapeResult {
+func runLimitShape(name string, bound int, leaveOutLast bool) limitShapeResult {
 	reply, w, quoted := limitShape(name)
+	w.leaveOutLast = leaveOutLast
 	read, err := limitWorkPreparation(notebook.Book{}, w, reply, quoted, bound)
 	if err != nil {
 		return limitShapeResult{Err: err.Error()}
