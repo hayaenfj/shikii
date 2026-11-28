@@ -6,23 +6,23 @@
 
 ### Changes
 
-- The replies and notices shikii gives the agent no longer repeat what they already say elsewhere. Search candidates share one example of how to read an article instead of carrying one each, a search or a list names each source by its id, and the reply to a saved work record no longer repeats the fixed sentences shikii itself wrote. Nothing they said is dropped: the same text is still in the reply, or one call away.
-- The instructions for saving a review at the end of a conversation are shorter. The reply keeps the shape of what to send and the conditions that matter most; the details are in the skill's `references/review.md`.
-- An agent recording the result of its work is sent back less often. The notice before a request shows how to assess the lessons it delivered, and a quality grade sent without evidence is left out with a warning instead of refusing the whole record.
-- A lesson that reached the agent together with three requests, was not used in any of them and never helped is now listed for the agent to review, as lessons delivered before a command or a file already were. shikii only lists it; it does not change or remove the lesson.
-- `shikii doctor` says whether Codex trusts shikii's hooks. Codex skips a hook it does not trust without saying so.
+- Replies and notices from shikii no longer repeat themselves. Search candidates share one example of how to read an article instead of carrying one each, searches and lists name each source by its id, and the reply to a saved work result no longer repeats the fixed sentences shikii itself put in. Nothing is lost: the omitted text is still elsewhere in the reply or one call away.
+- At the end of a conversation, the agent saves what it learned from it to the wiki (the review). The instructions for sending that are shorter: the reply keeps the shape of what to send and the conditions that matter most, and the details are in the skill's `references/review.md`. That file comes with the update, so there is nothing for you to do.
+- An agent recording the result of its work has to rewrite and resend less often. The notice shikii gives before a request now shows how to assess the lessons (the points of wiki articles) it delivered. And a quality grade sent without evidence no longer makes shikii refuse the whole record: it leaves that grade out, saves the rest, and returns a warning.
+- A lesson that was delivered with three requests, was not used in any of them and never helped is now listed for the agent to review. Lessons delivered right before a command or a file were already listed this way. shikii only lists them; it does not change or withdraw them. You need to do nothing.
+- `shikii doctor` now says whether Codex trusts shikii's hooks (what runs shikii as the agent works). Codex does not run a hook it does not trust, and does not say so.
 
 ### Fixes
 
-- In Codex, in a project with a very large number of work-record files, the notice at the start of a session never arrived, and so the memory nap never started. Reading those files took longer than the time Codex allows a hook. shikii now reads far fewer of them and stops waiting after a few seconds.
-- In Codex, the notice before a request was cut off in the middle when it held a lot of Japanese, and the agent received broken data. Codex measures a notice in bytes, and Japanese takes three bytes a character. shikii now keeps what it gives Codex within that limit.
-- Codex did not run the memory nap when told it was due, because it does not start a background agent unless you ask. shikii now asks Codex to run `shikii nap` itself at the end of the request.
-- When the notice before a request did not fit, for example with a long request, the agent received nothing prepared. shikii now leaves out the last, least needed parts and says how to read them, so the rest arrives.
+- In Codex, in a project with a very large number of work records (the files under `.shikii/handoff/`), the notice at the start of a session never arrived, and so the memory nap (`shikii nap`: at most once a day, the agent reviews its memory) never started. Looking through those files took longer than the 15 seconds Codex allows a hook (this happened in a project with about a million files). shikii now looks at far fewer of them and stops looking after a few seconds.
+- In Codex, when the notice given before a request held a lot of Japanese, it was cut off in the middle and the agent received incomplete data. Codex measures a notice in bytes, and Japanese takes three bytes a character. shikii now keeps what it gives Codex within that limit.
+- Codex did not run the memory nap when told it was due. The notice asked for another agent working in the background, and Codex does not start another agent unless you ask. shikii now asks Codex to run `shikii nap` itself at the end of the request.
+- In every agent, when the notice before a request did not fit its limit, for example with a long request, nothing prepared reached the agent. shikii now leaves out the last, least needed parts, says how to read them, and the rest arrives.
 
 ### Before you update
 
-- After updating, reopen the agent sessions that are open; they keep using the earlier shikii until you do.
-- If you use Codex, run `shikii doctor` after updating. If it warns that Codex does not trust shikii's hooks, open `/hooks` in Codex and trust them.
+- Once you have updated, close the agent sessions that are open and start them again. Until you do, they keep running the earlier version of shikii.
+- If you use Codex, run `shikii doctor` once you have updated. If it warns that Codex does not trust shikii's hooks, open `/hooks` in Codex and trust them.
 
 ## 0.44.2 — When an agent's addition to a wiki article is refused, it can tell right away what to send instead
 
