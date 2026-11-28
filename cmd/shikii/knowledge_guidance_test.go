@@ -26,7 +26,12 @@ func TestGuidanceCurrentPassages(t *testing.T) {
 	}
 	current := orientation["current"].([]any)
 	history := orientation["history"].([]any)
-	if len(current) != 1 || len(history) != 1 || orientation["revision"] != p.Revision || orientation["needs_interpretation"] != true {
+	// The orientation names its revision itself, or leaves it out when the candidate that holds it names the same one.
+	revision := orientation["revision"]
+	if revision == nil {
+		revision = entry["revision"]
+	}
+	if len(current) != 1 || len(history) != 1 || revision != p.Revision || orientation["needs_interpretation"] != true {
 		t.Fatal("the unclassified remainder, current statement and earlier state must stay distinct", orientation)
 	}
 	for _, group := range [][]any{current, history} {

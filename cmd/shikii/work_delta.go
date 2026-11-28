@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
@@ -33,14 +34,41 @@ func reusedWorkNotice(reply map[string]any) bool {
 type workMetadataRef struct {
 	Signature string `json:"signature"`
 	Delivery  uint64 `json:"delivery"`
+	// Held names, for each text the orientation of that delivery did not write (id, revision, summary, conditions), the place of the
+	// candidate that held it there (orientationPlaces). A record without it, as older versions saved, means the orientation wrote them all.
+	Held map[string]string `json:"held,omitempty"`
+}
+
+// reusedMetadataFields names the fields of the earlier delivery that the entry now refers to: where each text of the orientation stood
+// there (its place in the candidate when the orientation did not write it, orientation.<name> otherwise), then the orientation's
+// interpretations. A name is written once, and a place the record does not know is taken as an orientation field.
+func reusedMetadataFields(old workMetadataRef) []string {
+	fields := []string{}
+	add := func(name string) {
+		if !slices.Contains(fields, name) {
+			fields = append(fields, name)
+		}
+	}
+	for _, key := range []string{"id", "revision", "summary", "conditions"} {
+		places := orientationPlaces[key]
+		if at := old.Held[key]; at != "" && (at == places[0] || at == places[1]) {
+			add(at)
+		} else {
+			add("orientation." + key)
+		}
+	}
+	add("orientation.current")
+	add("orientation.history")
+	return fields
 }
 
 func workMetadataSignature(e map[string]any) (string, bool) {
-	_, ok := e["orientation"].(notebook.KnowledgeOrientation)
+	// The whole orientation is hashed, not the form written out, so the value does not depend on which texts the candidate holds.
+	o, ok := orientationOf(e["orientation"])
 	if !ok || e["ref"] == nil || e["id"] == nil || e["revision"] == nil {
 		return "", false
 	}
-	return workHash([]any{e["id"], e["revision"], e["orientation"], e["title"], e["summary"], e["applies_to"], e["rationale"], e["learning_context"], e["recheck"]}), true
+	return workHash([]any{e["id"], e["revision"], o, e["title"], e["summary"], e["applies_to"], e["rationale"], e["learning_context"], e["recheck"]}), true
 }
 
 func reusedWorkMetadata(reply map[string]any) bool {
@@ -76,15 +104,17 @@ func reuseWorkMetadata(w *workState, reply map[string]any, size func(any) int) {
 		}
 		original := maps.Clone(e)
 		before := size(reply)
-		o := e["orientation"].(notebook.KnowledgeOrientation)
+		o, _ := orientationOf(e["orientation"])
 		// Leave unresolved text, counterexamples, missing material and warnings
 		// visible on every delivery. Only unchanged descriptive fields move.
 		e["orientation"] = map[string]any{"recheck": o.Recheck, "counterexamples": o.Counterexamples, "unclassified": o.Unclassified, "needs_interpretation": o.NeedsInterpretation, "premise_changed": o.PremiseChanged, "omitted": o.Omitted}
-		fields := []string{"orientation.id", "orientation.revision", "orientation.summary", "orientation.conditions", "orientation.current", "orientation.history"}
+		fields := reusedMetadataFields(old)
 		for _, key := range []string{"title", "summary", "applies_to", "rationale"} {
 			if _, exists := e[key]; exists {
 				delete(e, key)
-				fields = append(fields, key)
+				if !slices.Contains(fields, key) {
+					fields = append(fields, key)
+				}
 			}
 		}
 		e["metadata_from"] = map[string]any{"delivery": old.Delivery, "fields": fields}
@@ -145,7 +175,13 @@ func rememberWorkMetadata(w *workState, reply map[string]any) {
 		if signature, ok := workMetadataSignature(e); ok {
 			ref := e["ref"].(string)
 			if len(d.Metadata) < 64 || d.Metadata[ref].Signature != "" {
-				d.Metadata[ref] = workMetadataRef{Signature: signature, Delivery: d.Sequence}
+				var held map[string]string
+				if o, bound := e["orientation"].(*workOrientation); bound {
+					if at := o.held(); len(at) > 0 {
+						held = at
+					}
+				}
+				d.Metadata[ref] = workMetadataRef{Signature: signature, Delivery: d.Sequence, Held: held}
 			}
 		}
 	}

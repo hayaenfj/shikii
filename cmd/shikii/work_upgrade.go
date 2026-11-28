@@ -66,7 +66,9 @@ func prepareMemoryUpgrade(book notebook.Book, w *workState, quoted map[string]st
 		// Keep the shared semantic policy once in this response. The task still
 		// carries its pinned revision and current review reference.
 		task.NextAction = "Follow memory_upgrade.policy for this article; save maintenance with its latest maintenance_ref after any edits."
-		pages = append(pages, map[string]any{"ref": ref, "article": p, "orientation": notebook.Orient(p, notebook.MemoryUpgradePolicy, 1200), "task": task, "maintenance_ref": mref, "body_included": true})
+		page := map[string]any{"ref": ref, "article": p, "task": task, "maintenance_ref": mref, "body_included": true}
+		bindOrientation(page, notebook.Orient(p, notebook.MemoryUpgradePolicy, 1200))
+		pages = append(pages, page)
 	}
 	value := map[string]any{"epoch": u.Epoch, "status": u.Status, "message": u.Message, "total": u.Total, "reviewed": u.Reviewed, "withdrawn": u.Withdrawn, "pages": pages, "unavailable_sources": u.Blocked, "unavailable_reasons": u.BlockedReasons, "policy": u.Policy}
 	if u.Status == "blocked" {

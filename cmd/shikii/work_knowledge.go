@@ -88,7 +88,7 @@ func focusWorkKnowledge(book notebook.Book, entries []any, query, context string
 			budget, perArticle = attention.TotalBytes-spent, attention.ExcerptBytes
 		}
 		orientation := notebook.Orient(p, context, max(0, min(budget, perArticle)))
-		e["orientation"] = orientation
+		bindOrientation(e, orientation)
 		for _, x := range orientation.Excerpts() {
 			budget -= len(x.Text)
 			spent += len(x.Text)
@@ -201,7 +201,8 @@ func extendWork(root, scope string, req workRequest) (any, error) {
 		}
 		quoted[ref] = planningArticleSource(p)
 		read = append(read, store.KnowledgeReference{ID: p.ID, Revision: p.Revision})
-		entry := map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "recheck": p.Recheck, "orientation": notebook.Orient(p, task+" "+query, 2400), "body_included": true, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}}
+		entry := map[string]any{"ref": ref, "id": p.ID, "revision": p.Revision, "article": p, "recheck": p.Recheck, "body_included": true, "query": map[string]any{"operation": "query", "query": "lesson:" + p.ID + "@" + p.Revision}}
+		bindOrientation(entry, notebook.Orient(p, task+" "+query, 2400))
 		setWorkLearning(book, entry, p, req.Query)
 		if strings.HasPrefix(req.Query, "lesson:") && strings.Contains(req.Query, "@") {
 			if err := prepareMaintenanceRefresh(book, w, entry); err != nil {

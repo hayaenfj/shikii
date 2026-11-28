@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"maps"
 	"reflect"
 	"strings"
 	"testing"
@@ -147,6 +148,15 @@ func TestWorkDeltaReferencesDeliveredMetadata(t *testing.T) {
 				t.Fatal("unresolved material must remain visible", key)
 			}
 		}
+		// The first delivery held the summary, the conditions, the id and the revision in its article and its own fields, so its
+		// orientation did not repeat them. Without references, this delivery has no article left and its orientation writes them.
+		whole := maps.Clone(original)
+		article, _ := f["article"].(map[string]any)
+		for key, text := range map[string]any{"summary": article["lesson"], "conditions": article["applies_to"], "id": f["id"], "revision": f["revision"]} {
+			if _, written := whole[key]; !written && text != nil {
+				whole[key] = text
+			}
+		}
 		if response["reading"].(map[string]any)["mixed"] != true {
 			t.Fatal("metadata reuse must not teach a reading-depth preference")
 		}
@@ -156,7 +166,7 @@ func TestWorkDeltaReferencesDeliveredMetadata(t *testing.T) {
 			baseline[k] = v
 		}
 		delete(baseline, "metadata_from")
-		baseline["orientation"] = original
+		baseline["orientation"] = whole
 		for _, key := range []string{"title", "summary", "applies_to", "rationale"} {
 			if value, exists := f[key]; exists {
 				baseline[key] = value
@@ -205,7 +215,12 @@ func TestWorkDeltaNeverReusesUndeliveredOrChangedMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := changed["knowledge"].([]any)[0].(map[string]any)
-	if e["metadata_from"] != nil || e["revision"] == p.Revision || e["orientation"].(map[string]any)["summary"] == nil {
+	// The summary is supplied by the article the candidate carries, or by its orientation when the candidate holds no article.
+	summary := e["orientation"].(map[string]any)["summary"]
+	if article, ok := e["article"].(map[string]any); ok && summary == nil {
+		summary = article["lesson"]
+	}
+	if e["metadata_from"] != nil || e["revision"] == p.Revision || summary == nil {
 		t.Fatal("changed metadata must be supplied")
 	}
 	fresh, err := workCall(t, b, "prepare", map[string]any{"request": "Another routing decision.", "query": "Delta routing"})

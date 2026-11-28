@@ -96,7 +96,7 @@ func prepareWorkLoop(book notebook.Book, w *workState, req workRequest, entries 
 		excerpts, _ := e["body_excerpts"].([]notebook.TextExcerpt)
 		excerptSignature := ""
 		if !full && len(excerpts) > 0 {
-			excerptSignature = workHash(e)
+			excerptSignature = workHash(wholeOrientationEntry(e))
 		}
 		canReuse := full && req.Receipt != "" && broad && req.Reasoning == nil &&
 			l.Bodies[key] == signature && !loopPremiseChanged(e)
@@ -109,6 +109,7 @@ func prepareWorkLoop(book notebook.Book, w *workState, req workRequest, entries 
 			delete(reused, "text")
 			delete(reused, "body_excerpts")
 			reused["body_included"], reused["reused"] = false, true
+			rebindOrientation(reused) // measured as it will be written: without the article, the orientation writes its texts again
 			reused["reading_notice"] = "Reuse the full body supplied earlier under this receipt. Its exact revision query remains available. Delivery does not establish use or quality."
 			if canReuseExcerpts {
 				reused["reused_content"] = "excerpts"
@@ -121,6 +122,7 @@ func prepareWorkLoop(book notebook.Book, w *workState, req workRequest, entries 
 			if delta > 512 {
 				clear(e)
 				maps.Copy(e, reused)
+				rebindOrientation(e)
 				delete(quoted, ref)
 				a.ReusedRefs = append(a.ReusedRefs, ref)
 				if canReuseExcerpts {

@@ -211,9 +211,10 @@ func TestABoundedReplyKeepsTheTopSearchCandidates(t *testing.T) {
 	if output, _ := tiny["output"].(map[string]any); tiny["knowledge_context"] != nil || !strings.Contains(fmt.Sprint(output["omitted"]), "knowledge_context") || strings.Contains(fmt.Sprint(output["omitted"]), "knowledge_context.") {
 		t.Errorf("the smallest bound leaves the candidates out whole and says only that: %v", tiny["output"])
 	}
-	// lessons too long for a small bound are down to their references, and each still carries its title
+	// lessons too long for a small bound are down to their references, and each still carries its title. They are the longest a
+	// lesson can be (2,000 bytes): a candidate no longer writes its summary and conditions twice, so shorter ones fit the bound whole.
 	for i := 0; i < 6; i++ {
-		long := fmt.Sprintf("Ledger totals %d: ", i) + strings.Repeat("compare the ledger totals with the bank statement before closing the month. ", 20)
+		long := fmt.Sprintf("Ledger totals %d: ", i) + strings.Repeat("compare the ledger totals with the bank statement before closing the month. ", 25)
 		body := "Checked."
 		if _, err := b.Ingest(notebook.Draft{Sources: []string{source.ID}, Title: fmt.Sprintf("Ledger totals %d", i), Lesson: long, AppliesTo: long[:400], Kind: "rule", Scene: "when closing the month", Body: &body}); err != nil {
 			t.Fatal(err)
