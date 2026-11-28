@@ -123,6 +123,9 @@ func runNotebook(root, scope string, req notebookRequest) (any, error) {
 		if req.Query == "" && req.Cursor == "" { // the maintenance listing carries the searches that still find nothing
 			view.MissedSearches = listedMissedSearches(b)
 		}
+		if !notebook.IsNamedRead(req.Query) {
+			view = view.WithSourceIDsOnly() // a search or a list names each source by its id; an article read by name (lesson:<id>) carries their hashes
+		}
 		return view, nil
 	case "diagnose":
 		return diagnoseKnowledge(b, req.ID, req.CaseID)

@@ -94,6 +94,8 @@ type View struct {
 	// reading is what a word search that found no candidate read to rank (searchReading), kept so that WordsFoundAlone searches the
 	// words of the query over it instead of reading the wiki again. It is not part of the reply.
 	reading *searchReading
+	// sourceIDsOnly is set by WithSourceIDsOnly for the reply of a search or a list: its JSON names each source of its lessons by its id (view_listed.go).
+	sourceIDsOnly bool
 }
 
 type Result struct {
