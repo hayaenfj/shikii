@@ -20,7 +20,9 @@ import (
 // request that was delivered whole or as its head before is delivered the same after, field by field. The three cli@ records were made
 // again when the orientation began to leave out the summary and conditions that the lines of its entry's text hold
 // (work_orientation.go): the reply of the older code, with those texts taken out of each orientation, is the new reply, and the one other
-// difference is reading.bytes, which counts the size of the reply (182 bytes less for the 4 texts of the 2 articles).
+// difference is reading.bytes, which counts the size of the reply (182 bytes less for the 4 texts of the 2 articles). They were made again
+// once more when the summary of the memory upgrade left how to review a batch to the reply that holds the batch
+// (work_upgrade.go): memory_upgrade.next_action is the only field that differs from the delivery before (427 bytes less).
 //
 // This file uses nothing but what befc20f4 has, so the same file ran in that copy.
 

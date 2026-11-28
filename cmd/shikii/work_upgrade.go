@@ -22,11 +22,14 @@ func isMemoryUpgradeQuery(q string) bool {
 var memoryUpgradeNext = fmt.Sprintf("Review one batch per task (at most %d articles), against original sources and current behavior. Save necessary corrections, then maintenance with the latest returned ref and a checked reason. Preserve sources, preferences and history; reading alone is not review. Resume remaining articles on the next task from durable progress. An explicit request to finish the upgrade may continue with prepare:{receipt,query:memory-upgrade}. Report actual blocked sources; never replace missing evidence with deletion or human grading.", notebook.MemoryUpgradeBatch)
 
 // memoryUpgradeSummaryNext is the next action of a topic summary: while the upgrade is blocked it does not send the agent back to review.
+// Otherwise it names the start of a batch and its size; the way to review is in the next action of the reply to that prepare.
 func memoryUpgradeSummaryNext(u notebook.MemoryUpgrade) string {
 	if u.Status == "blocked" {
 		return memoryUpgradeBlockedNext
 	}
-	return "At a break in the task, prepare this receipt with query memory-upgrade to review existing knowledge in bounded batches. " + memoryUpgradeNext
+	// How to review a batch is said where the batch is (memoryUpgradeNext in the reply that holds its pages), not in every prepared work
+	// of the upgrade: this says when and how to start, and the size of a batch.
+	return fmt.Sprintf("At a break in the task, prepare this receipt with query memory-upgrade to review existing knowledge in bounded batches: one batch per task, at most %d articles. The reply to that prepare says how to review the batch.", notebook.MemoryUpgradeBatch)
 }
 
 func prepareMemoryUpgrade(book notebook.Book, w *workState, quoted map[string]string, includeComplete bool) (map[string]any, []store.KnowledgeReference, error) {

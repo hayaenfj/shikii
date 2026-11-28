@@ -1,6 +1,6 @@
 {
  "cli@24805": {
-  "hash": "c567ffddf4de6ee1",
+  "hash": "eb224382d433abf8",
   "summary": [
    "agent_supplied_task=5",
    "attention=179",
@@ -15,7 +15,7 @@
    "knowledge_context=4",
    "knowledge_query=4",
    "maintenance=347",
-   "memory_upgrade=955",
+   "memory_upgrade=528",
    "more_pending=1",
    "observations=2",
    "pending=2",
@@ -31,7 +31,7 @@
   ]
  },
  "cli@25200": {
-  "hash": "b2923ec2cd807888",
+  "hash": "7d4f95934c2a0a67",
   "summary": [
    "agent_supplied_task=5",
    "attention=179",
@@ -46,7 +46,7 @@
    "knowledge_context=4",
    "knowledge_query=4",
    "maintenance=347",
-   "memory_upgrade=955",
+   "memory_upgrade=528",
    "more_pending=1",
    "observations=2",
    "pending=2",
@@ -62,7 +62,7 @@
   ]
  },
  "cli@25624": {
-  "hash": "a2c2bd4cb03de02d",
+  "hash": "46e6cea0d9c0fcde",
   "summary": [
    "agent_supplied_task=5",
    "attention=179",
@@ -77,7 +77,7 @@
    "knowledge_context=4",
    "knowledge_query=4",
    "maintenance=347",
-   "memory_upgrade=955",
+   "memory_upgrade=528",
    "more_pending=1",
    "observations=2",
    "pending=2",
