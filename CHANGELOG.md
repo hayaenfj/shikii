@@ -13,7 +13,7 @@
 
 ### Fixes
 
-- In Codex, in a project with a very large number of work records (the files under `.shikii/handoff/`), the notice at the start of a session never arrived, and so the memory nap (`shikii nap`: at most once a day, the agent reviews its memory) never started. Looking through those files took longer than the 15 seconds Codex allows a hook (this happened in a project with about a million files). shikii now looks at far fewer of them and stops looking after a few seconds.
+- In a project with a very large number of work records (the files under `.shikii/handoff/`), the notice at the start of a session never arrived, and so the memory nap (`shikii nap`: at most once a day, the agent reviews its memory) never started. Looking through those files took longer than the 15 seconds shikii's hooks are given (this was seen in Codex, in a project with about a million files). shikii now looks at far fewer of them and stops looking after a few seconds.
 - In Codex, when the notice given before a request held a lot of Japanese, it was cut off in the middle and the agent received incomplete data. Codex measures a notice in bytes, and Japanese takes three bytes a character. shikii now keeps what it gives Codex within that limit.
 - Codex did not run the memory nap when told it was due. The notice asked for another agent working in the background, and Codex does not start another agent unless you ask. shikii now asks Codex to run `shikii nap` itself at the end of the request.
 - In every agent, when the notice before a request did not fit its limit, for example with a long request, nothing prepared reached the agent. shikii now leaves out the last, least needed parts, says how to read them, and the rest arrives.

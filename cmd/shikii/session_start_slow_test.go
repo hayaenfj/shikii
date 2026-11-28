@@ -46,6 +46,9 @@ func TestSessionStartPastTheRecordLimitStillBringsTheRulesAndSaysSoInTheLog(t *t
 			t.Fatalf("past the limit the brief still carries the rules (missing %q):\n%s", want, slow)
 		}
 	}
+	if !strings.Contains(slow, sessionRecordUnread) {
+		t.Fatalf("a search cut before it found a record says so, not nothing:\n%s", slow)
+	}
 	if strings.Contains(slow, "plan/scope.md") || strings.Contains(slow, "A and B are in") {
 		t.Fatalf("no folder was read in time, so no record is named:\n%s", slow)
 	}
@@ -134,7 +137,11 @@ func TestNapNoticeGivenAgainDoesNotWaitForACountPastTheLimit(t *testing.T) {
 	if !strings.Contains(again, "shikii: a memory nap is due (asked at an earlier session start and not run yet).") || !strings.Contains(again, "`shikii nap`") {
 		t.Fatalf("the notice is given again though the count took too long:\n%s", again)
 	}
-	if readNapStateFile(t, st) == "" || written == "" {
-		t.Fatal("the notice stays written")
+	was, now := strings.Split(written, "\n"), strings.Split(readNapStateFile(t, st), "\n")
+	if len(was) != 4 || len(now) != 4 || now[0] == "" || now[1] != was[1] || now[2] != "" {
+		t.Fatalf("the notice given again is written as one that counted is: its own time, the same time to count from, and no run of the nap\nwas %q\nnow %q", was, now)
+	}
+	if log := agentHookLog(t); !strings.Contains(log, "nap: the notice is given again without a count") {
+		t.Fatalf("hook.log says the notice went without a count:\n%s", log)
 	}
 }

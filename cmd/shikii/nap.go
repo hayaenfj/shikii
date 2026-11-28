@@ -324,6 +324,7 @@ func napNotice(root, scope string, now time.Time) (string, error) {
 	if errors.Is(err, notebook.ErrWorkCountTooLong) && m.pending {
 		// a notice given again does not depend on the count, so it is not held back by a count that takes too long (audit of 0.45.0)
 		counted, err = false, nil
+		hookLog("nap: the notice is given again without a count, the sources were not counted within " + napCountLimit.String())
 	}
 	if errors.Is(err, notebook.ErrWorkCountTooLong) {
 		// nothing was written, so the notice is tried again at the next session start; the brief of the same hook does not wait for it

@@ -128,6 +128,9 @@ func briefOf(rules []notebook.Page, record, section string, bound hookBound, res
 		n--
 	}
 	parts := ruleLines(rules, n)
+	if record == "" && section == sessionRecordUnread {
+		parts = append(parts, section)
+	}
 	if record != "" {
 		intro := "Work record " + record + ", its last section:\n"
 		used := len(head) + len(strings.Join(parts, "\n")) + len("\n") + len(intro)
@@ -188,8 +191,14 @@ func newestWorkRecordSection(root string) (string, string) {
 		}
 		return e.Path, strings.TrimSpace(section)
 	}
+	if !complete {
+		return "", sessionRecordUnread // nothing found is not "there is none" (confirming audit of 0.45.0)
+	}
 	return "", ""
 }
+
+// sessionRecordUnread stands in the brief for the work record when the search was cut before it found one.
+const sessionRecordUnread = "Work record: none was found within the time limit, which does not mean there is none; see `shikii handoff list`."
 
 // sessionRecordPartial follows the path of the work record in the brief when the folders were not all read in time.
 const sessionRecordPartial = " (the newest found within the time limit; a newer one may exist, see `shikii handoff list`)"
