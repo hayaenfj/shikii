@@ -62,8 +62,11 @@ func TestARefusedHookPreparationLogsTheSizesAndNoText(t *testing.T) {
 		t.Fatalf("one line within its bound: %d bytes", len(line))
 	}
 	// a refusal that built no reply names no fields
-	if got := refusalSizes("abc", errors.New("another reason")); got != " | the hook's text before the prepared work: 3 of 10000 characters | no reply was built" {
+	if got := refusalSizes("abc", errors.New("another reason"), hookBoundFor("claude")); got != " | the hook's text before the prepared work: 3 of 10000 characters | no reply was built" {
 		t.Fatalf("a refusal without a reply: %q", got)
+	}
+	if got := refusalSizes("aéé", errors.New("another reason"), hookBoundFor("codex")); got != " | the hook's text before the prepared work: 5 of 9800 bytes | no reply was built" {
+		t.Fatalf("Codex's bound is counted and named in bytes: %q", got)
 	}
 }
 
@@ -92,7 +95,7 @@ func TestARefusedPreparationLineHoldsEveryFieldOfAReply(t *testing.T) {
 		reply[name] = strings.Repeat("x", 1234)
 	}
 	err := &hookRefusal{err: errors.New("the task and reference inventory exceed max_bytes (10000); prepare again with a larger max_bytes (up to 393216)"), reply: reply}
-	logRefusedPreparation(strings.Repeat("y", 20000), err)
+	logRefusedPreparation(strings.Repeat("y", 20000), err, hookBoundFor("claude"))
 	line := lastHookLogLine(t)
 	if strings.Contains(line, "\n") || len(line) > hookLogLineMax+hookRefusalLogExtra+len("2026-01-02T03:04:05+09:00 ") {
 		t.Fatalf("one line within its bound: %d bytes", len(line))

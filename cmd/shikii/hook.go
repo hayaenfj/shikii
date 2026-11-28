@@ -125,6 +125,9 @@ type hookInput struct {
 	// sessionTurnOnExit changes it (work_handover.go)
 	stateNoted bool
 	workTurn   string // Only the request this prompt hook created may be prepared.
+	// agentKind is the name of the agent that runs this hook (the names of agentNames: "claude", "codex", "opencode"), as agent_process.go
+	// finds it; "" when no ancestor process has one. What the hook says is fitted to that agent's limit (hook_bound.go).
+	agentKind string
 	// ending is what the notice of this request now says the ending record carries besides its result (hook_ending.go): kept so that the
 	// preparation that replaces the notice finds the text it replaces.
 	ending endingHints

@@ -33,14 +33,16 @@ func prepareHookWork(root string, in *hookInput, out *hookOut) {
 		next.Context = joinLines(base, "shikii prepared work:\n"+string(b))
 		return next
 	}
-	req := workRequest{SessionID: in.SessionID, TurnID: in.workTurn, Query: cut(strings.TrimSpace(in.Prompt), requestMax), fromHook: true, MaxBytes: hookContextMax}
-	req.responseSize = func(v any) int { return hookContextLength(render(v).Context) }
+	// what the agent that runs this hook shows whole, and how it counts it: Claude Code 10,000 characters, Codex 9,800 bytes (hook_bound.go)
+	bound := hookBoundFor(in.agentKind)
+	req := workRequest{SessionID: in.SessionID, TurnID: in.workTurn, Query: cut(strings.TrimSpace(in.Prompt), requestMax), fromHook: true, MaxBytes: bound.max}
+	req.responseSize = func(v any) int { return bound.length(render(v).Context) }
 	v, err := prepareWork(root, s.Scope, req)
 	if err != nil && strings.Contains(err.Error(), "exceed max_bytes") {
 		// The request itself does not fit what the agent is shown with the rest (about 7,000 characters of English, or any request
 		// over the 64 KiB the hook keeps): the copy of it in task is cut to its head, and task_context says where the rest is. The
 		// hook keeps the request, and a refused preparation saves nothing, as in the CLI's widening.
-		req.taskMax = hookTaskHeadMax
+		req.taskMax, req.taskMeasure = bound.max/hookTaskHeadParts, bound.length
 		v, err = prepareWork(root, s.Scope, req)
 	}
 	if err != nil && strings.Contains(err.Error(), "exceed max_bytes") {
@@ -51,7 +53,7 @@ func prepareHookWork(root string, in *hookInput, out *hookOut) {
 		v, err = prepareWork(root, s.Scope, req)
 	}
 	if err != nil {
-		logRefusedPreparation(base, err)
+		logRefusedPreparation(base, err, bound)
 		return
 	}
 	*out = render(v)
@@ -68,8 +70,8 @@ func (r *hookRefusal) Unwrap() error { return r.err }
 
 // logRefusedPreparation writes the hook's log line for a refused preparation: the refusal's message (cut as every message is) and the
 // sizes, in a line that may be hookRefusalLogExtra longer than an ordinary one.
-func logRefusedPreparation(before string, err error) {
-	hookLogWithin(cut("work prepare: "+err.Error(), hookLogLineMax)+refusalSizes(before, err), hookLogLineMax+hookRefusalLogExtra)
+func logRefusedPreparation(before string, err error, bound hookBound) {
+	hookLogWithin(cut("work prepare: "+err.Error(), hookLogLineMax)+refusalSizes(before, err, bound), hookLogLineMax+hookRefusalLogExtra)
 }
 
 // hookRefusalLogExtra is how much longer than an ordinary line the hook's log keeps a refused preparation's line: the sizes it adds
@@ -78,10 +80,10 @@ const hookRefusalLogExtra = 800
 
 // refusalSizes is what a refused preparation adds to the hook's log line: how many characters the hook had written before the
 // prepared work (what the preparation had to fit beside), and each field of the reply that was left when it was refused, with its size
-// in characters as the hook writes it, the largest first. Only the fields' names and numbers: never the request, an article or any
+// as the hook writes it and the agent counts it (bound), the largest first. Only the fields' names and numbers: never the request, an article or any
 // other text of the reply. A refusal that built no reply (another reason) names no fields.
-func refusalSizes(before string, err error) string {
-	text := " | the hook's text before the prepared work: " + strconv.Itoa(hookContextLength(before)) + " of " + strconv.Itoa(hookContextMax) + " characters"
+func refusalSizes(before string, err error, bound hookBound) string {
+	text := " | the hook's text before the prepared work: " + strconv.Itoa(bound.length(before)) + " of " + strconv.Itoa(bound.max) + " " + bound.unit
 	var refused *hookRefusal
 	if !errors.As(err, &refused) {
 		return text + " | no reply was built"
@@ -99,7 +101,7 @@ func refusalSizes(before string, err error) string {
 		if string(b) == "null" {
 			continue
 		}
-		fields = append(fields, field{name, hookContextLength(string(b))})
+		fields = append(fields, field{name, bound.length(string(b))})
 	}
 	sort.Slice(fields, func(i, j int) bool {
 		if fields[i].size != fields[j].size {
@@ -107,7 +109,7 @@ func refusalSizes(before string, err error) string {
 		}
 		return fields[i].name < fields[j].name
 	})
-	text += " | reply fields left, in characters:"
+	text += " | reply fields left, in " + bound.unit + ":"
 	for _, f := range fields {
 		text += " " + f.name + "=" + strconv.Itoa(f.size)
 	}
@@ -163,5 +165,9 @@ func hookContextLength(s string) int {
 }
 
 // hookTaskHeadMax is the most of a request the hook delivers in task when the whole request does not fit, in characters as
-// delivered: the agent has the whole request in its conversation, so the rest of the bound goes to the lessons.
-const hookTaskHeadMax = hookContextMax / 5
+// delivered (Claude Code's count; for another agent a fifth of its bound, in its own count): the agent has the whole request in its
+// conversation, so the rest of the bound goes to the lessons.
+const (
+	hookTaskHeadParts = 5
+	hookTaskHeadMax   = hookContextMax / hookTaskHeadParts
+)

@@ -41,9 +41,17 @@ func runSessionStart() error {
 	if err != nil {
 		return err
 	}
-	brief, err := sessionBrief(root, scope)
+	rules, err := (notebook.Book{Root: root, Scope: scope}).AlwaysRules()
 	if err != nil {
 		return err
+	}
+	record, section := newestWorkRecordSection(root)
+	brief := briefOf(rules, record, section, hookBoundFor(""), 0)
+	// Codex shows 9,800 bytes whole, not Claude Code's 10,000 characters (hook_bound.go): a brief of Japanese rules is three times the
+	// bytes. The agent is asked about only when the brief and the notice could pass what Codex shows, which a brief of English rules and a
+	// short record never do.
+	if byteLength(brief)+sessionNoticeReserve > codexHookContextMax && sessionAgentKind() == "codex" {
+		brief = briefOf(rules, record, section, hookBoundFor("codex"), sessionNoticeReserve)
 	}
 	// Memory nap (nap.go) is told to the person's own session only, never to a subagent's, and never stops the brief.
 	if in.AgentID == "" {
@@ -62,41 +70,76 @@ func runSessionStart() error {
 	return nil
 }
 
-// sessionBrief is the block for the project (root is its .shikii, scope its folder): "" when there is nothing to tell.
+// sessionNoticeReserve is the room the brief leaves for the notice of the memory nap (about 330 bytes) where the agent's limit is counted
+// in bytes, so that the two together stay within it.
+const sessionNoticeReserve = 400
+
+// sessionAgentKind is the name of the agent that runs this hook, asked of the process table when the brief needs it ("" when none is
+// found); a test swaps it.
+var sessionAgentKind = func() string {
+	if p := currentAgentProcess(); p != nil {
+		return p.Name
+	}
+	return ""
+}
+
+// sessionBrief is the block for the project (root is its .shikii, scope its folder) as Claude Code is shown it: "" when there is nothing
+// to tell.
 func sessionBrief(root, scope string) (string, error) {
-	var parts []string
 	rules, err := (notebook.Book{Root: root, Scope: scope}).AlwaysRules()
 	if err != nil {
 		return "", err
 	}
-	for i, p := range rules {
-		if i == sessionBriefRules {
-			// the rest are named by their ids rather than dropped silently (audit B of 0.12); each is read with shikii wiki query lesson:<id>
-			// (confirmation audit 1: wiki query cannot filter by scene, so the ids are the way to read them)
-			rest := []string{}
-			for _, r := range rules[i:] {
-				rest = append(rest, "lesson:"+r.ID)
-			}
-			parts = append(parts, fmt.Sprintf("- %d more rules for every request, each read with shikii wiki query lesson:<id>: %s", len(rules)-i, strings.Join(rest, ", ")))
-			break
-		}
+	record, section := newestWorkRecordSection(root)
+	return briefOf(rules, record, section, hookBoundFor(""), 0), nil
+}
+
+// ruleLines are the lines of the first n rules, each whole, and, when some are left, one line that names the rest by their ids rather
+// than dropping them silently (audit B of 0.12); each is read with shikii wiki query lesson:<id> (confirmation audit 1: wiki query cannot
+// filter by scene, so the ids are the way to read them).
+func ruleLines(rules []notebook.Page, n int) []string {
+	var parts []string
+	for _, p := range rules[:n] {
 		parts = append(parts, "- "+strings.TrimSpace(p.Lesson)+" (lesson:"+p.ID+":"+p.Revision+")")
 		if len(p.Recheck) > 0 {
 			parts = append(parts, "  Recheck this article's premise files before relying on its premise; a change does not invalidate the rule.")
 		}
 	}
+	if n < len(rules) {
+		rest := []string{}
+		for _, r := range rules[n:] {
+			rest = append(rest, "lesson:"+r.ID)
+		}
+		parts = append(parts, fmt.Sprintf("- %d more rules for every request, each read with shikii wiki query lesson:<id>: %s", len(rules)-n, strings.Join(rest, ", ")))
+	}
+	return parts
+}
+
+// briefOf is the block made of the always rules and the section of the newest work record, fitted to what the agent shows whole (bound,
+// less reserve for what the hook adds after it). The rules come first and whole, up to sessionBriefRules of them, fewer when more would
+// pass the bound (the rest are named by their ids, as they are past sessionBriefRules); the record's section is cut to the room left, which
+// is at most sessionBriefMax. Claude Code's bound is 10,000 characters and a brief of rules is far from it, so what Claude Code is shown is
+// what it always was.
+func briefOf(rules []notebook.Page, record, section string, bound hookBound, reserve int) string {
 	head := "shikii: this project, at the start of the session (and after a summary). The rules for every request and where the work stands, from the project's own records: hypotheses with sources, never permission.\n"
-	if record, section := newestWorkRecordSection(root); record != "" {
+	limit := bound.max - reserve
+	n := min(len(rules), sessionBriefRules)
+	for n > 0 && bound.length(head+strings.Join(ruleLines(rules, n), "\n")) > limit {
+		n--
+	}
+	parts := ruleLines(rules, n)
+	if record != "" {
 		intro := "Work record " + record + ", its last section:\n"
-		room := sessionBriefMax - len(head) - len(strings.Join(parts, "\n")) - len("\n") - len(intro)
+		used := len(head) + len(strings.Join(parts, "\n")) + len("\n") + len(intro)
+		room := min(sessionBriefMax-used, limit-bound.length(head+strings.Join(parts, "\n"))-len("\n")-len(intro))
 		if room >= sessionBriefRecordMin {
 			parts = append(parts, intro+cut(section, room))
 		}
 	}
 	if len(parts) == 0 {
-		return "", nil
+		return ""
 	}
-	return head + strings.Join(parts, "\n"), nil
+	return head + strings.Join(parts, "\n")
 }
 
 // sessionRecordLimit is how long the brief may spend reading the folders of .shikii/handoff/ to find the newest work record. A project

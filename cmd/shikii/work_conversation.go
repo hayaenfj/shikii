@@ -118,11 +118,16 @@ func preparedWorkTask(s *hookSession, w *workState, req workRequest) (string, ma
 // deliveredTaskHead is the copy of task the hook delivers when the whole preparation does not fit what the agent is shown: the
 // longest head whose JSON string, written as the hook writes it (orderedText), takes at most max characters. The agent has the
 // whole request in its conversation. task_context says so for a request the hook kept whole (delivered_head); one longer than what
-// the hook keeps keeps its own status and next action. The work is matched on the whole task, not on this head.
-func deliveredTaskHead(task string, context map[string]any, max int) string {
+// the hook keeps keeps its own status and next action. The work is matched on the whole task, not on this head. The characters are
+// counted as the agent counts them (measure, hookContextLength when none is given: Claude Code's way; Codex counts bytes).
+func deliveredTaskHead(task string, context map[string]any, max int, measure ...func(string) int) string {
+	count := hookContextLength
+	if len(measure) > 0 && measure[0] != nil {
+		count = measure[0]
+	}
 	size := func(text string) int {
 		b, _ := orderedText(text)
-		return hookContextLength(string(b))
+		return count(string(b))
 	}
 	if size(task) <= max {
 		return task

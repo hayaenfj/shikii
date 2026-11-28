@@ -107,6 +107,7 @@ type workRequest struct {
 	fromHook          bool                   // Internal preparation whose complete reply is delivered by the prompt hook.
 	responseSize      func(any) int          // Host transport sizing; never supplied by the caller.
 	taskMax           int                    // The hook's bound on the delivered task, in characters as the hook writes it; 0 is none.
+	taskMeasure       func(string) int       // How taskMax counts the task as the hook writes it: the agent's own count (hook_bound.go); nil is Claude Code's.
 	leaveOutLast      bool                   // Internal: the bound may leave out its last fields (work_budget_tail.go). Only the hook sets it, after its two other tries were refused.
 	MaxBytes          int                    `json:"max_bytes,omitempty"`
 	Result            *workCompletion        `json:"result,omitempty"`
@@ -627,7 +628,7 @@ func prepareWork(root, scope string, req workRequest) (out any, err error) {
 	}
 	delivered := task
 	if req.taskMax > 0 {
-		delivered = deliveredTaskHead(task, taskContext, req.taskMax)
+		delivered = deliveredTaskHead(task, taskContext, req.taskMax, req.taskMeasure)
 	}
 	quoted := map[string]string{}
 	stage := ""

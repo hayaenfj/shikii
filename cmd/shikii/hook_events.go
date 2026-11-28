@@ -63,8 +63,8 @@ func runHookEvent(event string) error {
 		}
 		return err
 	}
-	noteAgentProcess(agent, in.SessionID, in.eventAt()) // which agent process runs the session, for shikii forget; written only when the record has another
-	keepSubagentOfEarlierProcess(agent, event, &in)     // a subagent an earlier process left open, working again under this one
+	in.agentKind = noteAgentProcess(agent, in.SessionID, in.eventAt()) // which agent process runs the session, for shikii forget (written only when the record has another), and whose limit this event's text is fitted to (hook_bound.go)
+	keepSubagentOfEarlierProcess(agent, event, &in)                    // a subagent an earlier process left open, working again under this one
 	if event != "agent-task" && event != "tool-lesson" && event != "subagent-stop" {
 		ensureModel(common, agent) // start it in the background if missing (this turn just gets no record; do not wait). Not started by the retired agent-task, nor when matching a lesson to a tool call
 	}

@@ -138,22 +138,24 @@ func currentAgentProcess() *agentProcess {
 // noteAgentProcess keeps the agent process in the session's record when the record does not have it yet or has another: the first event
 // of a session, and the first after the agent was started again with the same session (a resume). Otherwise it writes nothing, so the
 // time it was noted at stays that of the first event under this process. A record of an earlier shikii that has the process without a
-// time is not given one: a later time would put processes the session started before it among the agent's own.
-func noteAgentProcess(agent, id string, at time.Time) {
+// time is not given one: a later time would put processes the session started before it among the agent's own. It returns the name of
+// the agent ("" when none was found), so that the hook can fit what it says to that agent's limit without asking the process table again.
+func noteAgentProcess(agent, id string, at time.Time) string {
 	if id == "" {
-		return
+		return ""
 	}
 	p := currentAgentProcess()
 	if p == nil {
-		return
+		return ""
 	}
 	if s, err := readSession(agent, id); err == nil && s.Process != nil && s.Process.same(*p) {
-		return
+		return p.Name
 	}
 	p.Noted = at.UTC() // when the hook began, not when it got here: a subagent that same hook began is the process's own
 	if err := updateSession(agent, id, func(s *hookSession) { s.Process = p }); err != nil {
 		hookLog("process: " + err.Error())
 	}
+	return p.Name
 }
 
 // keepSubagentOfEarlierProcess puts the time of a subagent to the time of this event when the state says the subagent began before the agent
