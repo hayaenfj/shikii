@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"maps"
+	"strings"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
 )
@@ -18,6 +19,11 @@ import (
 // candidate must stay in the orientation. A text that differs, an empty text, and a field of another type are written as before,
 // and every other part of the orientation (current, history, recheck, counterexamples, unclassified and the three flags) is always
 // written, empty lists included. The JSON of notebook.KnowledgeOrientation itself, as other entrances save and send it, is unchanged.
+//
+// The article a request hook hands over is one text (planningArticleSource: a title line, a summary line and an applies-when line, then
+// the body). It holds the summary and the conditions on the lines of its head, up to the first blank line, so the orientation leaves
+// them out when a whole line of that head is the text. A text that stands only in the body, after a blank line, inside a longer line or
+// across lines is written by the orientation as before.
 //
 // A candidate and its orientation point at each other, so bind through bindOrientation, and bind again (rebindOrientation) when the
 // candidate's fields move to another map.
@@ -46,6 +52,25 @@ var orientationPlaces = map[string][2]string{
 	"conditions": {"applies_to", "article.applies_to"},
 }
 
+// orientationTextLines are, for the two texts that stand on a line of a hook entry's text, the start of that line; the place of such a
+// text is the field text (orientationTextPlace) and is written to a delivery record like the other places.
+var orientationTextLines = map[string]string{"summary": "summary: ", "conditions": "applies when: "}
+
+const orientationTextPlace = "text"
+
+// holdsOnALineOfItsText is whether the head of the text of the entry (up to its first blank line) has a line that is the prefix and then
+// the whole value.
+func holdsOnALineOfItsText(holder map[string]any, prefix, value string) bool {
+	text, _ := holder["text"].(string)
+	head, _, _ := strings.Cut(text, "\n\n")
+	for _, line := range strings.Split(head, "\n") {
+		if line == prefix+value {
+			return true
+		}
+	}
+	return false
+}
+
 // held says where the candidate holds each text of the orientation right now, by the names of orientationPlaces. A text the
 // candidate does not hold (and so the orientation writes) is not in the result.
 func (o *workOrientation) held() map[string]string {
@@ -65,6 +90,8 @@ func (o *workOrientation) held() map[string]string {
 			at[key] = orientationPlaces[key][0]
 		} else if text[1] == text[0] {
 			at[key] = orientationPlaces[key][1]
+		} else if prefix := orientationTextLines[key]; prefix != "" && holdsOnALineOfItsText(o.holder, prefix, text[0]) {
+			at[key] = orientationTextPlace
 		}
 	}
 	return at

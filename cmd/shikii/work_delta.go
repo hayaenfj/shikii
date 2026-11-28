@@ -51,7 +51,7 @@ func reusedMetadataFields(old workMetadataRef) []string {
 	}
 	for _, key := range []string{"id", "revision", "summary", "conditions"} {
 		places := orientationPlaces[key]
-		if at := old.Held[key]; at != "" && (at == places[0] || at == places[1]) {
+		if at := old.Held[key]; at != "" && (at == places[0] || at == places[1] || at == orientationTextPlace && orientationTextLines[key] != "") {
 			add(at)
 		} else {
 			add("orientation." + key)

@@ -17,7 +17,10 @@ import (
 // hook, the CLI without max_bytes, and an explicit read of an article under a named bound) and write down what each delivered, with
 // what changes from run to run (ids, the receipt, times, paths) made the same. testdata/work_hook_fidelity_golden.json holds what
 // the code before the last fields of the bound (befc20f4) delivered, taken from a copy of that code run on the same inputs; a
-// request that was delivered whole or as its head before is delivered the same after, field by field.
+// request that was delivered whole or as its head before is delivered the same after, field by field. The three cli@ records were made
+// again when the orientation began to leave out the summary and conditions that the lines of its entry's text hold
+// (work_orientation.go): the reply of the older code, with those texts taken out of each orientation, is the new reply, and the one other
+// difference is reading.bytes, which counts the size of the reply (182 bytes less for the 4 texts of the 2 articles).
 //
 // This file uses nothing but what befc20f4 has, so the same file ran in that copy.
 
