@@ -14,10 +14,11 @@ What grows is the project, not the model, so its knowledge remains when you chan
 [![Tests](https://img.shields.io/badge/tests-3015%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](docs/decision-ops-framework.md)
-[![Version](https://img.shields.io/badge/version-0.44.2-00ADD8?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.45.0-00ADD8?style=flat-square)](CHANGELOG.md)
 
 **Recent versions**
 
+- **0.45**: shikii sends the agent less text: the replies and notices no longer repeat what they already say elsewhere, and nothing they said is dropped. In Codex, the notice at the start of a session and the memory nap now arrive in projects with many records, and the notice before a request is no longer cut off in projects written mostly in Japanese.
 - **0.44**: A save that would wipe out an article, when the agent meant only to add a few sentences, is refused. So is a run of saves that each cut a little, once together they would drop half or more of the text from before the cuts began, and the agent is told to add at the end with `shikii wiki patch` first; the refusal shows that patch, filled in for the article.
 - **0.42–0.43**: The memory nap (`shikii nap`). At most once a day, the agent reviews its memory: it rereads articles whose underlying files changed and adds the corrections of yours that the wiki missed. `shikii status` shows how many it caught.
 - **0.41**: `shikii forget` removes what finished sessions, such as trial runs, left behind, after showing you the list.
@@ -119,7 +120,7 @@ For other systems, see [llama.cpp's installation guide](https://github.com/ggml-
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 ```
 
-The installer downloads the latest release for your machine (macOS or Linux, amd64 or arm64) from GitHub Releases, checks it against the release's `SHA256SUMS`, and puts `shikii` and `shikii-readout` in `~/.local/bin`. It does not need Go. It adds the binaries, the hooks (before a turn, after it, when a subagent starts and ends, and right before a file edit or a command) and the agent's instructions, and says when the binary directory must be added to PATH. In Codex, trust the hooks with `/hooks`, and again whenever they change (after moving the binary or updating shikii); until then Codex skips them.
+The installer downloads the latest release for your machine (macOS or Linux, amd64 or arm64) from GitHub Releases, checks it against the release's `SHA256SUMS`, and puts `shikii` and `shikii-readout` in `~/.local/bin`. It does not need Go. It adds the binaries, the hooks (before a turn, after it, when a subagent starts and ends, and right before a file edit or a command) and the agent's instructions, and says when the binary directory must be added to PATH. In Codex, trust the hooks with `/hooks`, and again whenever they change (after moving the binary or updating shikii); until then Codex skips them without saying so. `shikii doctor` says whether Codex trusts them.
 
 **With Go 1.27 or newer.** Install both binaries directly into a stable directory:
 
@@ -131,7 +132,7 @@ export PATH="$HOME/.local/bin:$PATH"
 shikii hook install --yes
 ```
 
-Keep `~/.local/bin` on PATH in your shell settings, then initialize the projects you choose in step 3. To install a specific release, replace `@latest` in both commands with a tag such as `@v0.44.2`.
+Keep `~/.local/bin` on PATH in your shell settings, then initialize the projects you choose in step 3. To install a specific release, replace `@latest` in both commands with a tag such as `@v0.45.0`.
 
 If the hooks stop working after you upgrade Go or move the binary, run the installer command above again: the binary itself is often what is gone (with a Go version manager such as mise, a Go upgrade removes the per-version folder `go install` put it in). When `shikii` still runs, `shikii doctor` checks whether the hooks or the Codex registration point to a shikii that cannot run, and says how to fix it.
 

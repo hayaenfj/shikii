@@ -14,10 +14,11 @@ AIエージェントに仕事を任せると、同じ説明や訂正を何度も
 [![Tests](https://img.shields.io/badge/tests-3015%20go%20tests%20%2B%20CI-00ADD8?style=flat-square)](../../.github/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue?style=flat-square)](../../LICENSE)
 [![Status](https://img.shields.io/badge/status-prototype-orange?style=flat-square)](../decision-ops-framework.ja.md)
-[![Version](https://img.shields.io/badge/version-0.44.2-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
+[![Version](https://img.shields.io/badge/version-0.45.0-00ADD8?style=flat-square)](../../CHANGELOG_ja.md)
 
 **最近のバージョン**
 
+- **0.45**: shikii がエージェントに渡す文が短くなりました。返事と案内の中で同じ内容を繰り返さないようにし、伝える内容は減らしていません。Codex では、記録の多いプロジェクトでもセッションの始めの案内と記憶のひと休みが届き、日本語の多いプロジェクトで依頼の前の案内が途中で切れなくなりました。
 - **0.44**: エージェントが記事に文を足すつもりで本文を消してしまう保存を断ります。少しずつ削る保存を重ねて、削り始める前の本文の半分以上がなくなる時も断り、足す時はまず `shikii wiki patch` で末尾に足すよう、その記事に合わせて埋めた patch の例を添えて伝えます。
 - **0.42〜0.43**: 記憶のひと休み(`shikii nap`)。1日に1回まで、エージェントが記憶を見直し、元のファイルが変わった記事を読み直して、wiki に入れ損ねたあなたの訂正を書き足します。拾えた数は `shikii status` に出ます。
 - **0.41**: 試しの実行などで終わったセッションが残した記録を、`shikii forget` で一覧を確かめてから消せます。
@@ -119,7 +120,7 @@ macOS以外は[llama.cppの公式の手順](https://github.com/ggml-org/llama.cp
 curl -fsSL https://raw.githubusercontent.com/hayaenfj/shikii/main/install.sh | sh
 ```
 
-インストーラーは、GitHub Releasesからこの機械向け（macOSかLinux、amd64かarm64）の最新バージョンを取ってきて、バージョンの `SHA256SUMS` と照らしてから、`shikii` と `shikii-readout` を `~/.local/bin` に置きます。Goは要りません。実行ファイル、hook（依頼の前・作業の後・サブエージェントの始まりと終わり・ファイルの変更とコマンドの直前）、エージェントの作法を入れ、PATHに足す必要があれば案内します。Codexでは `/hooks` でhookを信頼してください。hookの中身が変わるたび(実行ファイルを動かした時やshikiiをアップデートした時)にもう一度信頼が要り、それまでCodexはhookを飛ばします。
+インストーラーは、GitHub Releasesからこの機械向け（macOSかLinux、amd64かarm64）の最新バージョンを取ってきて、バージョンの `SHA256SUMS` と照らしてから、`shikii` と `shikii-readout` を `~/.local/bin` に置きます。Goは要りません。実行ファイル、hook（依頼の前・作業の後・サブエージェントの始まりと終わり・ファイルの変更とコマンドの直前）、エージェントの作法を入れ、PATHに足す必要があれば案内します。Codexでは `/hooks` でhookを信頼してください。hookの中身が変わるたび(実行ファイルを動かした時やshikiiをアップデートした時)にもう一度信頼が要り、それまでCodexはhookを何も言わずに飛ばします。信頼されているかは `shikii doctor` で分かります。
 
 **Go 1.27以上がある場合。** 両方の実行ファイルを、Goのバージョンを上げても残るフォルダへ直接入れられます。
 
@@ -131,7 +132,7 @@ export PATH="$HOME/.local/bin:$PATH"
 shikii hook install --yes
 ```
 
-シェルの設定でも `~/.local/bin` をPATHに加え、続けて手順3で利用するプロジェクトを初期化してください。バージョンを指定する時は、両方のコマンドの `@latest` を `@v0.44.2` のようなタグへ置き換えます。
+シェルの設定でも `~/.local/bin` をPATHに加え、続けて手順3で利用するプロジェクトを初期化してください。バージョンを指定する時は、両方のコマンドの `@latest` を `@v0.45.0` のようなタグへ置き換えます。
 
 Goを上げた後や実行ファイルを動かした後にhookが働かなくなったら、上のインストーラーのコマンドをもう一度流してください。多くは実行ファイルそのものが消えています(miseのようなGoのバージョンの管理ツールでは、Goを上げると `go install` が置いたバージョンごとのフォルダごと消えます)。`shikii` がまだ動く時は `shikii doctor` が、hookやCodexの登録が動かせないshikiiを指していないかを確かめ、直し方を出します。
 
