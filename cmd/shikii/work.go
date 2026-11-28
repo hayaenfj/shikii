@@ -217,7 +217,7 @@ type workResult struct {
 	Storage          map[string]any            `json:"storage,omitempty"`
 	NextAction       string                    `json:"next_action,omitempty"`
 	Comparison       *workComparisonView       `json:"comparison,omitempty"`
-	Reasoning        reasoningStatus           `json:"reasoning"`
+	Reasoning        recordReasoning           `json:"reasoning"`
 	Complete         bool                      `json:"complete"`
 	ReviewComplete   *bool                     `json:"review_complete,omitempty"`
 	Saved            []workItem                `json:"saved"`

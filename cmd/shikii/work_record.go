@@ -295,7 +295,7 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		}
 		add(item)
 	}
-	result.Reasoning = currentReasoningView(book, w.Reasoning)
+	result.Reasoning = recordReasoningView(currentReasoningView(book, w.Reasoning))
 	batch.prepareProcedureReviews()
 	return result, nil
 }

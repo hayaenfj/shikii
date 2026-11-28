@@ -364,11 +364,7 @@ func finishWorkCompletion(book notebook.Book, w *workState, resolve func([]strin
 	}
 	// The source retains the narrative once. The ending review links it without
 	// restating that narrative in focus, reason, next_action and result.
-	r := workReasoning{Phase: "finish", Focus: "Review the saved work result", Assessment: "retain", Reason: "The agent report and its remaining conditions are retained in the result source; saving does not establish success.", Evidence: refs, NextAction: "Use the saved result and unresolved conditions for the next task.", Result: "The work report is saved; see its source for changes, checks and remaining conditions."}
-	if w.Result.Unresolved {
-		r.Assessment = "unresolved"
-	}
-	item, err := recordWorkReasoning(book, w, r, resolve, save, commit)
+	item, err := recordWorkReasoning(book, w, defaultEndingReview(refs, w.Result.Unresolved), resolve, save, commit)
 	if err != nil {
 		return item, err
 	}

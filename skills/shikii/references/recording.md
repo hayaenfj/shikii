@@ -378,6 +378,24 @@ valid. Small conversational tasks need only short judgments about the actual
 request; do not invent an experiment, discovery, article or procedure outcome.
 Reusable findings and new project procedures still go to the wiki as usual.
 
+When you record a result without a review of your own, shikii saves the ending
+review itself, with four fixed sentences: focus "Review the saved work result";
+reason "The agent report and its remaining conditions are retained in the result source; saving does not establish success.";
+next_action "Use the saved result and unresolved conditions for the next task.";
+result "The work report is saved; see its source for changes, checks and remaining conditions."
+It is saved whole, with these sentences, in its immutable source. A record reply
+writes `reasoning.latest` with `"default":true` in place of the four sentences when the
+saved review is exactly this one and `reasoning.next` is the saved-review notice,
+which says that recording alone is not proof of improvement. `phase`, `assessment`
+(`unresolved` when the report left a condition open), `evidence`, `source`, `key`,
+`generation` and `at` stay as they are. `default:true` says that shikii wrote the
+review, not the agent: it is not a judgment of the work, and saving does not
+establish success. The changes, checks and remaining conditions are in the saved
+result source (`storage.result_source`, and the `source:` ref in `evidence`). A review
+you wrote is returned whole, even when it differs from these sentences by one
+character, and so is any review while `reasoning.next` says something else. `work
+prepare` returns `reasoning.latest` whole.
+
 Resolve failed or pending wiki notes and captures before finishing. Saved retry metadata alone
 is not pending work. Replacing preparation preserves the start, latest review
 and pending obligation. When drafts or publication bindings exist, it first

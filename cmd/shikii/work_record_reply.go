@@ -9,7 +9,7 @@ func finishWorkRecordReply(book notebook.Book, w *workState, req workRequest, se
 		result.Complete = false
 		result.Errors = append(result.Errors, workItem{Kind: "context", Ref: "result-review", Error: e.Error()})
 	}
-	result.Reasoning = currentReasoningView(book, w.Reasoning)
+	result.Reasoning = recordReasoningView(currentReasoningView(book, w.Reasoning))
 	if req.Result != nil && req.Result.Ref != "" {
 		pending := w.Reasoning.PendingResults[req.Result.Ref]
 		if pending != nil {

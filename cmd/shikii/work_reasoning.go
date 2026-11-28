@@ -142,7 +142,7 @@ func reasoningView(r *reasoningProgress) reasoningStatus {
 			v.Next = "Work changed after the saved ending review, so that review no longer covers this work. A finish repeated word for word is a retry of the old one and is not applied. Review the later evidence, then record the checked result or a reasoning finish that reflects it."
 		}
 	} else if v.Complete {
-		v.Next = "The review is saved. New observations, actual uses, outcomes or wiki edits require an updated finish; recording alone is not proof of improvement."
+		v.Next = reasoningSavedNext
 	}
 	if trialPendingCount(r) > 0 {
 		v.Next = "Recover pending trial/comparison captures with the same reference. Cite challenged trial results in reasoning update or finish; a report is not proof of success."
