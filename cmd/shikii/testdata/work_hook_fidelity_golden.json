@@ -1,6 +1,6 @@
 {
  "cli@24805": {
-  "hash": "2cb026a4e7ecd5f3",
+  "hash": "d408d4e70263c33d",
   "summary": [
    "agent_supplied_task=5",
    "attention=179",
@@ -10,7 +10,7 @@
    "conversation=4014",
    "conversation_context=162",
    "delivery=1",
-   "how_to_record=1159",
+   "how_to_record=1176",
    "knowledge=9039",
    "knowledge_context=4",
    "knowledge_query=4",
@@ -31,7 +31,7 @@
   ]
  },
  "cli@25200": {
-  "hash": "6b855b852d3ddf3d",
+  "hash": "d6e5512fc7f92d68",
   "summary": [
    "agent_supplied_task=5",
    "attention=179",
@@ -41,7 +41,7 @@
    "conversation=4014",
    "conversation_context=162",
    "delivery=1",
-   "how_to_record=1159",
+   "how_to_record=1176",
    "knowledge=9039",
    "knowledge_context=4",
    "knowledge_query=4",
@@ -62,7 +62,7 @@
   ]
  },
  "cli@25624": {
-  "hash": "fea55b815a91fb91",
+  "hash": "ad3a6db85216ff22",
   "summary": [
    "agent_supplied_task=5",
    "attention=179",
@@ -72,7 +72,7 @@
    "conversation=4014",
    "conversation_context=162",
    "delivery=1",
-   "how_to_record=1159",
+   "how_to_record=1176",
    "knowledge=9039",
    "knowledge_context=4",
    "knowledge_query=4",
@@ -149,12 +149,12 @@
   ]
  },
  "hook@12000": {
-  "hash": "f8767e9884d4b68f",
+  "hash": "1b9404c3a206e63c",
   "summary": [
    "agent_supplied_task=5",
    "attention=179",
    "delivery=1",
-   "how_to_record=1159",
+   "how_to_record=1176",
    "knowledge=1561",
    "knowledge_query=4",
    "maintenance=347",
@@ -173,12 +173,12 @@
   ]
  },
  "hook@3034": {
-  "hash": "4a2c772d46dd88ea",
+  "hash": "e9ff23d688b011d6",
   "summary": [
    "agent_supplied_task=5",
    "attention=179",
    "delivery=1",
-   "how_to_record=1159",
+   "how_to_record=1176",
    "knowledge=615",
    "knowledge_query=4",
    "maintenance=347",
@@ -196,12 +196,12 @@
   ]
  },
  "hook@4000": {
-  "hash": "a8c9bcf9f452be85",
+  "hash": "a9bc4ad75c6ce3fd",
   "summary": [
    "agent_supplied_task=5",
    "attention=179",
    "delivery=1",
-   "how_to_record=1159",
+   "how_to_record=1176",
    "knowledge=531",
    "knowledge_query=4",
    "maintenance=347",
@@ -219,12 +219,12 @@
   ]
  },
  "hook@5002": {
-  "hash": "f8767e9884d4b68f",
+  "hash": "1b9404c3a206e63c",
   "summary": [
    "agent_supplied_task=5",
    "attention=179",
    "delivery=1",
-   "how_to_record=1159",
+   "how_to_record=1176",
    "knowledge=1561",
    "knowledge_query=4",
    "maintenance=347",
@@ -243,12 +243,12 @@
   ]
  },
  "hook@6519": {
-  "hash": "f8767e9884d4b68f",
+  "hash": "1b9404c3a206e63c",
   "summary": [
    "agent_supplied_task=5",
    "attention=179",
    "delivery=1",
-   "how_to_record=1159",
+   "how_to_record=1176",
    "knowledge=1561",
    "knowledge_query=4",
    "maintenance=347",
@@ -267,12 +267,12 @@
   ]
  },
  "hook@7500": {
-  "hash": "f8767e9884d4b68f",
+  "hash": "1b9404c3a206e63c",
   "summary": [
    "agent_supplied_task=5",
    "attention=179",
    "delivery=1",
-   "how_to_record=1159",
+   "how_to_record=1176",
    "knowledge=1561",
    "knowledge_query=4",
    "maintenance=347",
@@ -291,12 +291,12 @@
   ]
  },
  "hook@9000": {
-  "hash": "f8767e9884d4b68f",
+  "hash": "1b9404c3a206e63c",
   "summary": [
    "agent_supplied_task=5",
    "attention=179",
    "delivery=1",
-   "how_to_record=1159",
+   "how_to_record=1176",
    "knowledge=1561",
    "knowledge_query=4",
    "maintenance=347",

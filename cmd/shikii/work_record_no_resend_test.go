@@ -159,6 +159,29 @@ func (f *endingFixture) noResendSavedResult(t *testing.T, reply map[string]any) 
 	return saved
 }
 
+// The first record is where an agent that has checked the quality says so, and a grade with no evidence beside it is not saved
+// (above). The words that tell the agent how to record, in every form the hook and the replies carry them, say that the grade needs
+// evidence, beside the words that say it reports an actual check and that leaving it out leaves the quality unknown. They said only
+// that it reports an actual check; with the grade no longer refused, 4 sessions of a real Claude Code saved neither a grade nor its
+// evidence, where 5 of 6 had saved both when the refusal taught the agent to send the evidence again (real-agent/report2.md).
+func TestHowToRecordSaysSufficientNeedsEvidence(t *testing.T) {
+	const sentence = "Optional result.sufficient (needs evidence) reports an actual quality check; omission stays unknown."
+	for name, text := range map[string]string{
+		"how_to_record":                   compactWorkHowTo,
+		"how_to_record of the hook":       compactHowToRecord(&workState{}),
+		"how_to_record of a standalone":   compactHowToRecord(&workState{Standalone: true}),
+		"how_to_record with the hook ids": strings.Replace(compactWorkHowTo, "with this receipt", "with the hook's session_id/turn_id (or this receipt)", 1),
+	} {
+		if !strings.Contains(text, sentence) {
+			t.Errorf("%s does not say that result.sufficient needs evidence: %q", name, text)
+		}
+		// the evidence it names is the one the sentence before it defines: references, never text
+		if at := strings.Index(text, sentence); at >= 0 && strings.Index(text, "evidence takes references") > at {
+			t.Errorf("%s names the evidence of the grade before it says what evidence is", name)
+		}
+	}
+}
+
 // A result.sufficient with no captured evidence is not saved, and the rest of the result is: every field as it was sent, with the
 // reply saying what was left out, why, and how the grade is given. The record is complete, asks for no other, and the Stop that
 // follows does not ask again. Before, the whole record was refused and the agent sent it again without sufficient.
@@ -182,7 +205,7 @@ func TestASufficientWithoutEvidenceIsLeftOutAndTheRestIsSaved(t *testing.T) {
 					t.Errorf("a grade with no evidence is not saved, the quality stays unknown: %v", saved)
 				}
 				warnings := noResendWarnings(noResendSavedItem(reply, "result", "result"))
-				for _, word := range []string{"result.sufficient", "was not saved", "captured check evidence", "stays unknown", "nothing needs to be sent again", "evidence:[refs"} {
+				for _, word := range []string{"result.sufficient", "was not saved", "captured check evidence", "stays unknown", "nothing needs to be sent again", "give sufficient together with evidence:[refs"} {
 					if !strings.Contains(strings.ToLower(warnings), strings.ToLower(word)) {
 						t.Errorf("the reply says %q about the grade: %q", word, warnings)
 					}
