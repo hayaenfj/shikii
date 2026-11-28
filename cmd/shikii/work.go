@@ -229,6 +229,7 @@ type workResult struct {
 	LessonsToAssess  *workLessonsToAssess      `json:"lessons_to_assess,omitempty"` // lessons delivered during this request and not assessed yet
 	Coverage         *workCoverageReply        `json:"coverage,omitempty"`          // the coverage rows of the recorded result, or how to send one when it left something in remaining
 	MissedSearches   *workMissedSearches       `json:"missed_searches,omitempty"`   // searches of the wiki that found nothing since the work was prepared (work_missed.go)
+	gradeNext        string                    // what next_action adds for a grade left out of a complete record (workGradeNote.Next); never in the reply by itself
 }
 
 type workProcedureReview struct {

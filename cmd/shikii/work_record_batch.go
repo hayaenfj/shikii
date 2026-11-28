@@ -18,5 +18,5 @@ type workRecordBatch struct {
 	result      *workResult
 	// gradeLeftOut is what the reply says about a result.sufficient that came with no evidence and was left out of the result
 	// (leaveOutUnevidencedGrade); empty when none was.
-	gradeLeftOut string
+	gradeLeftOut workGradeNote
 }

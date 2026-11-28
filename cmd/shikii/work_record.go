@@ -149,7 +149,7 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		reviewStamped = true
 		return nil
 	}
-	result := workResult{Complete: true, Saved: []workItem{}}
+	result := workResult{Complete: true, Saved: []workItem{}, gradeNext: gradeLeftOut.Next}
 	if req.Result != nil {
 		result.Storage = map[string]any{"status": "unconfirmed"}
 	}

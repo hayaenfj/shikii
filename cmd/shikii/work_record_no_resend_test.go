@@ -210,8 +210,11 @@ func TestASufficientWithoutEvidenceIsLeftOutAndTheRestIsSaved(t *testing.T) {
 						t.Errorf("the reply says %q about the grade: %q", word, warnings)
 					}
 				}
-				if next, has := reply["next_action"]; has {
-					t.Errorf("the reply asks for no other record: %v", next)
+				// a true grade left out is the quality staying unknown: nothing is asked. A false one is what the agent alone knows, and
+				// its next_action says how to keep it (TestAnUnevidencedFalseGradeSaysInNextActionHowToKeepIt)
+				next, has := reply["next_action"]
+				if has == grade || (has && next != fellShortGradeNext) {
+					t.Errorf("next_action for a grade of %v with no evidence: %v", grade, next)
 				}
 				if _, left := reply["lessons_to_assess"]; left {
 					t.Errorf("no lesson of the request is left: %v", reply["lessons_to_assess"])
@@ -229,6 +232,91 @@ func TestASufficientWithoutEvidenceIsLeftOutAndTheRestIsSaved(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// A sufficient:false with no evidence is the agent's own word that the work fell short, and nothing else records it. The warnings are
+// not what an agent is told to read (complete, errors and next_action are), so next_action says it was not saved and gives the two
+// ways to keep it, each in the form the record takes: the result sent again with evidence and sufficient:false, or with remaining.
+// The record stays complete: the rest of it is saved, the Stop lets the turn end, and sending nothing withdraws the claim.
+func TestAnUnevidencedFalseGradeSaysInNextActionHowToKeepIt(t *testing.T) {
+	for _, way := range []string{"evidence", "remaining"} {
+		for entryName, send := range endingEntries {
+			t.Run(way+" through "+entryName, func(t *testing.T) {
+				f := endingSetup(t, endingFlows[0])
+				f.noResendFirstRequest(t, send, 2)
+				second := f.noResendStart(t, noResendLong)
+				checked := "Read <the> export & checked the \"total\" row."
+				reply := send(t, f, "record", noResendWork(t, second, map[string]any{"changed": noResendText, "checked": checked, "sufficient": false}))
+				if reply["complete"] != true || reply["errors"] != nil {
+					t.Fatalf("the record is saved, whole: %v", reply)
+				}
+				if saved := f.noResendSavedResult(t, reply); saved["changed"] != noResendText || saved["checked"] != checked || saved["sufficient"] != nil {
+					t.Errorf("the rest of the result is saved as sent, and the grade is not: %v", saved)
+				}
+				next, _ := reply["next_action"].(string)
+				for _, word := range []string{"result.sufficient:false was not saved", "nothing records that this work fell short", "sufficient:false and evidence:[refs of the observations that show it]", "remaining:\"what is missing\"", "to withdraw it, send nothing"} {
+					if !strings.Contains(next, word) {
+						t.Errorf("next_action lacks %q: %q", word, next)
+					}
+				}
+				if reason, blocked := f.noResendEnd(t); blocked {
+					t.Errorf("the Stop after that record lets the turn end, so the claim can be withdrawn by sending nothing: %s", reason)
+				}
+				// each way next_action names, sent as it says, is saved
+				var again map[string]any
+				if way == "evidence" {
+					work := noResendWork(t, second, map[string]any{"changed": noResendText, "checked": checked, "evidence": []string{"new1"}, "sufficient": false})
+					work["observations"] = []any{map[string]any{"kind": "test", "title": "Synthetic export run", "content": "The export wrote the total row first."}}
+					again = send(t, f, "record", work)
+				} else {
+					again = send(t, f, "record", noResendWork(t, second, map[string]any{"changed": noResendText, "checked": checked, "remaining": "The total row is not checked."}))
+				}
+				if again["complete"] != true || again["errors"] != nil {
+					t.Fatalf("the record sent as next_action says is saved: %v", again)
+				}
+				saved := f.noResendSavedResult(t, again)
+				if way == "evidence" && (saved["sufficient"] != false || len(asList(saved["evidence"])) != 1) {
+					t.Errorf("the false grade is saved with its evidence: %v", saved)
+				}
+				if way == "remaining" && (saved["remaining"] != "The total row is not checked." || saved["sufficient"] != nil) {
+					t.Errorf("what is missing is saved in remaining: %v", saved)
+				}
+				if item := noResendSavedItem(again, "result", "result"); item["warnings"] != nil {
+					t.Errorf("nothing is left out of the record sent again: %v", item["warnings"])
+				}
+				if next, has := again["next_action"].(string); has && strings.Contains(next, "was not saved") {
+					t.Errorf("the record sent again does not ask for another: %q", next)
+				}
+				if reason, blocked := f.noResendEnd(t); blocked {
+					t.Errorf("the Stop after the record sent again lets the turn end: %s", reason)
+				}
+			})
+		}
+	}
+}
+
+// The sentence of next_action belongs to a record that is whole: one that is retried by its failed refs is not sent again whole, so
+// next_action keeps saying what it always said, and the warnings still say what was left out.
+func TestTheFalseGradeSentenceIsLeftToAWholeRecord(t *testing.T) {
+	for entryName, send := range endingEntries {
+		t.Run(entryName, func(t *testing.T) {
+			f := endingSetup(t, endingFlows[0])
+			f.noResendFirstRequest(t, send, 2)
+			second := f.noResendStart(t, noResendLong)
+			work := noResendWork(t, second, map[string]any{"changed": noResendText, "checked": "Read the export.", "sufficient": false})
+			work["memory"] = []any{map[string]any{"ref": "lesson:ffffffffffffffff:eeeeeeeeeeeeeeee", "result": "unused"}}
+			reply := send(t, f, "record", work)
+			if reply["complete"] != false || reply["errors"] == nil {
+				t.Fatalf("precondition: the record is not whole: %v", reply)
+			}
+			if next, _ := reply["next_action"].(string); strings.Contains(next, "fell short") || !strings.Contains(next, "Retry only the failed or pending refs") {
+				t.Errorf("next_action is the one of a record retried by its failed refs: %q", next)
+			}
+			if warnings := noResendWarnings(noResendSavedItem(reply, "result", "result")); !strings.Contains(warnings, "was not saved") {
+				t.Errorf("the warnings still say what was left out: %q", warnings)
+			}
+		})
 	}
 }
 
@@ -344,10 +432,30 @@ func TestWhatIsNotTheAgentsOwnAssessedLessonIsStillRefused(t *testing.T) {
 			if err := st.SaveMemoryAssessment(scope, store.MemoryAssessment{SourceID: "bbbbbbbbbbbbbbbb", Key: childKey, Result: "helpful", Decision: "Ran it.", Evidence: "It passed.", Agent: "agent-1"}); err != nil {
 				t.Fatal(err)
 			}
+			// the lesson the first request assessed was given a second time in that request, right before a command, and that delivery
+			// is not assessed: the key still has a delivery to assess, so it is not "assessed"
+			twice := first.keys[0]
+			parts := strings.Split(twice, ":")
+			if err := st.SaveMemoryDelivery(store.MemoryDelivery{ID: "dddddddddddddddd", Scope: scope, Request: endingLong, Parent: first.turn, Tool: "Bash make test", Phrase: "make test",
+				Quotes: []store.MemoryQuote{{Key: twice, ID: parts[1], Revision: parts[2], Lesson: "Use tabs, not spaces, to indent the export code.", AppliesTo: "make test", Sources: []string{"0000000000000001"}}}, At: time.Now().UTC()}); err != nil {
+				t.Fatal(err)
+			}
+			// a subagent's start the host sent no id for is delivered under the first turn with no tool and no agent: it is not the
+			// agent's own lesson, assessed or not
+			noID := "lesson:5555555555555555:6666666666666666"
+			if err := st.SaveMemoryDelivery(store.MemoryDelivery{ID: "eeeeeeeeeeeeeeee", Scope: scope, Request: endingLong, Parent: first.turn,
+				Quotes: []store.MemoryQuote{{Key: noID, ID: "5555555555555555", Revision: "6666666666666666", Lesson: "Run go vet.", AppliesTo: "go vet", Sources: []string{"0000000000000001"}}}, At: time.Now().UTC()}); err != nil {
+				t.Fatal(err)
+			}
+			if err := st.SaveMemoryAssessment(scope, store.MemoryAssessment{SourceID: "eeeeeeeeeeeeeeee", Key: noID, Result: "helpful", Decision: "Ran it.", Evidence: "It passed.", InRequest: true}); err != nil {
+				t.Fatal(err)
+			}
 			second := f.noResendSecond(t, first)
 			before := noResendAssessments(t, st, scope)
 			cases := map[string]string{
-				"an earlier request's lesson not assessed yet": first.keys[1],
+				"an earlier request's lesson given twice, one delivery not assessed": twice,
+				"a lesson of a subagent start with no id, assessed":                  noID,
+				"an earlier request's lesson not assessed yet":                       first.keys[1],
 				"an invented key":                   "lesson:ffffffffffffffff:eeeeeeeeeeeeeeee",
 				"a lesson another session assessed": otherKey,
 				"a lesson a subagent assessed":      childKey,
@@ -430,5 +538,44 @@ func TestAGradeWithoutEvidenceIsStillRefusedWhereTheResultIsChecked(t *testing.T
 		if err == nil || !strings.Contains(err.Error(), "result.sufficient needs captured check evidence") {
 			t.Errorf("a result with sufficient %v and no evidence is refused where it is checked: %v", grade, err)
 		}
+	}
+}
+
+// The entry of an assignment checks its record before the work is recorded (work_assignment_record.go), and refuses a grade with no
+// evidence as it always did: only the record of an agent leaves such a grade out. The record is refused whole, and what is saved
+// when it is sent without the grade is the result as sent.
+func TestAnAssignmentRecordStillRefusesAGradeWithoutEvidence(t *testing.T) {
+	for _, grade := range []bool{true, false} {
+		t.Run(fmt.Sprintf("sufficient %v", grade), func(t *testing.T) {
+			b, _ := loopBook(t)
+			a := assignmentInput("graded-job", "case-1", "reviewer", "review")
+			v, err := workCall(t, b, "prepare", map[string]any{"query": "quartz", "assignment": a})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := map[string]any{"changed": noResendText, "checked": "Read the export.", "sufficient": grade}
+			record := map[string]any{"assignment": a, "receipt": v["receipt"], "event": map[string]any{"id": "result", "state": "completed", "summary": "A synthetic review."}, "result": result}
+			if _, err = workCall(t, b, "record", record); err == nil || !strings.Contains(err.Error(), "result.sufficient needs captured check evidence") {
+				t.Fatalf("the assignment's record with a grade and no evidence is refused: %v", err)
+			}
+			delete(result, "sufficient")
+			saved, err := workCall(t, b, "record", record)
+			if err != nil || saved["complete"] != true {
+				t.Fatalf("the same record without the grade is the first that is saved: %v %v", saved, err)
+			}
+			item := noResendSavedItem(saved, "result", "result")
+			id, _ := item["id"].(string)
+			material, err := b.ReadSources([]string{id})
+			if err != nil || id == "" {
+				t.Fatalf("the saved result is read: %v %v", err, saved["saved"])
+			}
+			observations, _ := material["observations"].([]notebook.Observation)
+			if len(observations) != 1 || !strings.Contains(observations[0].Content, "second line") || strings.Contains(observations[0].Content, "sufficient") {
+				t.Errorf("the saved result holds the text as sent and no grade: %v", observations)
+			}
+			if item["warnings"] != nil {
+				t.Errorf("nothing was left out of the record that is saved: %v", item["warnings"])
+			}
+		})
 	}
 }

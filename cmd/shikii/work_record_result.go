@@ -18,8 +18,8 @@ func (b *workRecordBatch) recordResult(qualityEvidence workQualityEvidence, bind
 		if e != nil {
 			item.Error = e.Error()
 		}
-		if b.gradeLeftOut != "" {
-			item.Warnings = append(item.Warnings, b.gradeLeftOut)
+		if b.gradeLeftOut.Warning != "" {
+			item.Warnings = append(item.Warnings, b.gradeLeftOut.Warning)
 		}
 		if w.Result != nil && req.Result.Ref == "" && item.ID == w.Result.Source && w.Result.Signature == workHash(*req.Result) {
 			// The submitted report covers its accepted batch even while its

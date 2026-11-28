@@ -38,6 +38,13 @@ func finishWorkRecordReply(book notebook.Book, w *workState, req workRequest, se
 		}
 		result.NextAction += next
 	}
+	if result.gradeNext != "" && result.Complete {
+		// only a whole record: one that is retried by its failed refs is not sent again whole
+		if result.NextAction != "" {
+			result.NextAction += " "
+		}
+		result.NextAction += result.gradeNext
+	}
 	if result.LessonsToAssess != nil {
 		if result.NextAction != "" {
 			result.NextAction += " "

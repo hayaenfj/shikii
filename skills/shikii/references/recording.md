@@ -135,7 +135,8 @@ and evaluation rules stay outside the candidate's control.
 When an actual check is available, optionally add `sufficient:true` or `false` to
 result and reuse its existing captured evidence. Omission remains unknown; do not
 infer quality from task completion or delivery. A `sufficient` with no `evidence` is left out, not refused: the rest
-of the result is saved, the quality stays unknown, `saved[].warnings` says so and `complete` stays true. A result and reading report in the
+of the result is saved, the quality stays unknown, `saved[].warnings` says so and `complete` stays true. For a `false` the `next_action` also says how to keep it: send
+the result again with `evidence` and `sufficient:false`, or with `remaining`; send nothing to withdraw it. A result and reading report in the
 same batch can share the checked quality/evidence. Conflicting grades are refused.
 The same execution's result and reading evidence are checked together before
 positive procedure support, including ref recovery. Another task's backlog stays
