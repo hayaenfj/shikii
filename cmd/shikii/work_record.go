@@ -85,6 +85,7 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		// the Stop block ("use the same request IDs") is not refused for it
 		req.SessionID, req.TurnID = "", ""
 	}
+	req, gradeLeftOut := leaveOutUnevidencedGrade(req)
 	if err = validateWorkRecording(req); err != nil {
 		return nil, err
 	}
@@ -222,7 +223,7 @@ func recordWork(root, scope string, req workRequest) (reply any, retErr error) {
 		}
 		return sources, nil
 	}
-	batch := &workRecordBatch{root: root, scope: scope, req: req, token: token, book: book, w: w, save: save, commit: commit, add: add, halt: halt, resolve: resolveSources, result: &result}
+	batch := &workRecordBatch{root: root, scope: scope, req: req, token: token, book: book, w: w, save: save, commit: commit, add: add, halt: halt, resolve: resolveSources, result: &result, gradeLeftOut: gradeLeftOut}
 	qualityEvidence := workReadingQualityEvidence(book, w, req.Reading, resolveSources)
 	var resultStopped bool
 	reportSource, resultStopped = batch.recordResult(qualityEvidence, bindingScope, local)

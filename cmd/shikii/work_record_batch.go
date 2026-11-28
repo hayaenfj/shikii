@@ -16,4 +16,7 @@ type workRecordBatch struct {
 	halt        func() bool
 	resolve     func([]string) ([]string, error)
 	result      *workResult
+	// gradeLeftOut is what the reply says about a result.sufficient that came with no evidence and was left out of the result
+	// (leaveOutUnevidencedGrade); empty when none was.
+	gradeLeftOut string
 }

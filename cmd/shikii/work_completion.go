@@ -32,6 +32,23 @@ func validateWorkCompletion(c *workCompletion) error {
 	return validateWorkCoverage(c)
 }
 
+// leaveOutUnevidencedGrade takes result.sufficient out of a new result that cites no evidence, and returns the sentence the reply
+// says about it. validateWorkCompletion still refuses such a grade, which is what a result saved by another path must meet; this
+// one is for the record of an agent, which sent a second record only to leave the grade out (a real Claude Code did, in three of
+// four sessions), after the first had been refused whole. The grade is not saved, so the quality stays unknown exactly as the
+// refusal wanted, and the rest of the result is saved as it was sent. The request is returned as a copy: the caller's result is
+// not changed.
+func leaveOutUnevidencedGrade(req workRequest) (workRequest, string) {
+	c := req.Result
+	if c == nil || c.Ref != "" || c.Sufficient == nil || len(c.Evidence) > 0 {
+		return req, ""
+	}
+	kept := *c
+	kept.Sufficient = nil
+	req.Result = &kept
+	return req, fmt.Sprintf("result.sufficient (%v) was not saved: it needs captured check evidence, so the quality of this result stays unknown. The rest of the result is saved as sent and nothing needs to be sent again. To report an actual check, give sufficient together with evidence:[refs of the observations of that check]; without one, leave it out.", *c.Sufficient)
+}
+
 // evidenceUse is what cites the evidence: what may be cited is the same for all, and the refusal names what each takes.
 type evidenceUse uint8
 

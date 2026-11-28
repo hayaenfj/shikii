@@ -23,7 +23,8 @@ func (b *workRecordBatch) recordReflection(noteSources []string) {
 		}
 		reflection.Reviews = append(reflection.Reviews, reviewRequest{SourceID: binding.Source, TraceID: binding.Trace, Truth: r.Answer, Reason: r.Reason})
 	}
-	var own []turnLesson // the lessons delivered during this request, read once when a memory names one by its key
+	var own []turnLesson        // the lessons delivered during this request, read once when a memory names one by its key
+	var earlier map[string]bool // the keys of lessons the session was given in earlier requests and has assessed, read once when needed
 	for _, m := range req.Memory {
 		if binding, ok := w.Memory[m.Ref]; ok {
 			reflection.Memory = append(reflection.Memory, memoryAssessmentRequest{SourceID: binding.Source, Key: binding.Key, Result: m.Result, Decision: m.Decision, Evidence: m.Evidence, CorrectionResult: m.CorrectionResult})
@@ -49,9 +50,23 @@ func (b *workRecordBatch) recordReflection(noteSources []string) {
 				reflection.Memory = append(reflection.Memory, memoryAssessmentRequest{SourceID: l.delivery, Key: l.key, Result: m.Result, Decision: m.Decision, Evidence: m.Evidence, CorrectionResult: m.CorrectionResult, inRequest: true})
 			}
 		}
-		if !found {
-			add(workItem{Ref: m.Ref, Kind: "memory", Error: notThisRequestsLesson(m.Ref, own, sortedRefs(w.Memory))})
+		if found {
+			continue
 		}
+		if earlier == nil {
+			var err error
+			if earlier, err = earlierAssessedLessons(b.root, b.scope, b.w, b.token); err != nil {
+				add(workItem{Ref: m.Ref, Kind: "memory", Error: err.Error()})
+				continue
+			}
+		}
+		if earlier[m.Ref] {
+			// the record of that request already assessed it, and an assessment is made once: the entry is left out, and the record
+			// stays complete (a refusal here left the result of the record without its ending review, and the agent sent another)
+			add(workItem{Ref: m.Ref, Kind: "memory", Warnings: []string{alreadyAssessedLesson}})
+			continue
+		}
+		add(workItem{Ref: m.Ref, Kind: "memory", Error: notThisRequestsLesson(m.Ref, own, sortedRefs(w.Memory))})
 	}
 	sourceReviews := []string{}
 	for _, ref := range req.Reviewed {
@@ -184,6 +199,64 @@ func turnLessons(root, scope string, w *workState, token workToken) ([]turnLesso
 		}
 	}
 	return out, nil
+}
+
+// alreadyAssessedLesson is what the reply says of a memory entry that names a lesson the session was given in an earlier request and
+// has assessed: the entry is not saved, and nothing is asked of the agent.
+const alreadyAssessedLesson = "not saved: this lesson was delivered to you in an earlier request of this session and is already assessed; an assessment is made once and stays as saved"
+
+// earlierAssessedLessons is the set of keys of the lessons the session's own agent was given in the session's earlier requests, every
+// delivery of which is assessed. The session of a delivery is the one the conversation of its request was recorded for (a delivery
+// carries no session but a subagent's), so a request whose conversation is not recorded for this session counts for none. A key that
+// has any delivery still to assess in an earlier request is not in the set: the prepared ref of that delivery is its way, and it is
+// refused as before. So is a lesson another session or a subagent was given, which is that one's to assess.
+func earlierAssessedLessons(root, scope string, w *workState, token workToken) (map[string]bool, error) {
+	assessed := map[string]bool{}
+	if w.Standalone || token.Turn == "" {
+		return assessed, nil
+	}
+	st := store.Store{Dir: root}
+	var feedback []store.Feedback
+	report, err := st.MemoryReportWithFeedback(scope, func() ([]store.Feedback, error) {
+		var err error
+		feedback, err = st.RecentFeedback(scope)
+		return feedback, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	requests := map[string]bool{} // the earlier requests of this session
+	for _, f := range feedback {
+		if f.Session == token.Session && f.ID != token.Turn {
+			requests[f.ID] = true
+		}
+	}
+	waiting := map[string]bool{}
+	for _, o := range report.All {
+		turn := ""
+		switch {
+		case o.Agent != "": // a subagent's lesson is its own to assess
+			continue
+		case o.Parent == "": // delivered before the request: the delivery carries the turn's id
+			turn = o.SourceID
+		case o.Tool != "": // delivered right before a command or a file: the turn is its parent
+			turn = o.Parent
+		default: // a subagent's whose id the host did not send
+			continue
+		}
+		if !requests[turn] {
+			continue
+		}
+		if o.Assessment == nil {
+			waiting[o.Quote.Key] = true
+		} else {
+			assessed[o.Quote.Key] = true
+		}
+	}
+	for key := range waiting {
+		delete(assessed, key)
+	}
+	return assessed, nil
 }
 
 // notThisRequestsLesson refuses a key that names no lesson delivered to the session's own agent during this request, with the
