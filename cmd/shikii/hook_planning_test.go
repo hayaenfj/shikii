@@ -449,7 +449,8 @@ func TestAuditTranslationPlanningPrefaceMatchesThePage(t *testing.T) {
 	}
 }
 
-// The texts the agent reads keep their instructions (0.11: the notices name the command and the reply's how_to_submit; the shape itself is in how_to_submit).
+// The texts the agent reads keep their instructions (0.11: the notices name the command and the reply's how_to_submit; the shape itself is in how_to_submit,
+// and the details of reflect query's are in a section of review.md that it names).
 func TestNoticesKeepTheirInstructions(t *testing.T) {
 	for _, c := range []struct {
 		name, text string
@@ -463,7 +464,10 @@ func TestNoticesKeepTheirInstructions(t *testing.T) {
 		{"planningShape", planningShape, []string{"the <id> in history:<id>:user", "continues_previous is true, false or left out"}},
 		{"habitsNotice", habitsNotice, []string{"handoff_write in shikii_wiki", "shikii handoff write <path>"}},
 		{"reflection notice", reflectAsk("'shikii' reflect", nil, ""), []string{"reflect query", "how_to_submit", "this request comes first"}},
-		{"reflection how_to_submit", reflectHowToSubmit, []string{"the latest page_id", "Read the sources and existing pages", "the skill's references/wiki.md"}},
+		// the outline in the reply names the field and the section; the details it used to hold are in that section of review.md (a backtick in
+		// a code span does not make a different word, so the section is read without them)
+		{"reflection how_to_submit", reflectHowToSubmit, []string{"the latest page_id", "references/review.md, not the whole file"}},
+		{"section of review.md that the reflection how_to_submit names", strings.ReplaceAll(submitShapeSection(t), "`", ""), []string{"the latest page_id", "Read the sources and existing pages", "the skill's references/wiki.md"}},
 	} {
 		for _, w := range c.want {
 			if !strings.Contains(c.text, w) {

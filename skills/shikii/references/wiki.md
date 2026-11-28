@@ -59,7 +59,7 @@ The same draft fields, and the same refusal of a body that drops half or more of
 
 ## Place a new lesson before saving it
 
-The reply of `reflect query` (and of `shikii_reflect`'s query) carries `how_to_submit`, the exact shape of submit; the hook text asking for the reflection names only the command and the conversations (0.11).
+The reply of `reflect query` (and of `shikii_reflect`'s query) carries `how_to_submit`, an outline of the shape of submit; all of it, with the details and exceptions, is in `## Submit shape (how_to_submit)` of [review.md](review.md#submit-shape-how_to_submit). The hook text asking for the reflection names only the command and the conversations (0.11).
 
 `applies_to` names the command or file the lesson is about (`make test`, `cmd/shikii/version.go`, `git commit`): the delivery right before a tool call matches the title, lesson and `applies_to` first, and a name written in a code span of the body (`` `make test` ``, a fenced block) counts too, ranked after them (0.12). Plain body text never counts, so a name only in prose never reaches the agent at that moment (0.11; measured: a lesson about the English check existed and was missed three times in one day).
 

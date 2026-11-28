@@ -306,6 +306,7 @@ func TestReflectInputUpToOneMiB(t *testing.T) {
 // kept drifting apart: audits F2 and F4). It names every field and condition: the wiki's id and replaces, results tied to a check result,
 // maintenance's page_id and revision.
 func TestReflectHowToSubmitNamesEveryFieldAndCondition(t *testing.T) {
+	section := strings.ReplaceAll(submitShapeSection(t), "`", "") // the outline in the reply and the section of review.md that it names
 	for name, re := range map[string]*regexp.Regexp{
 		"wiki id":                regexp.MustCompile(`\bid\b`),
 		"wiki replaces":          regexp.MustCompile(`\breplaces\b`),
@@ -313,9 +314,15 @@ func TestReflectHowToSubmitNamesEveryFieldAndCondition(t *testing.T) {
 		"maintenance page_id":    regexp.MustCompile(`page_id`),
 		"maintenance revision":   regexp.MustCompile(`revision`),
 	} {
+		if !re.MatchString(section) {
+			t.Errorf("the section of review.md that how_to_submit names lacks %s", name)
+		}
 		if !re.MatchString(reflectHowToSubmit) {
 			t.Errorf("how_to_submit lacks %s", name)
 		}
+	}
+	if !strings.Contains(section, "choose id and replaces from its candidates") {
+		t.Errorf("the section does not say what id and replaces are chosen from")
 	}
 }
 
@@ -391,9 +398,15 @@ func TestNoticesAndHowToSubmitKeepTheInstructions(t *testing.T) {
 	if !strings.Contains(planningHowToSubmit, "false") {
 		t.Errorf("DF-4: how_to_submit says continues_previous can be false: %q", planningHowToSubmit)
 	}
-	for _, w := range []string{"shikii guard add", "complete:true", "observations", "memories[].source_id"} {
+	section := strings.ReplaceAll(submitShapeSection(t), "`", "") // the details of the outline are in the section of review.md that it names
+	for _, w := range []string{"complete:true", "memories[].source_id"} {
 		if !strings.Contains(reflectHowToSubmit, w) {
 			t.Errorf("DF-5/DF-6: how_to_submit of reflect query says %q: %q", w, reflectHowToSubmit)
+		}
+	}
+	for _, w := range []string{"shikii guard add", "complete:true", "observations", "memories[].source_id"} {
+		if !strings.Contains(section, w) {
+			t.Errorf("DF-5/DF-6: the section of review.md that how_to_submit names says %q: %q", w, section)
 		}
 	}
 }
@@ -401,8 +414,10 @@ func TestNoticesAndHowToSubmitKeepTheInstructions(t *testing.T) {
 // 0.9.5 check: the reflection notice said "fix any error with complete:false and resend", but submit has no complete field and refuses it
 // ("json: unknown field \"complete\""), so an agent that followed the notice was refused. The notice says to fix the error and resend.
 func TestReflectNoticeDoesNotAskForACompleteField(t *testing.T) {
-	if n := reflectHowToSubmit; strings.Contains(n, "complete:false") || !strings.Contains(n, "fix it and resend") {
-		t.Fatalf("the notice must not ask to send complete:false (submit refuses that field): %s", n)
+	for name, n := range map[string]string{"how_to_submit": reflectHowToSubmit, "the section of review.md that it names": submitShapeSection(t)} {
+		if strings.Contains(n, "complete:false") || !strings.Contains(n, "fix it and resend") {
+			t.Fatalf("%s must not ask to send complete:false (submit refuses that field): %s", name, n)
+		}
 	}
 }
 

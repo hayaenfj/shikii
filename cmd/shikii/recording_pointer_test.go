@@ -80,9 +80,9 @@ func TestStringsThatNameALongReferencePointToOneSection(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, name := range []string{"recording.md", "wiki.md", "planning.md"} {
+	for _, name := range []string{"recording.md", "wiki.md", "planning.md", "review.md"} {
 		if found[name] == 0 {
-			t.Errorf("no string in shikii's code names %s; how_to_record and the two how_to_submit used to, so the walk is looking in the wrong place", name)
+			t.Errorf("no string in shikii's code names %s; how_to_record and the two how_to_submit used to (reflect query's names review.md now), so the walk is looking in the wrong place", name)
 		}
 	}
 }

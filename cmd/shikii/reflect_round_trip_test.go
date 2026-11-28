@@ -30,6 +30,7 @@ func pendingConversations(t *testing.T, st store.Store, scope string, n int) []s
 }
 
 func TestReflectQueryListsEveryPendingConversationWithTheRawTextOfTheOldestTwo(t *testing.T) {
+	section := submitShapeSection(t) // read before the fixture moves the working directory
 	st, scope, h, _, _ := memoryEffectFixture(t)
 	pendingConversations(t, st, scope, 3)
 	q := reflectCall(t, h, map[string]any{"operation": "query"})
@@ -54,8 +55,13 @@ func TestReflectQueryListsEveryPendingConversationWithTheRawTextOfTheOldestTwo(t
 		}
 	}
 	how, _ := q["how_to_submit"].(string)
-	if !strings.Contains(how, "memories") || !strings.Contains(how, "head") {
-		t.Fatalf("how_to_submit says where the deliveries to assess are and what a head is:\n%s", how)
+	// the outline says where the deliveries to assess are (every entry of memories[]); what a head is, and how the oldest two differ from
+	// the rest, is in the section of review.md that the outline names
+	if !strings.Contains(how, "memories") {
+		t.Fatalf("how_to_submit says where the deliveries to assess are:\n%s", how)
+	}
+	if !strings.Contains(section, "head: true") || !strings.Contains(section, "oldest two") {
+		t.Fatalf("the section that how_to_submit names says what a head is and that the oldest two come with their raw text:\n%s", section)
 	}
 }
 

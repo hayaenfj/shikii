@@ -421,6 +421,7 @@ func TestTextsAboutReflectQuerySayWhereTheRestGoes(t *testing.T) {
 		{"the help of shikii reflect", help, next},
 		{"the description of the MCP tool shikii_reflect", tool, next},
 		{"how_to_submit of reflect query", reflectHowToSubmit, next},
+		{"the section of review.md that how_to_submit names", lineWith(t, "../../skills/shikii/references/review.md", "The pending conversations are listed oldest first"), next},
 		{"skills/shikii/references/wiki.md", lineWith(t, "../../skills/shikii/references/wiki.md", "`reflect query` lists"), next},
 		{"skills/shikii/references/review.md", review, next},
 		{"docs/guide.md", lineWith(t, "../../docs/guide.md", "| `POST /v1/reflect` |"), next},

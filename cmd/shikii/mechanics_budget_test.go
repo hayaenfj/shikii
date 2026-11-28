@@ -42,10 +42,20 @@ func TestEveryRequestTextIsShortAndTheReplyCarriesTheShape(t *testing.T) {
 			t.Errorf("the reflection notice lacks %q: %q", w, ask)
 		}
 	}
-	for _, w := range []string{"reviews:[", "wiki:[", "memory:[", "maintenance", "correction:{", "shikii guard add", "the latest page_id", "Read the sources and existing pages",
-		"memories[].source_id", "check result", "observations", "complete:true", "fix it and resend", "the skill's references/wiki.md", "operation:place", "applies_to names the command or file"} {
+	// the outline in the reply keeps the shapes and what a wrong save breaks without an error; the rest is in the section of review.md
+	// that the outline names (the section is read without the backticks of its code spans)
+	for _, w := range []string{"reviews:[", "wiki:[", "memory:[", "maintenance", "correction:{", "the latest page_id",
+		"memories[].source_id", "check result", "complete:true", "fix it and resend", "operation:place", "applies_to names the command or file",
+		"references/review.md, not the whole file"} {
 		if !strings.Contains(reflectHowToSubmit, w) {
 			t.Errorf("how_to_submit of reflect query lacks %q", w)
+		}
+	}
+	section := strings.ReplaceAll(submitShapeSection(t), "`", "")
+	for _, w := range []string{"reviews:[", "wiki:[", "memory:[", "maintenance", "correction:{", "shikii guard add", "the latest page_id", "Read the sources and existing pages",
+		"memories[].source_id", "check result", "observations", "complete:true", "fix it and resend", "the skill's references/wiki.md", "operation:place", "applies_to names the command or file"} {
+		if !strings.Contains(section, w) {
+			t.Errorf("the section of review.md that how_to_submit names lacks %q", w)
 		}
 	}
 	if len(memoryPrefix) > 220 {

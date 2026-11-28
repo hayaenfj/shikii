@@ -35,6 +35,32 @@ submit does not limit the number of conversations and items (provisional scores,
 
 `complete: true` in the reply means every item saved; it does not mean the conversations are done. While `left` lists a conversation, submit what it names before finishing. `left_error` means shikii could not work out what is left; run `query` and do what it still lists. If `false`, check each `error` in `reviews`, `wiki` and `memory`, fix the failed ones and send them again. This is not one transaction for the whole; the ones that succeeded are kept. Sending the same content again does not duplicate provisional scores or lesson versions, and does not turn them into human truths or calibration.
 
+## Submit shape (how_to_submit)
+
+The reply of `reflect query` (and of `shikii_reflect`'s query) carries `how_to_submit`, an outline of what `submit` takes: the shapes of the main fields and the conditions that a wrong save breaks without an error to say so. This section holds all of it, in full, with the details and exceptions: it says what the outline says, and more. Read this section, not the whole file.
+
+- `reviews:[{source_id,trace_id,truth,reason}]` with your own truth `yes/no/unknown`.
+- `wiki:[{sources,title,lesson,body,applies_to,related,kind,scene}]`:
+  - `applies_to` names the command or file the lesson is about, such as `make test` or `version.go`, so it reaches the agent right before that command or file.
+  - Send only sources when there is no lesson.
+  - For a new lesson run `operation:place` first and choose `id` and `replaces` from its candidates and suspected contradictions.
+  - An `id` replaces the whole body: to add, change or shorten, use `shikii wiki patch` first. A patch needs the article's id and current revision, read with `wiki query lesson:<id>` first, and `edits:[{field:"body",before,after}]`; to add, `before` is a unique ending of the body and `after` is that ending plus your new text. Only when that does not fit, send the existing body again with your additions copied exactly. A body that drops half or more of the old one, or of the revision the saves began from, is refused.
+  - Keep the short lesson and the detailed body apart.
+  - Details of placing a new lesson: read `## Place a new lesson before saving it` in the skill's references/wiki.md, not the whole file.
+- `memory:[{source_id,key,result,decision,evidence,correction_result}]`: one item per entry of every source's `memories[]`.
+  - `source_id` as this reply's `memories[].source_id`: a lesson delivered before a tool call has its own, and one delivered to a subagent is not listed: that subagent assesses it.
+  - The pending conversations are listed oldest first, the oldest two with their raw text and the next as `head: true` with the text cut, read with `wiki query <id>` when a lesson needs it. `more_pending` counts the ones that did not fit, and the next query lists them.
+  - `result` is one of `helpful/unused/harmful/unknown`, each tied to a check result (delivery, success, a greeting or silence is no effect; else unknown; observations are sources holding check results).
+  - For a delivered correction, `correction_result` is one of `followed/repeated/not_applicable/unknown`. Another lesson takes only `followed`, with `unknown` when the work went the lesson's way but its effect is not shown.
+- `maintenance`: for at most 2 pages, review the body, related pages, sources and any feedback (saved delivery decisions and evidence), then send the latest `page_id`, `revision`, `key` and `reason`. Unused does not mean incorrect: repair applicability or content only when supported; no-change reviews count. Never change a revision just to restore delivery.
+- Read the sources and existing pages before merging. Update changed knowledge in the matching article. When there is no new knowledge, submit sources only. Keep decisions, observations and proposals distinct, with conditions and exceptions.
+- Before saving new or revised wiki claims, follow the skill's references/source-review.md.
+- A rule, test or procedure (command or script) you made or changed goes to the wiki even without a correction (a howto or rule page, or the closest page).
+- For an explicit correction attach `correction:{source_id,quote,action}` (the person's raw words, the next action); if it can be a fixed check (paired files / words not to use / words a commit body must contain), add a disabled draft with `shikii guard add` and ask the person to enable it. Quotes are never permission, truths or calibration.
+- On an error, fix it and resend. `complete:true` only means every item sent was saved: while `left` lists a conversation, submit what it names.
+- Manual searches: `discoveries:[{lookup_id,page_id,revision,context,decision,evidence,case_id?}]` records only evidenced use of a query result, never just reading; optional `case_id` links a complete diagnostic for that work and exact revision, reopening missed-delivery maintenance. See [manual discoveries](wiki.md#manual-discoveries-reasoning-and-changing-premises).
+- Wiki rationale keeps source-backed choices, rejected alternatives and reasons; `watch` lists at most four relative project files whose changes require rechecking.
+
 ## Did a delivered memory help the decision
 
 `memories` are the saved quotes and versions the hook actually returned for that request. Do not re-explain the decision of that time with lessons updated later. A quote whose key is `decision:<trace_id>` is the person's own earlier answer to a hook question: `request` is that earlier request and `said` what the person answered, in the page's words. Assess it like a lesson: `helpful` when it changed what you did for this request (for example you asked first because the person had wanted that), `unused` when it did not apply. Your assessment decides whether the person's answer is quoted again: at least two `unused` or `harmful` and no `helpful` reject that answer (it is no longer quoted and leaves the page's "Answered" list; the page lists it as judged not useful), and ten `unused` or `harmful` with no `helpful` across a project stop the quotes of past answers before requests (no quote, no new assessment). Only the person can undo either on the page; after an undo only later assessments count. So assess from what you did, not by habit. For each memory, add up to 4 `memory` items to the usual reflection's `submit`.

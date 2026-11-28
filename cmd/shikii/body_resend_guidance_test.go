@@ -400,16 +400,18 @@ func TestResendBeforePatchFindsABodySentBeforeThePatch(t *testing.T) {
 // be one that the body really has). how_to_submit says so in the place where it names the patch, before the unique ending it asks for, and
 // not only in the branch for a patch that does not fit.
 func TestHowToSubmitSaysWhatAPatchNeedsBeforeTheUniqueEnding(t *testing.T) {
-	text := reflectHowToSubmit
-	patch := strings.Index(text, "shikii wiki patch")
-	revision := strings.Index(text, "current revision")
-	read := strings.Index(text, "wiki query lesson:<id>")
-	ending := strings.Index(text, patchAppend)
-	if patch < 0 || revision < patch || revision > ending || read < patch || read > ending {
-		t.Fatalf("how_to_submit must say, between naming shikii wiki patch and the unique ending, that a patch needs the article's id and current revision and that the article is read first with wiki query lesson:<id> (patch %d, current revision %d, query %d, unique ending %d)", patch, revision, read, ending)
-	}
-	if !strings.Contains(text[patch:ending], "id and current revision") {
-		t.Fatalf("how_to_submit does not name both the id and the current revision as what a patch needs: %q", text[patch:ending])
+	// the outline in the reply, and the line of the section of review.md that it names (the outline's details are there)
+	for name, text := range map[string]string{"how_to_submit": reflectHowToSubmit, "the section of review.md that how_to_submit names": lineWith(t, "../../skills/shikii/references/review.md", "An `id` replaces the whole body")} {
+		patch := strings.Index(text, "shikii wiki patch")
+		revision := strings.Index(text, "current revision")
+		read := strings.Index(text, "wiki query lesson:<id>")
+		ending := strings.Index(text, patchAppend)
+		if patch < 0 || revision < patch || revision > ending || read < patch || read > ending {
+			t.Fatalf("%s must say, between naming shikii wiki patch and the unique ending, that a patch needs the article's id and current revision and that the article is read first with wiki query lesson:<id> (patch %d, current revision %d, query %d, unique ending %d)", name, patch, revision, read, ending)
+		}
+		if !strings.Contains(text[patch:ending], "id and current revision") {
+			t.Fatalf("%s does not name both the id and the current revision as what a patch needs: %q", name, text[patch:ending])
+		}
 	}
 }
 
@@ -419,7 +421,7 @@ func TestHowToSubmitSaysWhatAPatchNeedsBeforeTheUniqueEnding(t *testing.T) {
 // the patch, before the unique ending they ask for.
 func TestHowToSubmitShowsTheShapeOfAPatchEdit(t *testing.T) {
 	const shape = `edits:[{field:"body",before,after}]`
-	for name, text := range map[string]string{"how_to_submit": reflectHowToSubmit, "the note of place": placeNote} {
+	for name, text := range map[string]string{"how_to_submit": reflectHowToSubmit, "the section of review.md that how_to_submit names": lineWith(t, "../../skills/shikii/references/review.md", "An `id` replaces the whole body"), "the note of place": placeNote} {
 		patch, at, ending := strings.Index(text, "shikii wiki patch"), strings.Index(text, shape), strings.Index(text, patchAppend)
 		if patch < 0 || at < patch || at > ending {
 			t.Errorf("%s must show %s between naming shikii wiki patch and the unique ending (patch %d, shape %d, unique ending %d)", name, shape, patch, at, ending)
