@@ -111,6 +111,11 @@ const (
 	napTimeLayout    = time.RFC3339 // the times of .shikii/nap
 )
 
+// napCountLimit is how long the notice may spend counting the work results of the project's sources. The brief of the rules goes out in
+// the same hook output, which the agent drops whole when its time for the hook passes; a count that cannot finish costs the notice, not
+// the rules. A variable so that a test can make it a moment already past.
+var napCountLimit = 3 * time.Second
+
 func napPath(root string) string { return filepath.Join(root, napStateName) }
 
 // napMark is what .shikii/nap holds. Three lines, each ending in a newline: the time of the last notice, the time of the notice before it
@@ -289,7 +294,8 @@ func rewriteNapFileLimit(path, expected, state string, limit int64) (bool, error
 
 // napNotice is the paragraph that tells the agent a nap is due, or "" when it is not (or another session was told
 // first). When it returns a paragraph it has written .shikii/nap and brought the memory upgrade up to date with what changed: a completed one
-// is reopened, and the new articles join one that is not complete.
+// is reopened, and the new articles join one that is not complete. When the work results cannot be counted within napCountLimit it returns
+// an error and has written nothing: the next session start counts again, and the caller's brief is not held back.
 func napNotice(root, scope string, now time.Time) (string, error) {
 	raw := readNapState(root)
 	m := parseNapMark(raw)
@@ -313,7 +319,11 @@ func napNotice(root, scope string, now time.Time) (string, error) {
 		from = m.before
 	}
 	book := notebook.Book{Root: root, Scope: scope}
-	n, err := book.CountWorkResultsSince(from)
+	n, err := book.CountWorkResultsUntil(from, time.Now().Add(napCountLimit))
+	if errors.Is(err, notebook.ErrWorkCountTooLong) {
+		// nothing was written, so the notice is tried again at the next session start; the brief of the same hook does not wait for it
+		return "", fmt.Errorf("the notice is left for the next session start, the sources were not counted within %s: %w", napCountLimit, err)
+	}
 	if err != nil || (!m.pending && n < napMinResults) {
 		return "", err
 	}

@@ -31,9 +31,13 @@ import (
 // hookEnv calls it; a test that does not use hookEnv calls it first. A test whose subject is the limit sets its own after this.
 func patientGit(t *testing.T) {
 	t.Helper()
-	oldGit := hookGitTimeout
+	oldGit, oldRecord, oldCount := hookGitTimeout, sessionRecordLimit, napCountLimit
 	hookGitTimeout = time.Minute
-	t.Cleanup(func() { hookGitTimeout = oldGit })
+	// The two limits of the session start's own reading (the work records' folders, the count of work results) are as patient: a test
+	// that reads a brief or a notice from a few files must not take a loaded machine for a project with too many. A test whose subject is
+	// one of them sets it after this.
+	sessionRecordLimit, napCountLimit = time.Minute, time.Minute
+	t.Cleanup(func() { hookGitTimeout, sessionRecordLimit, napCountLimit = oldGit, oldRecord, oldCount })
 }
 
 // patientProbe is patientGit for the probe of the local model and of the project's page (hookProbeTimeout, 300 ms in a real hook): a test

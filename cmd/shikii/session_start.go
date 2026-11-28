@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -100,27 +99,38 @@ func sessionBrief(root, scope string) (string, error) {
 	return head + strings.Join(parts, "\n"), nil
 }
 
+// sessionRecordLimit is how long the brief may spend reading the folders of .shikii/handoff/ to find the newest work record. A project
+// whose handoff/ holds the output of tools (970,000 files in 45,000 folders, 14 GB) took 15 to 21 seconds to read in turn, and the
+// agent stops the hook when its 15 passes: no brief came at all. The folders are read nearest the top first, 8 at once, and past the limit
+// the brief goes out with the newest record among those read (none when no folder was), with the rules, and hook.log says so: the
+// record helps to resume, the rules are what must arrive. Reading all of them took 1 to 6 seconds there, on a machine that was busy and on
+// one that was not; 3 is the longest the brief waits for a help, and with napCountLimit (3 too) the two leave 9 of the hook's 15 seconds for
+// the rest. A variable so that a test can make it a moment already past.
+var sessionRecordLimit = 3 * time.Second
+
+// isWorkRecordName is whether a file of handoff/ can be the work record to resume from, by its path alone: a record a person writes to
+// read later, in markdown or plain text. Data files (.json, .csv, .log) are text too but not a record to resume from (audit B of 0.12: a
+// measurement dump newer than the plan became "the work record").
+func isWorkRecordName(p string) bool {
+	ext := strings.ToLower(filepath.Ext(p))
+	return handoff.KindOf(p) == "text" && (ext == ".md" || ext == ".txt" || ext == "")
+}
+
 // newestWorkRecordSection returns the path of the newest text file under handoff/ and its last section (from the last "## " or "### "
-// heading; the whole file when it has none), whole: the caller cuts it to the room left.
+// heading; the whole file when it has none), whole: the caller cuts it to the room left. The folders are read, but the information of a
+// file is asked for only when isWorkRecordName accepts it, so the files of other kinds that a tool wrote in thousands cost no more than
+// the reading of their folders.
 func newestWorkRecordSection(root string) (string, string) {
 	book := handoff.Book{Store: root}
-	entries, err := book.List()
+	texts, complete, err := book.Newest(sessionBriefRecords, isWorkRecordName, time.Now().Add(sessionRecordLimit))
 	if err != nil {
+		hookLog("session start: the brief goes without a work record: " + err.Error())
 		return "", ""
 	}
-	var texts []handoff.Entry
-	for _, e := range entries {
-		// a record a person writes to read later: markdown or plain text. Data files (.json, .csv, .log) are text too but not a record
-		// to resume from (audit B of 0.12: a measurement dump newer than the plan became "the work record")
-		if ext := strings.ToLower(filepath.Ext(e.Path)); e.Kind == "text" && (ext == ".md" || ext == ".txt" || ext == "") {
-			texts = append(texts, e)
-		}
+	if !complete {
+		hookLog("session start: the folders of .shikii/handoff/ were not all read within " + sessionRecordLimit.String() + ", the work record in the brief is the newest of those read first")
 	}
-	sort.SliceStable(texts, func(i, j int) bool { return texts[i].Modified.After(texts[j].Modified) })
-	for i, e := range texts {
-		if i == sessionBriefRecords {
-			break
-		}
+	for _, e := range texts {
 		f, err := book.Read(e.Path)
 		if err != nil || strings.TrimSpace(f.Content) == "" {
 			continue

@@ -2,6 +2,7 @@ package notebook
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,17 @@ import (
 // later than since; the title and observed_at of what is read then decide. A file that cannot be read is not counted: this is a
 // count for a notice, not a check of the sources.
 func (b Book) CountWorkResultsSince(since time.Time) (int, error) {
+	return b.CountWorkResultsUntil(since, time.Time{})
+}
+
+// ErrWorkCountTooLong is what CountWorkResultsUntil returns when the deadline passed before every source was looked at: a count of part of
+// them is no count, so none is given.
+var ErrWorkCountTooLong = errors.New("the sources are too many to count within the time given")
+
+// CountWorkResultsUntil is CountWorkResultsSince that gives up at deadline (a zero time is none): it returns ErrWorkCountTooLong, and
+// no count, when the deadline has passed before the last source was looked at. A hook counts with it so that a project with very many
+// sources costs the agent the notice that is counted for, never the rules the same hook brings.
+func (b Book) CountWorkResultsUntil(since, deadline time.Time) (int, error) {
 	dir, err := b.directory(false, "sources")
 	if os.IsNotExist(err) {
 		return 0, nil
@@ -26,7 +38,10 @@ func (b Book) CountWorkResultsSince(since time.Time) (int, error) {
 		return 0, err
 	}
 	n := 0
-	for _, e := range entries {
+	for i, e := range entries {
+		if !deadline.IsZero() && i%64 == 0 && time.Now().After(deadline) {
+			return 0, ErrWorkCountTooLong
+		}
 		id, ok := strings.CutSuffix(e.Name(), ".json")
 		if !ok || !idPattern.MatchString(id) {
 			continue

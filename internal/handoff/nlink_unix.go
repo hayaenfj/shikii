@@ -17,3 +17,6 @@ func linkCount(info fs.FileInfo) uint64 {
 	}
 	return 1
 }
+
+// openDirectory is the flag that refuses to open anything that is not a folder.
+const openDirectory = syscall.O_DIRECTORY

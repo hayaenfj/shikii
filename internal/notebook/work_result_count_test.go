@@ -172,3 +172,25 @@ func TestRefreshMemoryUpgradeMakesNoCheckpointAndOnlyAddsNewArticlesToAnUnfinish
 		t.Fatalf("an upgrade that is not complete gains the new article as a target and nothing else: %+v", c)
 	}
 }
+
+// A count that is not finished by its deadline gives no count (a count of part of the sources would read as the whole one): the notice
+// at a session start leaves itself for the next one. With no deadline, or one not reached, the count is the same as CountWorkResultsSince.
+func TestCountWorkResultsUntilGivesNoCountPastItsDeadline(t *testing.T) {
+	b := Book{Root: t.TempDir(), Scope: "/project"}
+	now := time.Now()
+	for i := 1; i <= 3; i++ {
+		saveResult(t, b, WorkResult(), i, now.Add(-time.Hour))
+	}
+	if n, err := b.CountWorkResultsUntil(time.Time{}, now.Add(-time.Second)); err != ErrWorkCountTooLong || n != 0 {
+		t.Fatalf("a deadline already past: no count, and the error that says so: %d %v", n, err)
+	}
+	for _, deadline := range []time.Time{{}, now.Add(time.Hour)} {
+		if n, err := b.CountWorkResultsUntil(time.Time{}, deadline); err != nil || n != 3 {
+			t.Fatalf("with time to spare the count is the whole one: %d %v", n, err)
+		}
+	}
+	empty := Book{Root: t.TempDir(), Scope: "/project"}
+	if n, err := empty.CountWorkResultsUntil(time.Time{}, now.Add(-time.Second)); err != nil || n != 0 {
+		t.Fatalf("no sources, nothing left to count: %d %v", n, err)
+	}
+}

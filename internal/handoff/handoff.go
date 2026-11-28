@@ -20,7 +20,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -110,55 +109,6 @@ func (b Book) open() (*os.Root, error) {
 		return nil, fs.ErrNotExist
 	}
 	return r, err
-}
-
-// List returns every file in the place, newest update first (no limit on the count). Empty if the place does not exist.
-func (b Book) List() ([]Entry, error) {
-	out := []Entry{}
-	r, err := b.open()
-	if errors.Is(err, fs.ErrNotExist) {
-		return out, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
-	err = fs.WalkDir(r.FS(), ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if p == "." {
-			return nil
-		}
-		if strings.HasPrefix(d.Name(), ".") {
-			if d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if d.Type()&fs.ModeSymlink != 0 || !d.Type().IsRegular() && !d.IsDir() {
-			return nil // links and special files are not listed (not followed)
-		}
-		if d.IsDir() {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		out = append(out, Entry{Path: p, Size: info.Size(), Modified: info.ModTime().UTC(), Kind: KindOf(p)})
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if !out[i].Modified.Equal(out[j].Modified) {
-			return out[i].Modified.After(out[j].Modified)
-		}
-		return out[i].Path < out[j].Path
-	})
-	return out, nil
 }
 
 // parentsAreFolders reports whether none of the intermediate folders is a link (links pointing inside the place are not followed either).
