@@ -52,6 +52,7 @@ cmd/shikii/work.go#8bcea8d530e24443	not-resend	a JSON key of the prepared knowle
 cmd/shikii/work.go#22c9e03453182115	not-resend	lists the note fields (body among them); for a read article it says to use target and exact edits, not a resent body	Optional reading:{check,sufficient,evidence:[captured refs]} reports che
 cmd/shikii/work_budget.go#8bcea8d530e24443	not-resend	a JSON key of the prepared knowledge reply (a flag or the excerpts), no instruction	body_included
 cmd/shikii/work_budget.go#399a8f0be7f17a1d	not-resend	says what a reply without an omitted body means; reading	Read exact article/source queries only as needed. Use the original host 
+cmd/shikii/work_budget_tail.go#8bcea8d530e24443	not-resend	a JSON key of the prepared knowledge reply (a flag or the excerpts), no instruction	body_included
 cmd/shikii/work_knowledge.go#8bcea8d530e24443	not-resend	a JSON key of the prepared knowledge reply (a flag or the excerpts), no instruction	body_included
 cmd/shikii/work_knowledge.go#a9cc27745b1c54a2	not-resend	a JSON key of the prepared knowledge reply (a flag or the excerpts), no instruction	body_excerpts
 cmd/shikii/work_knowledge.go#cd74adee2475f87c	not-resend	says excerpts are not a complete body and when to read the query; reading	Exact passages of this revision, not a complete body. Check conditions, 

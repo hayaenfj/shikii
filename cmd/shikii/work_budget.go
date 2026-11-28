@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"slices"
 	"strconv"
 
 	"github.com/hayaenfj/shikii/internal/notebook"
@@ -180,35 +179,7 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 		}
 	}
 	if size(reply) > budget {
-		// A lesson first keeps its title beside its references (a bare id tells an agent nothing about whether to read it), and
-		// loses the title too only when that still does not fit.
-		// One lesson at a time, the last of the ranking first: before, every lesson lost its text at once, and a reply could
-		// use half of its bound with all of them down to their titles (audit of 0.31.0). output names what went.
-	lighten:
-		for _, keep := range []string{"title", ""} {
-			name := "knowledge[] text and summaries, the last entries first (each query reads its lesson whole)"
-			if keep == "" {
-				name = "knowledge[] titles, the last entries first"
-			}
-			for i := len(entries) - 1; i >= 0; i-- {
-				e := entries[i].(map[string]any)
-				ref := e["ref"].(string)
-				delete(quoted, ref)
-				for key := range e {
-					if key != "ref" && key != "id" && key != "revision" && key != "query" && key != keep {
-						delete(e, key)
-					}
-				}
-				e["body_included"], e["attention_limited"] = false, true
-				e["reading_notice"] = "Original text omitted; read the exact revision query, including its conditions and exceptions."
-				if !slices.Contains(omitted, name) {
-					omitted = append(omitted, name)
-				}
-				if size(reply) <= budget {
-					break lighten
-				}
-			}
-		}
+		omitted = lightenKnowledge(entries, quoted, omitted, func() bool { return size(reply) <= budget })
 	}
 	if size(reply) > budget-1000 {
 		for _, field := range []string{"reasoning", "reading", "attention", "coverage", "earlier_search", "found_alone", "pending", "observations"} {
@@ -222,13 +193,23 @@ func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any
 			omitted = append(omitted, field)
 		}
 	}
-	reply["output"] = workPreparationOutput(responseBudget, omitted)
-	if hinted := workPreparationHint(reply["output"].(map[string]any)); size(reply) > budget {
-		hinted["next_action"] = workPreparationNext // the hint is the first thing a tight bound leaves out
+	// output names what was left out. It is part of the reply, so it is made again each time a name is added.
+	update := func(names []string) bool {
+		omitted = names
+		reply["output"] = workPreparationOutput(responseBudget, omitted)
+		if hinted := workPreparationHint(reply["output"].(map[string]any)); size(reply) > budget {
+			hinted["next_action"] = workPreparationNext // the hint is the first thing a tight bound leaves out
+		}
+		return size(reply) <= budget
 	}
-	if size(reply) > budget {
-		return nil, fmt.Errorf("the task and reference inventory exceed max_bytes (%d); prepare again with a larger max_bytes (up to %d)", responseBudget, workSourceBudget*3)
+	if !update(omitted) {
+		// Where this function refused the preparation, the fields it could not shrink go too (work_budget_tail.go): a refusal made
+		// the hook fall back to a manual prepare. Only what still does not fit then is refused.
+		if !leaveOutLastFields(reply, quoted, omitted, update) {
+			return nil, fmt.Errorf("the task and reference inventory exceed max_bytes (%d); prepare again with a larger max_bytes (up to %d)", responseBudget, workSourceBudget*3)
+		}
 	}
+	entries, _ = reply["knowledge"].([]any) // the entries still in the reply: the last fields may have left some out
 	for ref := range quoted {
 		visible := false
 		for _, raw := range entries {

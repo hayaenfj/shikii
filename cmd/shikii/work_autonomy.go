@@ -327,10 +327,15 @@ func recoverPreparedProcedure(root, scope string, dir *os.Root, name string, w *
 		}
 	}
 	if e != nil {
-		message := e.Error()
-		for workContextSize(message) > 240 {
-			message = cut(message, len(message)/2)
-		}
-		reply["procedure_recovery"] = map[string]any{"status": "pending", "next_action": "The original report is saved. A later prepare retries procedure indexing automatically.", "error": message}
+		reply["procedure_recovery"] = pendingProcedureRecovery(e)
 	}
+}
+
+// pendingProcedureRecovery is what a reply says when the report is saved and indexing it failed: the error, cut to 240 bytes.
+func pendingProcedureRecovery(e error) map[string]any {
+	message := e.Error()
+	for workContextSize(message) > 240 {
+		message = cut(message, len(message)/2)
+	}
+	return map[string]any{"status": "pending", "next_action": "The original report is saved. A later prepare retries procedure indexing automatically.", "error": message}
 }
