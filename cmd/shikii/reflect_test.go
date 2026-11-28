@@ -171,8 +171,10 @@ func TestMemoryDeliversRelevantLessonOncePerRevision(t *testing.T) {
 		return feedbackContext(t, runHook(t, "user-prompt-submit", map[string]any{"session_id": "memory", "cwd": repo, "prompt": text}))
 	}
 	ctx := prompt(request)
-	// the notice names this binary by its path, which is as long as the test's build folder: measured with the name alone
-	if measured := strings.Replace(ctx, noticeCommand(), "'shikii'", 1); !strings.Contains(ctx, draft.Lesson) || !strings.Contains(ctx, id) || strings.Contains(ctx, "まだ英語が残っています") || strings.Contains(ctx, "ingest") || len(measured) > 1800 {
+	// the notice names this binary by its path, which is as long as the test's build folder: measured with the name alone. It also names
+	// the key of the lesson it delivered, in the form the ending record takes it (hook_ending.go): that sentence is left out of the
+	// measure, because TestTheSentencesTheHintsAddStayShort bounds it, and everything else stays within the 1800 bytes it had.
+	if measured := strings.Replace(strings.Replace(ctx, noticeCommand(), "'shikii'", 1), memoryHint(ctx), "", 1); !strings.Contains(ctx, draft.Lesson) || !strings.Contains(ctx, id) || strings.Contains(ctx, "まだ英語が残っています") || strings.Contains(ctx, "ingest") || len(measured) > 1800 {
 		t.Fatalf("delivers only the needed lesson and source, briefly: %s", ctx)
 	}
 	if ctx := prompt(request); strings.Contains(ctx, draft.Lesson) {

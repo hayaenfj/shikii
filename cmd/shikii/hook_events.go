@@ -221,6 +221,8 @@ func runHookEvent(event string) error {
 			out.Context = joinLines(out.Context, internalLineSummary(agent))
 			out.Context = joinLines(out.Context, variantsContext(agent))
 			out.Context = joinLines(out.Context, wordingCheckContext(agent))
+			// the notice written before the quotes were delivered now names them, and the grouping the mutations above recorded (hook_ending.go)
+			addEndingHints(current, working.quoted, &in, &out)
 		}
 	}
 	if event == "stop" && !overtaken { // the one-time notices wait for a Stop that still has its turn

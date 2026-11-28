@@ -143,7 +143,12 @@ const planningHowToSubmit = "Pass the same session_id, turn_id and query, plus a
 // agent whose shell could not run the command never called shikii_wiki, although it was connected, while only the command was named.
 // How to combine notes and reflection and what to check in the reply is in how_to_record of the prepare reply, not here.
 func planningNotice(sessionID, turnID string) string {
-	return fmt.Sprintf("shikii: prepare this task once; do not ask the person. Send the JSON below, with topic words in query added, on standard input to %s work prepare (%s). End with work record the same way, using the receipt and result:{changed,checked?,evidence?:[refs],remaining?}. A rule, test or procedure you make or change goes to the wiki. Do not run the legacy hook plan query: it replaces the receipt.\n", noticeCommand(), noticeMCPForm) + planJSON(sessionID, turnID)
+	return planningNoticeWith(sessionID, turnID, endingHints{})
+}
+
+// planningNoticeWith is planningNotice with what the hook knows of the ending record (hook_ending.go) put in the sentence about it.
+func planningNoticeWith(sessionID, turnID string, h endingHints) string {
+	return fmt.Sprintf("shikii: prepare this task once; do not ask the person. Send the JSON below, with topic words in query added, on standard input to %s work prepare (%s). End with work record the same way, using the receipt and result:{changed,checked?,evidence?:[refs],remaining?}.%s A rule, test or procedure you make or change goes to the wiki. Do not run the legacy hook plan query: it replaces the receipt.\n", noticeCommand(), noticeMCPForm, h.text()) + planJSON(sessionID, turnID)
 }
 
 // reasoningNotice is the notice of a request that needs no planning judgment. It is shorter (the request's own context comes with
@@ -151,7 +156,12 @@ func planningNotice(sessionID, turnID string) string {
 // it named none of them: audit of 0.31.0). The MCP form is worded as in planningNotice, noticeMCPForm: "(MCP: shikii_wiki,
 // operation prepare)" did not say that the ids go inside work, and an agent that put them beside operation was refused once.
 func reasoningNotice(sessionID, turnID string) string {
-	return fmt.Sprintf("shikii: put the JSON below, plus topic words in query, on standard input of %s work prepare (%s); it registers the start. End with work record the same way: its receipt and result.\n", noticeCommand(), noticeMCPForm) + planJSON(sessionID, turnID)
+	return reasoningNoticeWith(sessionID, turnID, endingHints{})
+}
+
+// reasoningNoticeWith is reasoningNotice with what the hook knows of the ending record (hook_ending.go) put in the sentence about it.
+func reasoningNoticeWith(sessionID, turnID string, h endingHints) string {
+	return fmt.Sprintf("shikii: put the JSON below, plus topic words in query, on standard input of %s work prepare (%s); it registers the start. End with work record the same way: its receipt and result.%s\n", noticeCommand(), noticeMCPForm, h.text()) + planJSON(sessionID, turnID)
 }
 
 // noticeMCPForm is how both notices name the MCP call beside the command: the JSON is the value of work, not the arguments.

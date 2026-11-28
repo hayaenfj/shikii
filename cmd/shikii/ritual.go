@@ -334,8 +334,15 @@ func groupingBlockReason(sessionID, turnID string, hookPrepared bool) string {
 // groupingWithWorkReason is that line when the same block also asks for work prepare and work record: the record carries
 // continues_previous, so the block asks for one flow (before, it asked for hook plan submit beside them: audit of 0.31.0).
 func groupingWithWorkReason() string {
-	return `The person's message is short and not a bare acknowledgement, and this turn was not organized, so it is not known whether it continues the previous request: add "agreed":{"unknown":true},"open":{"unknown":true} and "continues_previous":true or false to the work record below (true when it only continues or answers the previous request and asks for nothing new).`
+	return groupingShortWhy + ", and this turn was not organized, so it is not known whether it continues the previous request: add " + groupingFields + " to the work record below " + groupingTrueMeans + "."
 }
+
+// The pieces of that question the Stop's block and the hook's notice share (hook_ending.go), so both ask for the same fields in the same words.
+const (
+	groupingShortWhy  = "The person's message is short and not a bare acknowledgement"
+	groupingFields    = `"agreed":{"unknown":true},"open":{"unknown":true} and "continues_previous":true or false`
+	groupingTrueMeans = "(true when it only continues or answers the previous request and asks for nothing new)"
+)
 
 // workResultShape is the short shape of the ending result, as the notice and how_to_record write it.
 const workResultShape = "result:{changed,checked?,evidence?:[refs],remaining?}"

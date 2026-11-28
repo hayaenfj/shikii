@@ -125,6 +125,9 @@ type hookInput struct {
 	// sessionTurnOnExit changes it (work_handover.go)
 	stateNoted bool
 	workTurn   string // Only the request this prompt hook created may be prepared.
+	// ending is what the notice of this request now says the ending record carries besides its result (hook_ending.go): kept so that the
+	// preparation that replaces the notice finds the text it replaces.
+	ending endingHints
 	// late is a Stop run at the next request. It checks that required work is saved before judging, but emits no recovery feedback
 	// and writes no check receipts: a later human fix is not agent recovery.
 	late bool
@@ -188,6 +191,9 @@ func (o hookOut) json(event string) []byte {
 // The working tree listing at request time is the neighbouring <id>.files (too large for the JSON).
 type hookSession struct {
 	session string // the session a subagent's deliveries are recorded under (not saved: set where a delivery to a subagent is made)
+	// quoted is the keys of the quotes the last delivery made to the session's own agent (not saved: set by deliverQuotes, read by the
+	// hook right after it delivers the quotes of a request, to name them in its notice)
+	quoted []string
 
 	MemoryUpgrade string                        `json:"memory_upgrade,omitempty"`
 	KnowledgeSeen []notebook.CollectiveBaseline `json:"knowledge_seen,omitempty"`

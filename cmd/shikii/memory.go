@@ -255,6 +255,13 @@ func deliverQuotes(root, scope, request string, quotes []memoryQuote, keys []str
 		if err := (store.Store{Dir: root}).SaveMemoryDelivery(store.MemoryDelivery{ID: id, Scope: scope, Request: request, Quotes: clipped, Parent: parent, Agent: agent, Session: session.session, Phrase: recorded}); err != nil {
 			return "", false, err
 		}
+		if parent == "" {
+			// the keys as the delivery saved them (a lesson's cache key has more in it): the keys the work record of this request takes
+			session.quoted = nil
+			for _, q := range clipped {
+				session.quoted = append(session.quoted, q.Key)
+			}
+		}
 	}
 	for _, q := range quotes {
 		if q.Revision != "" {

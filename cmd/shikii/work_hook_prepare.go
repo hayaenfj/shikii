@@ -16,15 +16,12 @@ func prepareHookWork(root string, in *hookInput, out *hookOut) {
 	if err != nil || currentPlanningFrame(s, in.workTurn, s.Scope) != nil || s.Planning.Work != nil {
 		return
 	}
-	prior := planningNotice(in.SessionID, in.workTurn)
-	if s.Planning.ReasoningOnly {
-		prior = reasoningNotice(in.SessionID, in.workTurn)
-	}
+	// the notice as it stands in the context now, with what addEndingHints put in it (hook_ending.go); the same hints go in the new one
+	prior := turnNotice(in.SessionID, in.workTurn, s.Planning.ReasoningOnly, in.ending)
 	if !strings.Contains(out.Context, prior) {
 		return
 	}
-	notice := fmt.Sprintf("shikii: this task is prepared below. Read its context and evidence before working. Recover omitted originals; add topic words in query with work prepare using its receipt when needed. Do not prepare again from scratch or run hook plan query. End by sending the IDs below and result on standard input to %s work record (or as work to the MCP tool shikii_wiki, operation record). If preparation is replaced, use its new receipt.\n", noticeCommand()) + planJSON(in.SessionID, in.workTurn)
-	base := strings.Replace(out.Context, prior, notice, 1)
+	base := strings.Replace(out.Context, prior, hookPreparedNotice(in.SessionID, in.workTurn, in.ending), 1)
 	// The prepared work is written in the reading order of every other reply (receipt first), and the whole context, with the lessons
 	// and notices before it, is bounded by what the agent is shown: what does not fit is left out by limitWorkPreparation, which
 	// names it in output with the way back to it.
@@ -49,6 +46,12 @@ func prepareHookWork(root string, in *hookInput, out *hookOut) {
 		return
 	}
 	*out = render(v)
+}
+
+// hookPreparedNotice is the notice that stands in the context in place of the planning or reasoning notice once the hook has prepared
+// the work, with what the hook knows of the ending record (hook_ending.go) put in the sentence about it.
+func hookPreparedNotice(sessionID, turnID string, h endingHints) string {
+	return fmt.Sprintf("shikii: this task is prepared below. Read its context and evidence before working. Recover omitted originals; add topic words in query with work prepare using its receipt when needed. Do not prepare again from scratch or run hook plan query. End by sending the IDs below and result on standard input to %s work record (or as work to the MCP tool shikii_wiki, operation record).%s If preparation is replaced, use its new receipt.\n", noticeCommand(), h.text()) + planJSON(sessionID, turnID)
 }
 
 // IDs select only the hook's first preparation. Explicit preparation can assign
