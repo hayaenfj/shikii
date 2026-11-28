@@ -116,10 +116,6 @@ func TestMaintenanceFeedbackSeparatesDoorsResultsAndVersions(t *testing.T) {
 		{"helpful elsewhere", []string{"unused", "unused", "helpful"}, []string{"git diff", "git diff", "go test"}, true},
 		{"harmful", []string{"helpful", "harmful"}, []string{"git diff", "git diff"}, true},
 		{"no recorded door", []string{"unused", "unused"}, []string{"", ""}, false},
-		{"three at the request", []string{"unused", "unused", "unused"}, []string{"", "", ""}, true},
-		{"three at the request, helpful there", []string{"unused", "unused", "unused", "helpful"}, []string{"", "", "", ""}, false},
-		{"three at the request, helpful at a door", []string{"unused", "unused", "unused", "helpful"}, []string{"", "", "", "git diff"}, true},
-		{"two at the request and one at a door", []string{"unused", "unused", "unused"}, []string{"", "", "git diff"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			b := Book{Root: t.TempDir(), Scope: "/project"}

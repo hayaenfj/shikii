@@ -10,17 +10,6 @@ import (
 	"github.com/hayaenfj/shikii/internal/store"
 )
 
-// unusedForReview is how many unused assessments, with no helpful one beside them, reopen an article's review. At a named entry point
-// (the command or file the lesson was delivered before) two are enough: the same lesson came before the same command twice and was
-// not used. A lesson delivered with the request has no such entry point (the phrase is empty) and each request is a different one, so
-// it takes three: without this, a lesson that reaches request after request and is never used was never looked at again.
-func unusedForReview(phrase string) int {
-	if phrase == "" {
-		return 3
-	}
-	return 2
-}
-
 // Feedback asks the agent to inspect applicability and sources; it never edits a lesson or supplies a human truth.
 func (b Book) maintenanceTasks(pages []Page) ([]MaintenanceTask, error) {
 	tasks := maintenanceTasks(pages)
@@ -106,7 +95,7 @@ func (b Book) maintenanceTasks(pages []Page) ([]MaintenanceTask, error) {
 		feedback := []store.MemoryAssessment{}
 		for _, a := range all {
 			c := counts[a.Phrase]
-			if (a.Result == "harmful" && a.Key == current) || (a.Result == "unused" && c.Helpful == 0 && c.Unused >= unusedForReview(a.Phrase)) {
+			if (a.Result == "harmful" && a.Key == current) || (a.Result == "unused" && a.Phrase != "" && c.Unused >= 2 && c.Helpful == 0) {
 				feedback = append(feedback, a)
 			}
 		}
