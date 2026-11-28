@@ -72,7 +72,10 @@ func TestWorkPrepareStandaloneKnowledgeShortage(t *testing.T) {
 		if supplied[candidate["id"].(string)] {
 			continue
 		}
-		query := candidate["query"].(map[string]any)
+		if candidate["query"] != nil {
+			t.Fatal("a candidate carries no query of its own: the search says the call once", candidate)
+		}
+		query := fillCandidateQuery(search["candidate_query"].(map[string]any), candidate["id"].(string), candidate["revision"].(string))
 		value, e := improvementCall(t, b, query)
 		if e != nil {
 			t.Fatal(e)

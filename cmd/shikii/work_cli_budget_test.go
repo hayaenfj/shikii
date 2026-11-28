@@ -158,9 +158,19 @@ func TestABoundedReplyKeepsTheTopSearchCandidates(t *testing.T) {
 			t.Errorf("%s: the reply keeps the top candidates in their order and the total: %d shown, total %v of %d", c.name, len(shown), shownTotal, len(all))
 			continue
 		}
-		first := reply["knowledge_context"].(map[string]any)["search"].(map[string]any)["candidates"].([]any)[0].(map[string]any)
-		if first["title"] == nil || first["query"] == nil || first["applies_to"] != nil || !strings.Contains(omitted, "knowledge_context.search.candidates[].applies_to") || !strings.Contains(omitted, "knowledge_context.pending_sources") {
-			t.Errorf("%s: a shown candidate keeps its title and exact query, and output names what was taken off: %v, omitted %s", c.name, first, omitted)
+		search := reply["knowledge_context"].(map[string]any)["search"].(map[string]any)
+		shownCandidates := search["candidates"].([]any)
+		first, last := shownCandidates[0].(map[string]any), shownCandidates[len(shownCandidates)-1].(map[string]any)
+		// a shown candidate keeps its title (its own, or in the lesson it names) and the exact query (said once for all of them), and
+		// output names what was taken off
+		if title, _ := candidateText(reply, first, "title"); title == "" || first["applies_to"] != nil || first["knowledge_ref"] == nil || last["title"] == nil || last["knowledge_ref"] != nil ||
+			search["candidate_query"] == nil || !strings.Contains(omitted, "knowledge_context.search.candidates[].applies_to") || !strings.Contains(omitted, "knowledge_context.pending_sources") {
+			t.Errorf("%s: a shown candidate keeps its title and exact query, and output names what was taken off: %v ... %v, omitted %s", c.name, first, last, omitted)
+		}
+		for _, raw := range shownCandidates {
+			if candidate := raw.(map[string]any); candidate["query"] != nil {
+				t.Errorf("%s: a candidate carries a query of its own: %v", c.name, candidate)
+			}
 		}
 		if strings.Contains(omitted, " knowledge_context ") || strings.HasSuffix(strings.TrimSuffix(omitted, "]"), " knowledge_context") {
 			t.Errorf("%s: the candidates are not left out whole: %s", c.name, omitted)

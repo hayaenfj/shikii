@@ -44,6 +44,8 @@ func workOutputBudget(n int) (int, error) {
 // Omitted bodies keep exact recovery queries. Never register unseen text as a
 // delivered quote or teach a reading preference from a shortened response.
 func limitWorkPreparation(book notebook.Book, w *workState, reply map[string]any, quoted map[string]string, requested int, sizing ...func(any) int) ([]store.KnowledgeReference, error) {
+	// The candidates of the search are written against the knowledge of this reply, from the first measure on (work_candidates.go).
+	bindCandidates(reply)
 	// Reserve the newline added by CLI and HTTP JSON encoders.
 	rawSize := workPreparationSizer(sizing)
 	before := suppliedPreparationBytes(reply)
@@ -251,7 +253,8 @@ func nameFewerCoverageRows(reply map[string]any, budget int, size func(any) int)
 }
 
 // trimKnowledgeCandidates makes the search candidates of a reply fit, the least useful part first: the heads of other pending
-// conversations (pending carries them), each candidate's applies_to (its title, id and exact query stay), then the candidates at
+// conversations (pending carries them), each candidate's applies_to (its title or knowledge_ref, its id and revision, and the search's
+// candidate_query stay), then the candidates at
 // the end of the ranking, with a cursor in knowledge_query that continues right after the last one shown. It returns what it took
 // off, as output names it, and whether the reply now fits. When it does not, the reply is as it was and the caller leaves the list
 // out whole. Candidates whose lessons are in knowledge are never cut (the next page would send those lessons again).
@@ -265,7 +268,7 @@ func trimKnowledgeCandidates(w *workState, reply map[string]any, budget int, siz
 	pending, hadPending := context["pending_sources"]
 	applies := make([]any, len(candidates))
 	for i, raw := range candidates {
-		applies[i] = raw.(map[string]any)["applies_to"]
+		applies[i] = candidateFields(raw)["applies_to"]
 	}
 	query, _ := reply["knowledge_query"].(map[string]any)
 	holder := query // the object that holds the cursor: knowledge_query itself, or its work for a search added to a receipt
@@ -279,7 +282,7 @@ func trimKnowledgeCandidates(w *workState, reply map[string]any, budget int, siz
 		}
 		for i, raw := range candidates {
 			if applies[i] != nil {
-				raw.(map[string]any)["applies_to"] = applies[i]
+				candidateFields(raw)["applies_to"] = applies[i]
 			}
 		}
 		search["candidates"] = candidates
@@ -299,7 +302,7 @@ func trimKnowledgeCandidates(w *workState, reply map[string]any, budget int, siz
 		}
 	}
 	for _, raw := range candidates {
-		delete(raw.(map[string]any), "applies_to")
+		delete(candidateFields(raw), "applies_to")
 	}
 	taken = append(taken, "knowledge_context.search.candidates[].applies_to")
 	if size(reply) <= budget {
@@ -321,7 +324,7 @@ func trimKnowledgeCandidates(w *workState, reply map[string]any, budget int, siz
 	}
 	least := 1
 	for i, raw := range candidates {
-		if id, _ := raw.(map[string]any)["id"].(string); delivered[id] {
+		if id, _ := candidateFields(raw)["id"].(string); delivered[id] {
 			least = i + 1
 		}
 	}

@@ -167,16 +167,11 @@ func preparedKnowledgeContext(view notebook.View, query string) (map[string]any,
 	}
 	delete(context, "lessons")
 	if search, ok := context["search"].(map[string]any); ok {
-		if candidates, ok := search["candidates"].([]any); ok {
-			for _, candidate := range candidates {
-				page := candidate.(map[string]any)
-				id, _ := page["id"].(string)
-				revision, _ := page["revision"].(string)
-				page["query"] = map[string]any{"operation": "query", "query": "lesson:" + id + "@" + revision}
-			}
+		if candidates, ok := search["candidates"].([]any); ok && len(candidates) > 0 {
+			search["candidate_query"] = workCandidateQuery()
 		}
 	}
-	context["next_action"] = "Read the remaining classification guidance and search total, not only the bodies in knowledge. Candidate query reads that exact article revision. Use knowledge_query for another search page when next_cursor is present; a completed candidate list does not mean every body was supplied. Search matches and read receipts are not usefulness or permission. Pending source records here are queue heads; use pending[].source and its completeness instructions before judging."
+	context["next_action"] = "Read the remaining classification guidance and search total, not only the bodies in knowledge. Candidate query reads that exact article revision: send candidate_query from search, with <id> and <revision> replaced by the candidate's id and revision. A candidate with knowledge_ref has its title and applies_to in that knowledge entry. Use knowledge_query for another search page when next_cursor is present; a completed candidate list does not mean every body was supplied. Search matches and read receipts are not usefulness or permission. Pending source records here are queue heads; use pending[].source and its completeness instructions before judging."
 	if workContextSize(context) > workSourceBudget {
 		return nil, errors.New("the supporting knowledge query context exceeds the preparation budget; use shikii wiki query with the same topic words and continue its pages before using the individual recording operations")
 	}

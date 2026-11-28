@@ -69,7 +69,7 @@ cmd/shikii/work_repetition.go#8194c717fcbc8450	not-resend	tells to reuse the ful
 cmd/shikii/work_repetition.go#03f8032a8d1eeba7	not-resend	tells to reuse only the excerpts supplied earlier; missing body text is read by an exact revision query	Reuse only the exact excerpts supplied earlier under this receipt. Missi
 cmd/shikii/work_schema.go#230d8358dc8e8890	not-resend	the JSON key body (a schema property or a field name), no instruction	body
 cmd/shikii/work_sources.go#c8ef1f2ae9e3cab8	not-resend	brief knowledge keeps exact revision queries instead of whole bodies; reading	Brief supporting knowledge retains exact revision queries instead of who
-cmd/shikii/work_sources.go#6e5f9776104ee077	not-resend	tells to read the remaining guidance and not only the bodies in knowledge; reading	Read the remaining classification guidance and search total, not only th
+cmd/shikii/work_sources.go#89e1199530f2b095	not-resend	tells to read the remaining guidance and not only the bodies in knowledge; reading	Read the remaining classification guidance and search total, not only th
 cmd/shikii/work_upgrade.go#8bcea8d530e24443	not-resend	a JSON key of the prepared knowledge reply (a flag or the excerpts), no instruction	body_included
 internal/notebook/assistance.go#b97d25cf05057401	not-resend	a struct tag naming a JSON field, no instruction	json:"body_omitted,omitempty"
 internal/notebook/assistance.go#4da24f0e2802328b	not-resend	a struct tag naming a JSON field, no instruction	json:"body_excerpts,omitempty"
@@ -131,7 +131,7 @@ skills/shikii/references/recording.md#4cdcb730038696dd	not-resend	an ordering of
 skills/shikii/references/recording.md#573c9a064fcb2ba9	not-resend	what a page without its body keeps; reading	without its body keeps its `ref`, `maintenance_ref`, `task`, title and t
 skills/shikii/references/recording.md#c34f6cfd3e2ebc22	not-resend	a page whose body_included is false counts as unread; reading	`query` that reads it whole; its `body_included` is false, it counts as 
 skills/shikii/references/recording.md#6b6aea0c6441899c	not-resend	reading hook knowledge: use body_excerpts first when body_included is false	Choose topic words in the project's vocabulary, not the whole request. R
-skills/shikii/references/recording.md#7d94a4fb9ccf123d	not-resend	bodies already supplied are not repeated; read the exact query for the others	Without a hook, use `{"query":"CSV export filters","request":"Check the 
+skills/shikii/references/recording.md#cdef76a171b53719	not-resend	bodies already supplied are not repeated; read the exact query for the others	Without a hook, use `{"query":"CSV export filters","request":"Check the 
 skills/shikii/references/recording.md#1c311fb46778edfb	not-resend	brief knowledge keeps queries instead of whole bodies; reading	whole bodies; human corrections and pending original material are retain
 skills/shikii/references/recording.md#a2234a7fa88faf90	not-resend	a brief search supplies exact passages instead of whole bodies; reading	brief search supplies exact passages instead of whole bodies. Explicit p
 skills/shikii/references/recording.md#4fd37793dba59090	not-resend	orientation holds interpretations of exact body quotations (the line also says that it leaves out a text the candidate already holds)	Prepared articles carry `orientation`: `summary` and `conditions` are th
