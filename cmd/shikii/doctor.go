@@ -44,6 +44,9 @@ func cmdDoctor(args []string) error {
 		for _, line := range registeredBinaryLines(home, mcpCommand()) {
 			fmt.Fprintln(stdout, line)
 		}
+		for _, line := range codexTrustLines(home) {
+			fmt.Fprintln(stdout, line)
+		}
 	}
 	// 2. the local model (with a key Jev is used, so a missing one is not treated as lacking)
 	if usesHosted(*storeDir) {

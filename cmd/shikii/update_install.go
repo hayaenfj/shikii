@@ -183,13 +183,7 @@ func finishUpdate(ctx context.Context, exe string) error {
 		if err != nil {
 			return errors.New("cannot check the hook settings")
 		}
-		var config struct {
-			Hooks map[string][]struct {
-				Hooks []struct {
-					Command string `json:"command"`
-				} `json:"hooks"`
-			} `json:"hooks"`
-		}
+		var config hookSettingsFile
 		if json.Unmarshal(body, &config) != nil {
 			return errors.New("cannot read the hook settings. Check them with shikii hook install --yes")
 		}
