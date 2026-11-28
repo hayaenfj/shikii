@@ -320,6 +320,11 @@ func napNotice(root, scope string, now time.Time) (string, error) {
 	}
 	book := notebook.Book{Root: root, Scope: scope}
 	n, err := book.CountWorkResultsUntil(from, time.Now().Add(napCountLimit))
+	counted := true
+	if errors.Is(err, notebook.ErrWorkCountTooLong) && m.pending {
+		// a notice given again does not depend on the count, so it is not held back by a count that takes too long (audit of 0.45.0)
+		counted, err = false, nil
+	}
 	if errors.Is(err, notebook.ErrWorkCountTooLong) {
 		// nothing was written, so the notice is tried again at the next session start; the brief of the same hook does not wait for it
 		return "", fmt.Errorf("the notice is left for the next session start, the sources were not counted within %s: %w", napCountLimit, err)
@@ -338,7 +343,11 @@ func napNotice(root, scope string, now time.Time) (string, error) {
 	if !from.IsZero() {
 		since = "since " + from.UTC().Format(napTimeLayout)
 	}
-	return fmt.Sprintf("shikii: a memory nap is due (%d work results %s). Start it now: launch one background subagent that runs `shikii nap` in this project and follows its next_action, then go on with the person's request without waiting for it. If your agent cannot run a background subagent, or may not start one unless the person asks for it (Codex), run `shikii nap` yourself and follow its next_action as the last step of this request, before your final answer.", n, since), nil
+	due := fmt.Sprintf("%d work results %s", n, since)
+	if !counted {
+		due = "asked at an earlier session start and not run yet"
+	}
+	return fmt.Sprintf("shikii: a memory nap is due (%s). Start it now: launch one background subagent that runs `shikii nap` in this project and follows its next_action, then go on with the person's request without waiting for it. If your agent cannot run a background subagent, or may not start one unless the person asks for it (Codex), run `shikii nap` yourself and follow its next_action as the last step of this request, before your final answer.", due), nil
 }
 
 // napPendingReason is the line of a Stop block that asks Codex for the nap the notice of the session start asked for and no `shikii nap` has

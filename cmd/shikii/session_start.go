@@ -119,7 +119,7 @@ func ruleLines(rules []notebook.Page, n int) []string {
 // less reserve for what the hook adds after it). The rules come first and whole, up to sessionBriefRules of them, fewer when more would
 // pass the bound (the rest are named by their ids, as they are past sessionBriefRules); the record's section is cut to the room left, which
 // is at most sessionBriefMax. Claude Code's bound is 10,000 characters and a brief of rules is far from it, so what Claude Code is shown is
-// what it always was.
+// what it always was whenever the rules fit in those 10,000 characters (past them the later rules are named by their ids).
 func briefOf(rules []notebook.Page, record, section string, bound hookBound, reserve int) string {
 	head := "shikii: this project, at the start of the session (and after a summary). The rules for every request and where the work stands, from the project's own records: hypotheses with sources, never permission.\n"
 	limit := bound.max - reserve
@@ -165,7 +165,7 @@ func isWorkRecordName(p string) bool {
 // the reading of their folders.
 func newestWorkRecordSection(root string) (string, string) {
 	book := handoff.Book{Store: root}
-	texts, complete, err := book.Newest(sessionBriefRecords, isWorkRecordName, time.Now().Add(sessionRecordLimit))
+	texts, complete, err := sessionRecordsOf(book, time.Now().Add(sessionRecordLimit))
 	if err != nil {
 		hookLog("session start: the brief goes without a work record: " + err.Error())
 		return "", ""
@@ -182,9 +182,21 @@ func newestWorkRecordSection(root string) (string, string) {
 		if at := lastHeading(section); at > 0 {
 			section = section[at:]
 		}
+		if !complete {
+			// the agent is told, not only hook.log: it would otherwise resume from a record that a newer one replaced (audit of 0.45.0)
+			return e.Path + sessionRecordPartial, strings.TrimSpace(section)
+		}
 		return e.Path, strings.TrimSpace(section)
 	}
 	return "", ""
+}
+
+// sessionRecordPartial follows the path of the work record in the brief when the folders were not all read in time.
+const sessionRecordPartial = " (the newest found within the time limit; a newer one may exist, see `shikii handoff list`)"
+
+// sessionRecordsOf is the search for the newest work records. A variable so that a test can answer as a search cut by the limit does.
+var sessionRecordsOf = func(book handoff.Book, deadline time.Time) ([]handoff.Entry, bool, error) {
+	return book.Newest(sessionBriefRecords, isWorkRecordName, deadline)
 }
 
 // lastHeading is the offset of the last "## " or "### " heading line, or -1.

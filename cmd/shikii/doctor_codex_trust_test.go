@@ -96,3 +96,11 @@ func TestDoctorPrintsTheCodexTrustLine(t *testing.T) {
 		t.Fatalf("doctor prints the line for the hooks Codex has not trusted:\n%s", out)
 	}
 }
+
+// A comment after `enabled = false` does not hide that the hook is turned off (audit of 0.45.0).
+func TestCodexHookStatesReadsAValueFollowedByAComment(t *testing.T) {
+	_, off := codexHookStates("[hooks.state.\"k\"]\ntrusted_hash = \"ab\"\nenabled = false # for now\n")
+	if !off["k"] {
+		t.Fatal("enabled = false with a comment after it is read as turned off")
+	}
+}

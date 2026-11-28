@@ -9,7 +9,6 @@
 - Replies and notices from shikii no longer repeat themselves. Search candidates share one example of how to read an article instead of carrying one each, searches and lists name each source by its id, and the reply to a saved work result no longer repeats the fixed sentences shikii itself put in. Nothing is lost: the omitted text is still elsewhere in the reply or one call away.
 - At the end of a conversation, the agent saves what it learned from it to the wiki (the review). The instructions for sending that are shorter: the reply keeps the shape of what to send and the conditions that matter most, and the details are in the skill's `references/review.md`. That file comes with the update, so there is nothing for you to do.
 - An agent recording the result of its work has to rewrite and resend less often. The notice shikii gives before a request now shows how to assess the lessons (the points of wiki articles) it delivered. And a quality grade sent without evidence no longer makes shikii refuse the whole record: it leaves that grade out, saves the rest, and returns a warning.
-- A lesson that was delivered with three requests, was not used in any of them and never helped is now listed for the agent to review. Lessons delivered right before a command or a file were already listed this way. shikii only lists them; it does not change or withdraw them. You need to do nothing.
 - `shikii doctor` now says whether Codex trusts shikii's hooks (what runs shikii as the agent works). Codex does not run a hook it does not trust, and does not say so.
 
 ### Fixes

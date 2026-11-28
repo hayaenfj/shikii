@@ -42,6 +42,10 @@ func codexHookStates(config string) (trusted, off map[string]bool) {
 	current := ""
 	for _, line := range strings.Split(config, "\n") {
 		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "enabled") {
+			line, _, _ = strings.Cut(line, "#") // a comment after the value; a trusted_hash is hexadecimal and a table name may hold "#", so only here
+			line = strings.TrimSpace(line)
+		}
 		switch {
 		case strings.HasPrefix(line, "[hooks.state.\"") && strings.HasSuffix(line, "\"]"):
 			current = strings.TrimSuffix(strings.TrimPrefix(line, "[hooks.state.\""), "\"]")

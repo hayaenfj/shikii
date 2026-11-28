@@ -95,3 +95,46 @@ func TestNapNoticePastTheCountLimitIsLeftForTheNextSessionAndTheBriefStillComes(
 		t.Fatal("the notice that was given is written")
 	}
 }
+
+// A search for the newest work record that the time limit cut names the record it found and says a newer one may exist: the agent would
+// otherwise resume from a record that a newer one replaced, with only hook.log knowing (audit of 0.45.0).
+func TestTheBriefSaysWhenTheWorkRecordIsTheNewestOfAnUnfinishedSearch(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	if _, err := (handoff.Book{Store: st.Dir}).Write("plan/scope.md", "# Scope\n\n## Where the work stands\nA and B are in; C is next.\n", false); err != nil {
+		t.Fatal(err)
+	}
+	in := map[string]any{"session_id": "s", "cwd": scope, "hook_event_name": "SessionStart", "source": "startup"}
+	old := sessionRecordsOf
+	t.Cleanup(func() { sessionRecordsOf = old })
+	sessionRecordsOf = func(book handoff.Book, deadline time.Time) ([]handoff.Entry, bool, error) {
+		found, _, err := old(book, deadline)
+		return found, false, err
+	}
+	cutShort := noticeContext(t, runHook(t, "session-start", in))
+	if !strings.Contains(cutShort, "Work record plan/scope.md (the newest found within the time limit; a newer one may exist, see `shikii handoff list`), its last section:") || !strings.Contains(cutShort, "A and B are in; C is next.") {
+		t.Fatalf("the brief of a search the limit cut says the record may not be the newest:\n%s", cutShort)
+	}
+	sessionRecordsOf = old
+	if whole := noticeContext(t, runHook(t, "session-start", in)); !strings.Contains(whole, "Work record plan/scope.md, its last section:") {
+		t.Fatalf("a finished search names the record as it is:\n%s", whole)
+	}
+}
+
+// A notice that no `shikii nap` followed is given again whatever the count is, so a count that takes too long does not hold it back
+// (audit of 0.45.0): the sentence then says it was asked before instead of a number.
+func TestNapNoticeGivenAgainDoesNotWaitForACountPastTheLimit(t *testing.T) {
+	st, scope, _, _, _ := memoryEffectFixture(t)
+	saveWorkResults(t, st, scope, 0, 6, time.Now())
+	if first := noticeContext(t, startSession(t, scope, nil)); !strings.Contains(first, "shikii: a memory nap is due (6 work results so far).") {
+		t.Fatalf("the first notice counts:\n%s", first)
+	}
+	written := readNapStateFile(t, st)
+	napCountLimit = -time.Second // restored by hookEnv's cleanup
+	again := noticeContext(t, startSession(t, scope, nil))
+	if !strings.Contains(again, "shikii: a memory nap is due (asked at an earlier session start and not run yet).") || !strings.Contains(again, "`shikii nap`") {
+		t.Fatalf("the notice is given again though the count took too long:\n%s", again)
+	}
+	if readNapStateFile(t, st) == "" || written == "" {
+		t.Fatal("the notice stays written")
+	}
+}

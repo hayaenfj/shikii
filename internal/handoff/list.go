@@ -111,7 +111,9 @@ func (w *walk) run() {
 	}
 }
 
-// read reads one folder: it visits its files and returns the folders in it.
+// read reads one folder: it visits its files and returns the folders in it. Only the last name of the path is refused when it is a link:
+// a folder above it that is replaced with a link while the place is read is followed, which gives names and times only (a file's text is
+// read through os.Root, book.Read) and takes the same user's own write to the place.
 func (w *walk) read(rel string) ([]string, error) {
 	f, err := os.OpenFile(filepath.Join(w.base, filepath.FromSlash(rel)), os.O_RDONLY|noFollow|openDirectory, 0)
 	if err != nil {
