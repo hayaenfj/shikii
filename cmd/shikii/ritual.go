@@ -199,6 +199,9 @@ func ritualStop(root, scope string, in *hookInput, snapshot *hookSession, change
 	if langFailed != "" {
 		failed = append(failed, langFailed) // with other rituals: one more line of the same block
 	}
+	if in.agentKind == "codex" && parseNapMark(readNapState(root)).pending {
+		failed = append(failed, napPendingReason()) // a block Codex obeys carries the ask its session start notice could not get done
+	}
 	var b strings.Builder
 	b.WriteString("shikii: required work is not saved yet. Run the commands below now and check their results before finishing. Explaining these steps does not complete them. Use the same project and request IDs; do not ask the person to run these internal steps. If a command fails, inspect the error and correct it before retrying. After saving, briefly restate the result of the original work in your final reply.\n")
 	// Claude Code mostly acts on this block rather than on the notices before the request (audit 0.9.2 English, medium 3), so the rule rides along here too

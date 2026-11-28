@@ -338,7 +338,15 @@ func napNotice(root, scope string, now time.Time) (string, error) {
 	if !from.IsZero() {
 		since = "since " + from.UTC().Format(napTimeLayout)
 	}
-	return fmt.Sprintf("shikii: a memory nap is due (%d work results %s). Start it now: launch one background subagent that runs `shikii nap` in this project and follows its next_action, then go on with the person's request without waiting for it. If your agent cannot run a background subagent, run `shikii nap` yourself after you answer this request, before you end.", n, since), nil
+	return fmt.Sprintf("shikii: a memory nap is due (%d work results %s). Start it now: launch one background subagent that runs `shikii nap` in this project and follows its next_action, then go on with the person's request without waiting for it. If your agent cannot run a background subagent, or may not start one unless the person asks for it (Codex), run `shikii nap` yourself and follow its next_action as the last step of this request, before your final answer.", n, since), nil
+}
+
+// napPendingReason is the line of a Stop block that asks Codex for the nap the notice of the session start asked for and no `shikii nap` has
+// run since (.shikii/nap has no third line). Codex's own rules forbid it to start the subagent the notice names unless the person or the
+// project's instructions ask for one, and in real sessions it often left the notice alone; the Stop that blocks anyway is the text it
+// obeyed. The line only rides on a block that is there for other saved work: it does not make one.
+func napPendingReason() string {
+	return "A memory nap is due and no `shikii nap` has run since it was asked for at the session start: run " + hookExe() + " nap in this project and follow its next_action (this agent may not start the background subagent that notice named), then finish"
 }
 
 type napConversation struct {

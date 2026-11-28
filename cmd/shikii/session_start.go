@@ -70,9 +70,9 @@ func runSessionStart() error {
 	return nil
 }
 
-// sessionNoticeReserve is the room the brief leaves for the notice of the memory nap (about 330 bytes) where the agent's limit is counted
+// sessionNoticeReserve is the room the brief leaves for the notice of the memory nap (about 450 bytes) where the agent's limit is counted
 // in bytes, so that the two together stay within it.
-const sessionNoticeReserve = 400
+const sessionNoticeReserve = 520
 
 // sessionAgentKind is the name of the agent that runs this hook, asked of the process table when the brief needs it ("" when none is
 // found); a test swaps it.
