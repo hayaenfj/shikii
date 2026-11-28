@@ -161,7 +161,10 @@ func addTrackedIgnored(ctx context.Context, top string, env []string) bool {
 	return add.Run() == nil
 }
 
-func hookLog(msg string) {
+func hookLog(msg string) { hookLogWithin(msg, hookLogLineMax) }
+
+// hookLogWithin is hookLog with the longest line it keeps given (a line that carries only names and numbers beside a bounded message).
+func hookLogWithin(msg string, max int) {
 	agent, err := agentHome()
 	if err != nil {
 		return
@@ -173,7 +176,7 @@ func hookLog(msg string) {
 		return
 	}
 	defer f.Close()
-	msg = strings.ReplaceAll(cut(msg, hookLogLineMax), "\n", " ") // do not keep the model's response body (it may contain requests or replies) whole
+	msg = strings.ReplaceAll(cut(msg, max), "\n", " ") // do not keep the model's response body (it may contain requests or replies) whole
 	fmt.Fprintf(f, "%s %s\n", time.Now().Format(time.RFC3339), msg)
 }
 

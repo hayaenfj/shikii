@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -42,10 +44,67 @@ func prepareHookWork(root string, in *hookInput, out *hookOut) {
 		v, err = prepareWork(root, s.Scope, req)
 	}
 	if err != nil {
-		hookLog("work prepare: " + err.Error())
+		logRefusedPreparation(base, err)
 		return
 	}
 	*out = render(v)
+}
+
+// hookRefusal is the error of a hook preparation the bound refused: the message of the refusal as it was, with the reply as it stood.
+type hookRefusal struct {
+	err   error
+	reply map[string]any
+}
+
+func (r *hookRefusal) Error() string { return r.err.Error() }
+func (r *hookRefusal) Unwrap() error { return r.err }
+
+// logRefusedPreparation writes the hook's log line for a refused preparation: the refusal's message (cut as every message is) and the
+// sizes, in a line that may be hookRefusalLogExtra longer than an ordinary one.
+func logRefusedPreparation(before string, err error) {
+	hookLogWithin(cut("work prepare: "+err.Error(), hookLogLineMax)+refusalSizes(before, err), hookLogLineMax+hookRefusalLogExtra)
+}
+
+// hookRefusalLogExtra is how much longer than an ordinary line the hook's log keeps a refused preparation's line: the sizes it adds
+// are field names and numbers.
+const hookRefusalLogExtra = 800
+
+// refusalSizes is what a refused preparation adds to the hook's log line: how many characters the hook had written before the
+// prepared work (what the preparation had to fit beside), and each field of the reply that was left when it was refused, with its size
+// in characters as the hook writes it, the largest first. Only the fields' names and numbers: never the request, an article or any
+// other text of the reply. A refusal that built no reply (another reason) names no fields.
+func refusalSizes(before string, err error) string {
+	text := " | the hook's text before the prepared work: " + strconv.Itoa(hookContextLength(before)) + " of " + strconv.Itoa(hookContextMax) + " characters"
+	var refused *hookRefusal
+	if !errors.As(err, &refused) {
+		return text + " | no reply was built"
+	}
+	type field struct {
+		name string
+		size int
+	}
+	fields := []field{}
+	for name, value := range refused.reply {
+		if value == nil {
+			continue
+		}
+		b, _ := orderedText(value)
+		if string(b) == "null" {
+			continue
+		}
+		fields = append(fields, field{name, hookContextLength(string(b))})
+	}
+	sort.Slice(fields, func(i, j int) bool {
+		if fields[i].size != fields[j].size {
+			return fields[i].size > fields[j].size
+		}
+		return fields[i].name < fields[j].name
+	})
+	text += " | reply fields left, in characters:"
+	for _, f := range fields {
+		text += " " + f.name + "=" + strconv.Itoa(f.size)
+	}
+	return text
 }
 
 // hookPreparedNotice is the notice that stands in the context in place of the planning or reasoning notice once the hook has prepared

@@ -680,6 +680,9 @@ func prepareWork(root, scope string, req workRequest) (out any, err error) {
 	}
 	read, err = limitWorkPreparation(book, w, reply, quoted, req.MaxBytes, req.responseSize)
 	if err != nil {
+		if req.fromHook {
+			err = &hookRefusal{err: err, reply: reply} // the same message; the hook's log names what was left at the refusal
+		}
 		return nil, err
 	}
 	if reply["coverage"] != nil { // the areas this reply names, after the bound: the result this work records takes over those made from remaining. A bound that left coverage out handed it none, and a row it did not name stays open
